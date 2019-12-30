@@ -1,0 +1,23 @@
+<html>
+<head>
+<script src="vgmplay-js-glue.js"></script>
+</head>
+<body>
+<div id="vgmplayStatusWindow"></div>
+<div id="vgmplayPlayer"></div>
+<div id="vgmplayTitleWindow"></div>
+<div id="vgmplayLoopcountSetter"></div>
+<div id="vgmplayProgressBar"></div>
+<div id="vgmplayUploader"></div>
+<div id="vgmplayZipFileList"></div>
+<script>
+window.onload=vgmplay_js=new VGMPlay_js();
+//vgmplay_js.loadURL("https://"+window.location.hostname+"/test.txt");
+var url1="https://"+window.location.hostname+"/01.zip";
+var url2="https://"+window.location.hostname+"/02.zip";
+//var testUrl="https://vgmrips.net/files/MSX/Illusion_City_%28MSX_turbo_R%29.zip";
+</script>
+<br/><a onclick="vgmplay_js.loadZIPWithVGMFromURL(url1)">Insert Xak zip file into Webbased VGM player</a><br/>
+<a onclick="vgmplay_js.loadZIPWithVGMFromURL(url2)">Insert SD Snatcher zip file into Webbased VGM player</a>
+</body>
+</html>

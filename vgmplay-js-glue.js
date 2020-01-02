@@ -36,10 +36,10 @@ class VGMPlay_js {
 		if (this.playerWindow) this.showPlayer();
 		
 		this.titleWindow = document.getElementById("vgmplayTitleWindow");
-		if (this.titleWindow) this.showTitleWindow();
+		if (this.titleWindow) this.titleWindow.className ="titleWindow";
 
 		this.zipFileListWindow = document.getElementById("vgmplayZipFileList");
-		if (this.zipFileListWindow) this.showZipFileListWindow();
+		if (this.zipFileListWindow) this.zipFileListWindow.className ="zipFileListWindow";
 
 		this.currentFileKey = "";
 	}
@@ -50,18 +50,11 @@ class VGMPlay_js {
 		this.debugWindow.innerHTML+="- Can't initialize WebAudio, please generate some user initiated event..<br/>";
 	}
 
-	showTitleWindow() {
-		this.titleWindow.className ="titleWindow";
-	}
-	
-	showZipFileListWindow() {
-		this.zipFileListWindow.className ="zipFileListWindow";
-	}
-	
 	showPlayer() {
 		this.showDebug("vgmplayPlayer div exists, show player...");
-		if (!this.playerWindow) this.playerWindow = document.getElementById("vgmplayPlayer");
+		this.playerWindow.className ="playerWindow";
 		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> ";
+		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
 	}
 
 	getVGMTag() {
@@ -211,7 +204,7 @@ class VGMPlay_js {
 	}
 	
 	playFileFromFS(file, key) {
-			if (!this.isPlaybackPaused) this.stop();
+			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
 			this.checkEverythingReady();
 			this.load(file);
 			this.currentFileKey=key;
@@ -222,10 +215,12 @@ class VGMPlay_js {
 	changeTrack(action) {
 		if (action === "next") {
 			if (this.currentFileKey+1 === this.fileList.length) this.currentFileKey = 0; else this.currentFileKey++;
+			this.stop();
 			this.playFileFromFS(this.fileList[this.currentFileKey].filepath, this.currentFileKey);	
 		}
 		if (action === "previous") {
 			if (this.currentFileKey === 0) this.currentFileKey = this.fileList.length-1; else this.currentFileKey--; 
+			this.stop();
 			this.playFileFromFS(this.fileList[this.currentFileKey].filepath, this.currentFileKey);	
 		}
 	}
@@ -339,9 +334,8 @@ class VGMPlay_js {
 				this.output0 = e.outputBuffer.getChannelData(0);
 				this.output1 = e.outputBuffer.getChannelData(1);
 				if (classContext.VGMEnded()) {
-					//classContext.node.disconnect(classContext.context.destination);
 					classContext.stop();
-					//if (classContext.callbackTrackEnd) classContext.callbackTrackEnd();
+					setTimeout(function(){ classContext.changeTrack("next");},1000);
 				}
 				for (var i = 0; i < 16384; i++) {
 					this.output0[i] = classContext.buffers[0][i];
@@ -356,16 +350,19 @@ class VGMPlay_js {
 	pause() {
 		this.showDebug("pause()");
 		this.isPlaybackPaused = true;
-		document.getElementById("buttonTogglePlayback").innerHTML="&#9654;"; //fix
+		this.buttonTogglePlayback.innerHTML="&#9654;"
 		this.node.disconnect(this.context.destination);
 	}
 
 	stop() {
 		this.showDebug("stop()");
-                document.getElementById("buttonTogglePlayback").innerHTML="&#9654;"; //fix
+                this.buttonTogglePlayback.innerHTML="&#9654;";
 
-		this.node.disconnect(this.context.destination);
-		this.context.close();
+		try {
+			this.node.disconnect(this.context.destination);
+			this.context.close();
+		} catch {}
+
 		this.isWebAudioInitialized = false;
 		this.generatingAudio = false;
 

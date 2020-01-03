@@ -385,3 +385,4 @@ class VGMPlay_js {
 	}
 	
 }
+var vgmplay_js=new VGMPlay_js();

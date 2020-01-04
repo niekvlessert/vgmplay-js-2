@@ -1,6 +1,5 @@
 'use strict';
 
-
 class VGMPlay_js {
 
 	constructor() {
@@ -11,37 +10,104 @@ class VGMPlay_js {
 		this.generatingAudio = false;
 		this.isVGMPlaying = false;
 		this.zipURLLoaded = [];
+		this.useAsLibrary = false;
+		this.displayTitleWindow = true;
+		this.displayPlayer = true;
+		this.displayZipFileList = true;
 
 		var script = document.createElement("script");
 		script.src = "build/vgmplay-js.js"
-		var script2 = document.createElement("script");
-		script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
 		var script3 = document.createElement("script");
 		script3.src = "minizip-asm.min.js";
 
-		var link = document.createElement('link'); 
-		link.rel = 'stylesheet';  
-		link.type = 'text/css'; 
-		link.href = 'css/style.css';  
-
 		document.head.appendChild(script);
-		document.head.appendChild(script2);
 		document.head.appendChild(script3);
-		document.head.appendChild(link);
 
-		this.debugWindow = document.getElementById("vgmplayStatusWindow");
-		if (this.debugWindow) this.showDebugWindow();
+/*
+Need to handle these divs as well... but first they need to be implemented...
+<div id="vgmplayLoopcountSetter"></div>
+<div id="vgmplayProgressBar"></div>
+<div id="vgmplayUploader"></div>
+*/
 
-		this.playerWindow = document.getElementById("vgmplayPlayer");
-		if (this.playerWindow) this.showPlayer();
-		
-		this.titleWindow = document.getElementById("vgmplayTitleWindow");
-		if (this.titleWindow) this.titleWindow.className ="titleWindow";
+		if (typeof vgmplaySettings !== 'undefined') {
+			console.log("vgmplaySettings defined");
+			if (typeof vgmplaySettings.useAsLibrary !== 'undefined') {
+				if (vgmplaySettings.useAsLibrary) {
+					console.log("vgmplaySettings.useAsLibrary defined");
+					this.useAsLibrary = true;
+				}
+			}
+			if (!this.useAsLibrary) {
+				var script2 = document.createElement("script");
+				script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
+				document.head.appendChild(script2);
 
-		this.zipFileListWindow = document.getElementById("vgmplayZipFileList");
-		if (this.zipFileListWindow) this.zipFileListWindow.className ="zipFileListWindow";
+				var link = document.createElement('link'); 
+				link.rel = 'stylesheet';  
+				link.type = 'text/css'; 
+				link.href = 'css/style.css';  
+				document.head.appendChild(link);
+
+				if (typeof vgmplaySettings.displayDebugWindow !== 'undefined') {
+					if (vgmplaySettings.displayDebugWindow) {
+						console.log("vgmplaySettings.displayDebugWindow defined");
+						this.debugWindow = document.createElement('div');
+						this.debugWindow.id = "vgmplayDebugWindow";
+						document.body.appendChild(this.debugWindow);
+						this.showDebugWindow();
+					}
+				}
+				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
+					if (!vgmplaySettings.displayZipFileList) {
+						this.displayZipFileList = false;
+					}
+				}
+				if (this.displayZipFileList) {
+					this.zipFileListWindow = document.createElement('div');
+					this.zipFileListWindow.id = "vgmplayZipFileList";
+					document.body.insertBefore(this.zipFileListWindow, document.body.firstChild);
+					this.zipFileListWindow.className ="zipFileListWindow";
+				}
+				if (typeof vgmplaySettings.displayPlayer !== 'undefined') {
+					if (!vgmplaySettings.displayPlayer) {
+						this.displayPlayer = false;
+					}
+				}
+				if (this.displayPlayer) {
+					this.playerWindow = document.createElement('div');
+					this.playerWindow.id = "vgmplayPlayer";
+					document.body.insertBefore(this.playerWindow, document.body.firstChild);
+					this.showPlayer();
+				}
+				if (typeof vgmplaySettings.displayTitleWindow !== 'undefined') {
+					if (!vgmplaySettings.displayTitleWindow) {
+						this.displayTitleWindow = false;
+					}
+				}
+				if (this.displayTitleWindow) {
+					this.titleWindow = document.createElement('div');
+					this.titleWindow.id = "vgmplayTitleWindow";
+					document.body.insertBefore(this.titleWindow, document.body.firstChild);
+					this.titleWindow.className ="titleWindow";
+				}
+
+				setTimeout(function() {
+					this.elms = document.getElementsByTagName("a"),
+					this.len = this.elms.length;
+					for(var ii = 0; ii < this.len; ii++) {
+						console.log(this.elms[ii].href);
+						if (this.elms[ii].href.match(/.zip/g)) classContext.loadZIPWithVGMFromURL(this.elms[ii].href);
+
+					}
+				},1000);
+			}
+		}
 
 		this.currentFileKey = "";
+
+		const classContext = this;
+
 	}
 
 	showDebugWindow() {
@@ -379,9 +445,10 @@ class VGMPlay_js {
 	}
 
 	showDebug(text) {
-                if (this.debugWindow) this.debugWindow.innerHTML+= "- " + text + "<br/>";
-		this.debugWindow.scrollTop = this.debugWindow.scrollHeight;
-
+                if (this.debugWindow) {
+			this.debugWindow.innerHTML+= "- " + text + "<br/>";
+			this.debugWindow.scrollTop = this.debugWindow.scrollHeight;
+		}
 	}
 	
 }

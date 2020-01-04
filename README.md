@@ -41,3 +41,7 @@ Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatch
 </body>
 </html>
 ```
+
+This will generate something like this:
+
+![Screenshot](http://vlessert.nl/vgmplay-js.png)

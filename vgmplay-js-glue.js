@@ -38,17 +38,18 @@ Need to handle these divs as well... but first they need to be implemented...
 					this.useAsLibrary = true;
 				}
 			}
-			if (!this.useAsLibrary) {
-				var script2 = document.createElement("script");
-				script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
-				document.head.appendChild(script2);
+		}
+		if (!this.useAsLibrary) {
+			var script2 = document.createElement("script");
+			script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
+			document.head.appendChild(script2);
 
-				var link = document.createElement('link'); 
-				link.rel = 'stylesheet';  
-				link.type = 'text/css'; 
-				link.href = 'css/style.css';  
-				document.head.appendChild(link);
-
+			var link = document.createElement('link');
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = 'css/style.css';
+			document.head.appendChild(link);
+			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayDebugWindow !== 'undefined') {
 					if (vgmplaySettings.displayDebugWindow) {
 						console.log("vgmplaySettings.displayDebugWindow defined");
@@ -58,50 +59,52 @@ Need to handle these divs as well... but first they need to be implemented...
 						this.showDebugWindow();
 					}
 				}
+			}
+			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
 					if (!vgmplaySettings.displayZipFileList) {
 						this.displayZipFileList = false;
 					}
-				}
-				if (this.displayZipFileList) {
-					this.zipFileListWindow = document.createElement('div');
-					this.zipFileListWindow.id = "vgmplayZipFileList";
-					document.body.insertBefore(this.zipFileListWindow, document.body.firstChild);
-					this.zipFileListWindow.className ="zipFileListWindow";
 				}
 				if (typeof vgmplaySettings.displayPlayer !== 'undefined') {
 					if (!vgmplaySettings.displayPlayer) {
 						this.displayPlayer = false;
 					}
 				}
-				if (this.displayPlayer) {
-					this.playerWindow = document.createElement('div');
-					this.playerWindow.id = "vgmplayPlayer";
-					document.body.insertBefore(this.playerWindow, document.body.firstChild);
-					this.showPlayer();
-				}
 				if (typeof vgmplaySettings.displayTitleWindow !== 'undefined') {
 					if (!vgmplaySettings.displayTitleWindow) {
 						this.displayTitleWindow = false;
 					}
 				}
-				if (this.displayTitleWindow) {
-					this.titleWindow = document.createElement('div');
-					this.titleWindow.id = "vgmplayTitleWindow";
-					document.body.insertBefore(this.titleWindow, document.body.firstChild);
-					this.titleWindow.className ="titleWindow";
-				}
-
-				setTimeout(function() {
-					this.elms = document.getElementsByTagName("a"),
-					this.len = this.elms.length;
-					for(var ii = 0; ii < this.len; ii++) {
-						console.log(this.elms[ii].href);
-						if (this.elms[ii].href.match(/.zip/g)) classContext.loadZIPWithVGMFromURL(this.elms[ii].href);
-
-					}
-				},1000);
 			}
+			if (this.displayZipFileList) {
+				this.zipFileListWindow = document.createElement('div');
+				this.zipFileListWindow.id = "vgmplayZipFileList";
+				document.body.insertBefore(this.zipFileListWindow, document.body.firstChild);
+				this.zipFileListWindow.className ="zipFileListWindow";
+			}
+			if (this.displayPlayer) {
+				this.playerWindow = document.createElement('div');
+				this.playerWindow.id = "vgmplayPlayer";
+				document.body.insertBefore(this.playerWindow, document.body.firstChild);
+				this.showPlayer();
+			}
+			if (this.displayTitleWindow) {
+				this.titleWindow = document.createElement('div');
+				this.titleWindow.id = "vgmplayTitleWindow";
+				document.body.insertBefore(this.titleWindow, document.body.firstChild);
+				this.titleWindow.className ="titleWindow";
+			}
+
+			setTimeout(function() {
+				this.elms = document.getElementsByTagName("a"),
+				this.len = this.elms.length;
+				for(var ii = 0; ii < this.len; ii++) {
+					console.log(this.elms[ii].href);
+					if (this.elms[ii].href.match(/.zip/g)) classContext.loadZIPWithVGMFromURL(this.elms[ii].href);
+
+				}
+			},1000);
 		}
 
 		this.currentFileKey = "";
@@ -258,6 +261,8 @@ Need to handle these divs as well... but first they need to be implemented...
 				this.url = URL.createObjectURL(this.blob);
 				this.img = new Image();
 				this.img.src = this.url;
+				this.img.style.width = '256px';
+				this.img.style.height = '212px';
 				this.zipFileListWindow.appendChild(this.img);
 				this.zipFileListWindow.innerHTML+="<br/>";
 			}

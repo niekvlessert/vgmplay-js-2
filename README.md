@@ -8,7 +8,7 @@ This is a new version, based on vgmplay-js. Objectives:
 - Make it usuable as a library as well as a player.
 - Offer playback through both Scriptprocessor and Audioworklet.
 
-Audioworklet support is not ready yet, as well as the progressbar.
+Audioworklet support is not ready yet, as well as some player features.
 
 Works on Chrome 79, Firefox 71, compilation works at least with Emcc 1.39.3.
 
@@ -28,33 +28,16 @@ Then visit:
 
 ```https://<your webserver ip>/vgmplay-js-2/```
 
-You can define which parts of the integrated player are being used by adding divs to the HTML. When building your own player you can use variables and functions from the glue.js file. Documentation for that will be created later. 
+By default a player is shown and the html file will be scanned for .zip files. If available they're unpacked into the Emscripten filesystem, then a player will be displayer. You can also build your own player and use it as a library, you can use variables before including the glue file to choose the behaviour. Documentation for that will be created later. 
 
-Loading vgmrips.net zip files is as easy as putting them on the webserver and feeding them to the player. Look at the example.
+Loading vgmrips.net zip files is as easy as putting them on the webserver and offer them to download, then include the glue and the player will be pick them up:
 
 ```html
 <html>
-<head>
-  <script src="vgmplay-js-glue2.js"></script>
-</head>
-
 <body>
-
-<div id="vgmplayStatusWindow"></div>
-<div id="vgmplayPlayer"></div>
-<div id="vgmplayTitleWindow"></div>
-<div id="vgmplayLoopcountSetter"></div>
-<div id="vgmplayProgressBar"></div>
-<div id="vgmplayUploader"></div>
-<div id="vgmplayZipFileList"></div>
-
-<script>
-  window.onload=vgmplay_js=new VGMPlay_js();
-  var url1="https://"+window.location.hostname+"/01.zip";
-</script>
-
-<br/><a onclick="vgmplay_js.loadZIPWithVGMFromURL(url1)">Insert zip file into Webbased VGM player</a><br/>
-
+Download this amazing MSX music: <a href="https://192.168.1.18/01.zip">Xak</a><br/>
+Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatcher</a>
+<script src="vgmplay-js-glue.js"></script>
 </body>
 </html>
 ```

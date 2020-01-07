@@ -14,10 +14,8 @@ class VGMPlay_js {
 		this.displayTitleWindow = true;
 		this.displayPlayer = true;
 		this.displayZipFileList = true;
-		this.m3uFile = [];
-		this.txtFile = [];
-		this.pngFile = [];
-		this.amountOfGamesLoaded = 0;
+		this.games = [];
+		this.activeGame = "";
 
 		var script = document.createElement("script");
 		script.src = "build/vgmplay-js.js"
@@ -233,6 +231,9 @@ Need to handle these divs as well... but first they need to be implemented...
 		const classContext = this;
 		xhr.onreadystatechange = function() {
 			if (xhr.readyState == XMLHttpRequest.DONE) {
+				var m3uFile;
+				var txtFile;
+				var pngFile;
 				var arrayBuffer = xhr.response;
 				var byteArray = new Uint8Array(arrayBuffer);
 				classContext.mz = new Minizip(byteArray);
@@ -242,27 +243,25 @@ Need to handle these divs as well... but first they need to be implemented...
 					var fileArray = classContext.mz.extract(fileList[key].filepath);
 					var path = escape(fileList[key].filepath);
 					fileList[key].filepath=path;
-					if (path.includes("m3u")) classContext.m3uFile[this.amountOfGamesLoaded] = path;
-					if (path.includes("txt")) classContext.txtFile[this.amountOfGamesLoaded] = path;
-					if (path.includes("png")) classContext.pngFile[this.amountOfGamesLoaded] = path;
 					FS.createDataFile("/", path, fileArray, true, true);
+					if (path.includes("m3u")) m3uFile = FS.readFile(path, { encoding: "utf8" } );
+					if (path.includes("txt")) txtFile = FS.readFile(path, { encoding: "utf8" } );
+					if (path.includes("png")) pngFile = new Blob ([FS.readFile(path)], { type: "image/png" });
 				}
-				classContext.showVGMFromZip(fileList);
+				var game = {files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile};
+				classContext.games.push(game);
+				classContext.showVGMFromZip(game);
 			}
 		}
 		xhr.open('GET', url, true);
 		xhr.send(null);
 	}
 
-	showVGMFromZip(fileList) {
-		this.fileList = fileList;
+	showVGMFromZip(game) {
+		this.fileList = game.files;
 		if (this.zipFileListWindow) {
-			console.log("1");
-			if (this.pngFile[this.amountOfGamesLoaded]) {
-				console.log("1-");
-				this.contents = FS.readFile(this.pngFile[this.amountOfGamesLoaded]);
-				this.blob = new Blob([this.contents], { type: "image/png" });
-				this.url = URL.createObjectURL(this.blob);
+			if (game.png) {
+				this.url = URL.createObjectURL(game.png);
 				this.img = new Image();
 				this.img.src = this.url;
 				this.img.style.width = '256px';
@@ -270,25 +269,16 @@ Need to handle these divs as well... but first they need to be implemented...
 				this.zipFileListWindow.appendChild(this.img);
 				this.zipFileListWindow.innerHTML+="<br/>";
 			}
-			for (var key = 0; key < fileList.length; key++) {
-				this.fileName = fileList[key].filepath;
-				if (this.fileName.includes("vgm") || this.fileName.includes("vgz")) this.zipFileListWindow.innerHTML+="<a onclick=\"vgmplay_js.playFileFromFS('"+this.fileName+"', "+key+")\">"+unescape(this.fileName)+"</a><br/>"; else { this.fileList.splice(key,1); key--; }
+			for (var key = 0; key < this.fileList.length; key++) {
+				this.fileName = this.fileList[key].filepath;
+				if (this.fileName.includes("vgm") || this.fileName.includes("vgz")) this.zipFileListWindow.innerHTML+="<a onclick=\"vgmplay_js.playFileFromFS('"+this.fileName+"', "+this.games.length+", "+key+")\">"+unescape(this.fileName)+"</a><br/>"; else { this.fileList.splice(key,1); key--; }
 			}
 			this.zipFileListWindow.innerHTML+="<hr/>";
-			this.parseM3uFile(this.amountOfGamesLoaded);
 		}
 	}
 
-	parseM3uFile(gameId) {
-		if (this.m3uFile[this.gamedId]) {
-			console.log(this.m3uFile[this.gameId]);
-			this.data = FS.readFile(this.m3uFile[this.gameId], { encoding: "utf8" } );
-			//console.log(this.data);
-		}
-	}
-
-	
-	playFileFromFS(file, key) {
+	playFileFromFS(file, game, key) {
+			if (game) this.activeGame = this.games[game-1];
 			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
 			this.checkEverythingReady();
 			this.load(file);
@@ -299,14 +289,14 @@ Need to handle these divs as well... but first they need to be implemented...
 
 	changeTrack(action) {
 		if (action === "next") {
-			if (this.currentFileKey+1 === this.fileList.length) this.currentFileKey = 0; else this.currentFileKey++;
+			if (this.currentFileKey+1 === this.activeGame.files.length) this.currentFileKey = 0; else this.currentFileKey++;
 			this.stop();
-			this.playFileFromFS(this.fileList[this.currentFileKey].filepath, this.currentFileKey);	
+			this.playFileFromFS(this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
 		}
 		if (action === "previous") {
-			if (this.currentFileKey === 0) this.currentFileKey = this.fileList.length-1; else this.currentFileKey--; 
+			if (this.currentFileKey === 0) this.currentFileKey = this.activeGame.files.length-1; else this.currentFileKey--; 
 			this.stop();
-			this.playFileFromFS(this.fileList[this.currentFileKey].filepath, this.currentFileKey);	
+			this.playFileFromFS(this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
 		}
 	}
 

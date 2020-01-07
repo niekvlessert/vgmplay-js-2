@@ -14,6 +14,10 @@ class VGMPlay_js {
 		this.displayTitleWindow = true;
 		this.displayPlayer = true;
 		this.displayZipFileList = true;
+		this.m3uFile = [];
+		this.txtFile = [];
+		this.pngFile = [];
+		this.amountOfGamesLoaded = 0;
 
 		var script = document.createElement("script");
 		script.src = "build/vgmplay-js.js"
@@ -218,9 +222,6 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	loadZIPWithVGMFromURL(url) {
-		this.m3uFile = "";
-		this.txtFile = "";
-		this.pngFile = "";
 		var xhr = new XMLHttpRequest();
 		xhr.responseType = "arraybuffer";
 		if (this.zipURLLoaded.includes(url)) {
@@ -236,13 +237,14 @@ Need to handle these divs as well... but first they need to be implemented...
 				var byteArray = new Uint8Array(arrayBuffer);
 				classContext.mz = new Minizip(byteArray);
 				var fileList = classContext.mz.list();
+				classContext.amountOfGamesLoaded++;
 				for (var key in fileList) {
 					var fileArray = classContext.mz.extract(fileList[key].filepath);
 					var path = escape(fileList[key].filepath);
 					fileList[key].filepath=path;
-					if (path.includes("m3u")) classContext.m3uFile = path;
-					if (path.includes("txt")) classContext.txtFile = path;
-					if (path.includes("png")) classContext.pngFile = path;
+					if (path.includes("m3u")) classContext.m3uFile[this.amountOfGamesLoaded] = path;
+					if (path.includes("txt")) classContext.txtFile[this.amountOfGamesLoaded] = path;
+					if (path.includes("png")) classContext.pngFile[this.amountOfGamesLoaded] = path;
 					FS.createDataFile("/", path, fileArray, true, true);
 				}
 				classContext.showVGMFromZip(fileList);
@@ -255,8 +257,10 @@ Need to handle these divs as well... but first they need to be implemented...
 	showVGMFromZip(fileList) {
 		this.fileList = fileList;
 		if (this.zipFileListWindow) {
-			if (this.pngFile) {
-				this.contents = FS.readFile(this.pngFile);
+			console.log("1");
+			if (this.pngFile[this.amountOfGamesLoaded]) {
+				console.log("1-");
+				this.contents = FS.readFile(this.pngFile[this.amountOfGamesLoaded]);
 				this.blob = new Blob([this.contents], { type: "image/png" });
 				this.url = URL.createObjectURL(this.blob);
 				this.img = new Image();
@@ -271,8 +275,18 @@ Need to handle these divs as well... but first they need to be implemented...
 				if (this.fileName.includes("vgm") || this.fileName.includes("vgz")) this.zipFileListWindow.innerHTML+="<a onclick=\"vgmplay_js.playFileFromFS('"+this.fileName+"', "+key+")\">"+unescape(this.fileName)+"</a><br/>"; else { this.fileList.splice(key,1); key--; }
 			}
 			this.zipFileListWindow.innerHTML+="<hr/>";
+			this.parseM3uFile(this.amountOfGamesLoaded);
 		}
 	}
+
+	parseM3uFile(gameId) {
+		if (this.m3uFile[this.gamedId]) {
+			console.log(this.m3uFile[this.gameId]);
+			this.data = FS.readFile(this.m3uFile[this.gameId], { encoding: "utf8" } );
+			//console.log(this.data);
+		}
+	}
+
 	
 	playFileFromFS(file, key) {
 			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();

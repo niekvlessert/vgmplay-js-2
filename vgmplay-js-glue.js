@@ -16,6 +16,8 @@ class VGMPlay_js {
 		this.displayZipFileList = true;
 		this.games = [];
 		this.activeGame = "";
+		this.sampleRate = "";
+		this.trackLengthHumanReadeable = false;
 
 		var script = document.createElement("script");
 		script.src = "build/vgmplay-js.js"
@@ -141,6 +143,7 @@ Need to handle these divs as well... but first they need to be implemented...
 						if (this.VGMTag[0] && this.VGMTag[1]) this.titleWindow.innerHTML+=", ";
 						if (this.VGMTag[1]) this.titleWindow.innerHTML+=this.VGMTag[1];
 						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML+="<br/>";
+						this.titleWindow.innerHTML+="Length: " + this.trackLengthHumanReadeable+"<br/>";
 						this.i++;
 						break;
 					case 2:
@@ -250,6 +253,7 @@ Need to handle these divs as well... but first they need to be implemented...
 				}
 				var game = {files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile};
 				classContext.games.push(game);
+				classContext.checkEverythingReady();
 				classContext.showVGMFromZip(game);
 			}
 		}
@@ -271,32 +275,48 @@ Need to handle these divs as well... but first they need to be implemented...
 			}
 			for (var key = 0; key < this.fileList.length; key++) {
 				this.fileName = this.fileList[key].filepath;
-				if (this.fileName.includes("vgm") || this.fileName.includes("vgz")) this.zipFileListWindow.innerHTML+="<a onclick=\"vgmplay_js.playFileFromFS('"+this.fileName+"', "+this.games.length+", "+key+")\">"+unescape(this.fileName)+"</a><br/>"; else { this.fileList.splice(key,1); key--; }
+				if (this.fileName.includes("vgm") || this.fileName.includes("vgz")) {
+					this.OpenVGMFile(this.fileName);
+					this.PlayVGM();
+					this.totalSampleCount = this.GetTrackLength()*this.sampleRate/44100;
+					this.trackLengthSeconds = Math.round(this.totalSampleCount/this.sampleRate);
+					this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
+					this.zipFileListWindow.innerHTML+="<a onclick=\"vgmplay_js.playFileFromFS(this, '"+this.fileName+"', "+this.games.length+", "+key+")\">"+unescape(this.fileName)+"<span style=\"float:right;\">" + this.trackLengthHumanReadeable + "</a><br/>"; 
+					this.StopVGM();
+					this.CloseVGMFile();
+				} else { this.fileList.splice(key,1); key--; }
+			//this.zipFileListWindow.innerHTML+="<hr/>";
 			}
-			this.zipFileListWindow.innerHTML+="<hr/>";
 		}
 	}
 
-	playFileFromFS(file, game, key) {
+	playFileFromFS(href_object, file, game, key) {
 			if (game) this.activeGame = this.games[game-1];
 			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
 			this.checkEverythingReady();
 			this.load(file);
 			this.currentFileKey=key;
 			this.play();
+			this.totalSampleCount = this.GetTrackLength()*this.sampleRate/44100;
+			this.trackLengthSeconds = Math.round(this.totalSampleCount/this.sampleRate);
+			this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
+			//console.log(this.trackLengthHumanReadeable);
 			this.getVGMTag();
+			//if (this.zipFileListWindow && href_object) {
+				//if (href_object.innerHTML.indexOf(" - ") === -1) href_object.innerHTML+=" - "+this.trackLengthHumanReadeable;
+			//}
 	}
 
 	changeTrack(action) {
 		if (action === "next") {
 			if (this.currentFileKey+1 === this.activeGame.files.length) this.currentFileKey = 0; else this.currentFileKey++;
 			this.stop();
-			this.playFileFromFS(this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+			this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
 		}
 		if (action === "previous") {
 			if (this.currentFileKey === 0) this.currentFileKey = this.activeGame.files.length-1; else this.currentFileKey--; 
 			this.stop();
-			this.playFileFromFS(this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+			this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
 		}
 	}
 
@@ -364,7 +384,7 @@ Need to handle these divs as well... but first they need to be implemented...
 			this.results = [];
 
 			this.VGMPlay_Init();
-			//if (this.sampleRate) this.SetSampleRate(this.sampleRate);
+			this.SetSampleRate(this.sampleRate);
 			//if (this.loopCount) this.SetLoopCount(this.loopCount); else this.loopCount = 2;
 			this.VGMPlay_Init2();
 
@@ -449,6 +469,10 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 		
 	load (fileName) {
+		if (this.isVGMLoaded) {
+			this.StopVGMPlayback();
+			this.CloseVGMFile();
+		}
 		this.OpenVGMFile(fileName);
 		this.isVGMLoaded = true;
 	}

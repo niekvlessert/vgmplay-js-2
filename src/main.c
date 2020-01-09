@@ -77,40 +77,6 @@ char * ShowTitle(void) {
 }
 
 /*
-void UncompressFile(void) {
-	#define LENGTH 0x1000
-	char * file_name = "test.zip";
-	gzFile * file;
-	file = gzopen (file_name, "r");
-	if (! file) {
-		printf ("gzopen of '%s' failed: %s.\n", file_name);
-		return 0;
-	}
-	while (1) {
-		int err;                    
-		int bytes_read;
-		unsigned char buffer[LENGTH];
-		bytes_read = gzread (file, buffer, LENGTH - 1);
-		buffer[bytes_read] = '\0';
-		printf ("ja %s\n", buffer);
-		if (bytes_read < LENGTH - 1) {
-			if (gzeof (file)) {
-				break;
-			}
-			else {
-				const char * error_string;
-				error_string = gzerror (file, & err);
-				if (err) {
-					printf ("Error: %s.\n", error_string);
-					return 0;
-				}
-			}
-		}
-	}
-	gzclose (file);
-	return 0;
-}
-
 typedef struct _vgm_gd3_tag_js
 {
         UINT32 fccGD3;

@@ -19,6 +19,11 @@ class VGMPlay_js {
 		this.sampleRate = "";
 		this.trackLengthHumanReadeable = false;
 
+		this.pos1 = 0;
+		this.pos2 = 0;
+		this.pos3 = 0;
+		this.pos4 = 0;
+
 		var script = document.createElement("script");
 		script.src = "build/vgmplay-js.js"
 		var script3 = document.createElement("script");
@@ -44,9 +49,9 @@ Need to handle these divs as well... but first they need to be implemented...
 			}
 		}
 		if (!this.useAsLibrary) {
-			var script2 = document.createElement("script");
-			script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
-			document.head.appendChild(script2);
+			//var script2 = document.createElement("script");
+			//script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
+			//document.head.appendChild(script2);
 
 			var link = document.createElement('link');
 			link.rel = 'stylesheet';
@@ -64,6 +69,11 @@ Need to handle these divs as well... but first they need to be implemented...
 					}
 				}
 			}
+			this.vgmplayContainer = document.createElement('div');
+			this.vgmplayContainer.id = "vgmplayContainer";
+			document.body.insertBefore(this.vgmplayContainer, document.body.firstChild);
+			this.vgmplayContainer.className="vgmplayContainer";
+
 			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
 					if (!vgmplaySettings.displayZipFileList) {
@@ -81,23 +91,30 @@ Need to handle these divs as well... but first they need to be implemented...
 					}
 				}
 			}
-			if (this.displayZipFileList) {
-				this.zipFileListWindow = document.createElement('div');
-				this.zipFileListWindow.id = "vgmplayZipFileList";
-				document.body.insertBefore(this.zipFileListWindow, document.body.firstChild);
-				this.zipFileListWindow.className ="zipFileListWindow";
+			if (this.displayTitleWindow) {
+				this.titleWindow = document.createElement('div');
+				this.titleWindow.id = "vgmplayTitleWindow";
+				this.vgmplayContainer.appendChild(this.titleWindow);
+				this.titleWindow.className ="vgmplayTitleWindow";
+				this.titleWindow.addEventListener("mousedown", () => {   
+					window.addEventListener('mousemove', this.elementDrag);
+				});
+
+				window.addEventListener('mouseup', () => {
+				      window.removeEventListener('mousemove', this.elementDrag);
+			 	});
 			}
 			if (this.displayPlayer) {
 				this.playerWindow = document.createElement('div');
 				this.playerWindow.id = "vgmplayPlayer";
-				document.body.insertBefore(this.playerWindow, document.body.firstChild);
+                                this.vgmplayContainer.appendChild(this.playerWindow);
 				this.showPlayer();
 			}
-			if (this.displayTitleWindow) {
-				this.titleWindow = document.createElement('div');
-				this.titleWindow.id = "vgmplayTitleWindow";
-				document.body.insertBefore(this.titleWindow, document.body.firstChild);
-				this.titleWindow.className ="titleWindow";
+			if (this.displayZipFileList) {
+				this.zipFileListWindow = document.createElement('div');
+				this.zipFileListWindow.id = "vgmplayZipFileList";
+				this.vgmplayContainer.appendChild(this.zipFileListWindow);
+				this.zipFileListWindow.className ="vgmplayZipFileListWindow";
 			}
 
 			setTimeout(function() {
@@ -117,6 +134,17 @@ Need to handle these divs as well... but first they need to be implemented...
 
 	}
 
+	elementDrag(e) {
+		e = e || window.event;
+		e.preventDefault();
+		this.pos1 = this.pos3 - e.clientX;
+		this.pos2 = this.pos4 - e.clientY;
+		this.pos3 = e.clientX;
+		this.pos4 = e.clientY;
+		this.vgmplayContainer.style.top = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
+		this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
+	}
+
 	showDebugWindow() {
 		this.debugWindow.innerHTML="<center><h2>Debug Window</h2></center>";
 		this.debugWindow.className ="debugWindow";
@@ -125,7 +153,7 @@ Need to handle these divs as well... but first they need to be implemented...
 
 	showPlayer() {
 		this.showDebug("vgmplayPlayer div exists, show player...");
-		this.playerWindow.className ="playerWindow";
+		this.playerWindow.className ="vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> ";
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
 	}

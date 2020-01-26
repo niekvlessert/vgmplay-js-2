@@ -1,11 +1,14 @@
-body {
+.vgmplayContainer {
   font: 13px/20px 'Lucida Grande', Tahoma, Verdana, sans-serif;
   color: #ffffff;
   background: #2a2a2a 0 0 repeat;
+  position: absolute;
+  z-index: 9;
 }
 
-.debugWindow {
+.vgmplayDebugWindow {
   position: fixed;
+  z-index: 10;
   bottom: 5%;
   right: 5%;
   border: 1px solid white;
@@ -18,36 +21,42 @@ body {
   overflow: hidden; 
 }
 
-.titleWindow {
-  border: 1px solid white;
-  border-radius: 10px;
-  width: 20%;
-  height: 15%;
-  padding: 5px;
-  color: white;
-  /*overflow:scroll;*/
-  overflow: hidden; 
-  text-align:center;
-  margin:auto
-}
-
-.playerWindow {
-  border: 1px solid white;
-  border-radius: 10px;
-  width: 10%;
-  padding: 5px;
-  color: white;
-  /*overflow:scroll;*/
-  overflow: hidden; 
-  text-align:center;
-  margin:auto
-}
-
-.zipFileListWindow {
+.vgmplayTitleWindow {
   border: 1px solid white;
   border-radius: 10px 0px 0px 10px;
-  width: 30%;
-  height: 60%;
+  font-size: 10px;
+  line-height: 1.1;
+  border-radius: 10px;
+  width: 266px;
+  height: 100px;
+  padding: 5px;
+  color: white;
+  /*overflow:scroll;*/
+  overflow: hidden; 
+  text-align:center;
+  margin:auto;
+  z-index: 10;
+}
+
+.vgmplayPlayerWindow {
+  border: 1px solid white;
+  border-radius: 10px;
+  width: 160px;
+  padding: 5px;
+  color: white;
+  /*overflow:scroll;*/
+  overflow: hidden; 
+  text-align:center;
+  margin:auto
+}
+
+.vgmplayZipFileListWindow {
+  border: 1px solid white;
+  border-radius: 10px 0px 0px 10px;
+  font-size: 10px;
+  line-height: 1.1;
+  width: 266px;
+  height: 1000px;
   padding: 5px;
   color: white;
   overflow-y:scroll;

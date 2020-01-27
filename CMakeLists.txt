@@ -30,3 +30,8 @@ if(EMSCRIPTEN)
   set(VGMPLAY_EXPORTS "'_VGMPlay_Init','_VGMPlay_Init2','_PlayVGM','_FillBuffer2','_OpenVGMFile','_CloseVGMFile','_FillBuffer','_SetSampleRate','_SetLoopCount','_StopVGM','_VGMEnded','_GetTrackLength','_GetLoopPoint','_SeekVGM','_ShowTitle','_SamplePlayback2VGM','_main'")
   set(CMAKE_EXE_LINKER_FLAGS "-s USE_ZLIB=1 -s FORCE_FILESYSTEM=1 -s TOTAL_MEMORY=134217728 -s RESERVED_FUNCTION_POINTERS=100 --memory-init-file 0 -s SINGLE_FILE=1 -O3 --preload-file ${PROJECT_SOURCE_DIR}/files@/ -s EXTRA_EXPORTED_RUNTIME_METHODS=\"['cwrap','ccall','FS']\" -s WASM=1 -s EXPORTED_FUNCTIONS=\"[${VGMPLAY_EXPORTS}]\"")
 endif()
+
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/build/vgmplay-js.js
+     DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})
+file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/build/vgmplay-js.data
+     DESTINATION ${CMAKE_CURRENT_SOURCE_DIR})

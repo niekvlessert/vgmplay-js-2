@@ -15,7 +15,8 @@ extern GD3_TAG VGMTag;
 
 int main(int argc, char *argv[]) {
 	EM_ASM(
-		moduleInitialized=true;
+		//moduleInitialized=true;
+		vgmplay_js.loadWhenReady()
 	);
 	return 0;
 }

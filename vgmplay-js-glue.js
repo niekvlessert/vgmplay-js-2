@@ -25,12 +25,14 @@ class VGMPlay_js {
 		this.pos4 = 0;
 
 		var script = document.createElement("script");
-		script.src = "build/vgmplay-js.js"
+		script.src = "vgmplay-js.js"
 		var script3 = document.createElement("script");
 		script3.src = "minizip-asm.min.js";
 
 		document.head.appendChild(script);
 		document.head.appendChild(script3);
+
+		const classContext = this;
 
 /*
 Need to handle these divs as well... but first they need to be implemented...
@@ -116,22 +118,20 @@ Need to handle these divs as well... but first they need to be implemented...
 				this.vgmplayContainer.appendChild(this.zipFileListWindow);
 				this.zipFileListWindow.className ="vgmplayZipFileListWindow";
 			}
-
-			setTimeout(function() {
-				this.elms = document.getElementsByTagName("a"),
-				this.len = this.elms.length;
-				for(var ii = 0; ii < this.len; ii++) {
-					console.log(this.elms[ii].href);
-					if (this.elms[ii].href.match(/.zip/g)) classContext.loadZIPWithVGMFromURL(this.elms[ii].href);
-
-				}
-			},1000);
 		}
 
 		this.currentFileKey = "";
 
-		const classContext = this;
 
+	}
+
+	loadWhenReady() {
+		this.elms = document.getElementsByTagName("a"),
+		this.len = this.elms.length;
+		for(var ii = 0; ii < this.len; ii++) {
+			console.log(this.elms[ii].href);
+			if (this.elms[ii].href.match(/.zip/g)) this.loadZIPWithVGMFromURL(this.elms[ii].href);
+		}
 	}
 
 	elementDrag(e) {
@@ -281,8 +281,7 @@ Need to handle these divs as well... but first they need to be implemented...
 				}
 				var game = {files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile};
 				classContext.games.push(game);
-				classContext.checkEverythingReady();
-				classContext.showVGMFromZip(game);
+				classContext.checkEverythingReady().then(classContext.showVGMFromZip(game));
 			}
 		}
 		xhr.open('GET', url, true);
@@ -363,12 +362,12 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	async checkEverythingReady() {
-		if (typeof moduleInitialized == 'undefined') {
+		/*if (typeof moduleInitialized == 'undefined') {
 			this.playerWindow.innerHTML = "Module not initialized... wait...";
 			setTimeout(this.showPlayer,1000);
 			return false;
-		}
-                this.showDebug("togglePlayback(), moduleInitialized: " + moduleInitialized + ", isVGMLoaded: " + this.isVGMLoaded + ", isPlaybackPaused: " + this.isPlaybackPaused);
+		}*/
+                //this.showDebug("togglePlayback(), moduleInitialized: " + moduleInitialized + ", isVGMLoaded: " + this.isVGMLoaded + ", isPlaybackPaused: " + this.isPlaybackPaused);
 		this.showDebug("isWebAudioInitialized: " + this.isWebAudioInitialized);
 		this.showDebug("functionsWrapped: " + this.functionsWrapped);
 		if (!this.isWebAudioInitialized) {

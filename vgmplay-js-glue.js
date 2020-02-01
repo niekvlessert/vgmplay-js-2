@@ -26,9 +26,9 @@ class VGMPlay_js {
 		this.pos4 = 0;
 
 		var script = document.createElement("script");
-		script.src = "vgmplay-js.js"
+		script.src = "https://niekvlessert.github.io/vgmplay-js-2/vgmplay-js.js"
 		var script3 = document.createElement("script");
-		script3.src = "minizip-asm.min.js";
+		script3.src = "https://niekvlessert.github.io/vgmplay-js-2/minizip-asm.min.js";
 
 		document.head.appendChild(script);
 		document.head.appendChild(script3);
@@ -62,7 +62,7 @@ Need to handle these divs as well... but first they need to be implemented...
 			var link = document.createElement('link');
 			link.rel = 'stylesheet';
 			link.type = 'text/css';
-			link.href = 'css/style.css';
+			link.href = 'https://niekvlessert.github.io/vgmplay-js-2/css/style.css';
 			document.head.appendChild(link);
 
 			this.vgmplayContainer = document.createElement('div');

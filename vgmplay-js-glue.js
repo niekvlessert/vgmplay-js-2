@@ -60,17 +60,7 @@ Need to handle these divs as well... but first they need to be implemented...
 			link.type = 'text/css';
 			link.href = 'css/style.css';
 			document.head.appendChild(link);
-			if (typeof vgmplaySettings !== 'undefined') {
-				if (typeof vgmplaySettings.displayDebugWindow !== 'undefined') {
-					if (vgmplaySettings.displayDebugWindow) {
-						console.log("vgmplaySettings.displayDebugWindow defined");
-						this.debugWindow = document.createElement('div');
-						this.debugWindow.id = "vgmplayDebugWindow";
-						document.body.appendChild(this.debugWindow);
-						this.showDebugWindow();
-					}
-				}
-			}
+
 			this.vgmplayContainer = document.createElement('div');
 			this.vgmplayContainer.id = "vgmplayContainer";
 			document.body.insertBefore(this.vgmplayContainer, document.body.firstChild);
@@ -145,14 +135,7 @@ Need to handle these divs as well... but first they need to be implemented...
 		this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
 	}
 
-	showDebugWindow() {
-		this.debugWindow.innerHTML="<center><h2>Debug Window</h2></center>";
-		this.debugWindow.className ="debugWindow";
-		this.debugWindow.innerHTML+="- Can't initialize WebAudio, please generate some user initiated event..<br/>";
-	}
-
 	showPlayer() {
-		this.showDebug("vgmplayPlayer div exists, show player...");
 		this.playerWindow.className ="vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> ";
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
@@ -161,6 +144,7 @@ Need to handle these divs as well... but first they need to be implemented...
 	getVGMTag() {
 		if (this.titleWindow) {
 			this.VGMTag = this.ShowTitle().split("|||");
+			console.log(this.VGMTag);
 			this.tagType = 0;
 			this.titleWindow.innerHTML="";
 			for(this.i=0; this.i<this.VGMTag.length; this.i++) {
@@ -254,7 +238,6 @@ Need to handle these divs as well... but first they need to be implemented...
 		var xhr = new XMLHttpRequest();
 		xhr.responseType = "arraybuffer";
 		if (this.zipURLLoaded.includes(url)) {
-			this.showDebug("Zip File already loaded...");
 			return;
 		}
 		this.zipURLLoaded.push(url);
@@ -335,22 +318,33 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	changeTrack(action) {
-		if (action === "next") {
-			if (this.currentFileKey+1 === this.activeGame.files.length) this.currentFileKey = 0; else this.currentFileKey++;
-			this.stop();
+		console.log(this.activeGame.files);
+                if (typeof this.activeGame.files === 'undefined') {
+			if (action === "next") {
+				this.activeGame = this.games[0];
+				this.currentFileKey=0;
+			} else {
+				this.activeGame = this.games[this.games.length-1];
+				this.currentFileKey = this.activeGame.files.length-1;
+			}
 			this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
-		}
-		if (action === "previous") {
-			if (this.currentFileKey === 0) this.currentFileKey = this.activeGame.files.length-1; else this.currentFileKey--; 
-			this.stop();
-			this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+		} else {
+			if (action === "next") {
+				if (this.currentFileKey+1 === this.activeGame.files.length) this.currentFileKey = 0; else this.currentFileKey++;
+				this.stop();
+				this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+			}
+			if (action === "previous") {
+				if (this.currentFileKey === 0) this.currentFileKey = this.activeGame.files.length-1; else this.currentFileKey--; 
+				this.stop();
+				this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+			}
 		}
 	}
 
 	togglePlayback() {
 		if (this.checkEverythingReady()) {
 			if (!this.isVGMLoaded && !this.currentFileKey) {
-				this.showDebug("No VGM file selected...");
 				return;
 			}
 			if (this.isPlaybackPaused) {
@@ -367,11 +361,10 @@ Need to handle these divs as well... but first they need to be implemented...
 			setTimeout(this.showPlayer,1000);
 			return false;
 		}*/
-                //this.showDebug("togglePlayback(), moduleInitialized: " + moduleInitialized + ", isVGMLoaded: " + this.isVGMLoaded + ", isPlaybackPaused: " + this.isPlaybackPaused);
-		this.showDebug("isWebAudioInitialized: " + this.isWebAudioInitialized);
-		this.showDebug("functionsWrapped: " + this.functionsWrapped);
+                console.log("togglePlayback(), isVGMLoaded: " + this.isVGMLoaded + ", isPlaybackPaused: " + this.isPlaybackPaused);
+		console.log("isWebAudioInitialized: " + this.isWebAudioInitialized);
+		console.log("functionsWrapped: " + this.functionsWrapped);
 		if (!this.isWebAudioInitialized) {
-			this.showDebug("Initializing WebAudio");
 			window.AudioContext = window.AudioContext||window.webkitAudioContext;
 			this.context = new AudioContext();
 			this.destination = this.destination || this.context.destination;
@@ -435,12 +428,13 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	play() {
-		this.showDebug("play()");
+		console.log("play()");
                 document.getElementById("buttonTogglePlayback").innerHTML="||"; //fixen................
 		this.isPlaybackPaused = false;
 
+		console.log(this.isVGMPlaying);
 		if (!this.isVGMPlaying) {
-			this.showDebug("PlayVGM() in library");
+			console.log("PlayVGM() in library");
 			this.PlayVGM();
 			this.isVGMPlaying = true;
 		}
@@ -470,14 +464,12 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	pause() {
-		this.showDebug("pause()");
 		this.isPlaybackPaused = true;
 		this.buttonTogglePlayback.innerHTML="&#9654;"
 		this.node.disconnect(this.context.destination);
 	}
 
 	stop() {
-		this.showDebug("stop()");
                 this.buttonTogglePlayback.innerHTML="&#9654;";
 
 		try {
@@ -503,13 +495,5 @@ Need to handle these divs as well... but first they need to be implemented...
 		this.OpenVGMFile(fileName);
 		this.isVGMLoaded = true;
 	}
-
-	showDebug(text) {
-                if (this.debugWindow) {
-			this.debugWindow.innerHTML+= "- " + text + "<br/>";
-			this.debugWindow.scrollTop = this.debugWindow.scrollHeight;
-		}
-	}
-	
 }
 var vgmplay_js=new VGMPlay_js();

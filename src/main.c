@@ -76,37 +76,3 @@ char * ShowTitle(void) {
 	sprintf(buffer,"%ls|||%ls|||%ls|||%ls|||%ls|||%ls|||%ls|||%ls|||%ls|||%ls\n", VGMTag.strTrackNameE,VGMTag.strTrackNameJ,VGMTag.strGameNameE,VGMTag.strGameNameJ,VGMTag.strSystemNameE,VGMTag.strSystemNameJ,VGMTag.strAuthorNameE,VGMTag.strAuthorNameJ,VGMTag.strCreator,VGMTag.strNotes);
 	return buffer;
 }
-
-/*
-typedef struct _vgm_gd3_tag_js
-{
-        UINT32 fccGD3;
-        UINT32 lngVersion;
-        UINT32 lngTagLength;
-        char* strTrackNameE;
-        char* strTrackNameJ;
-        char* strGameNameE;
-        char* strGameNameJ;
-        char* strSystemNameE;
-        char* strSystemNameJ;
-        char* strAuthorNameE;
-        char* strAuthorNameJ;
-        char* strReleaseDate;
-        char* strCreator;
-        char* strNotes;
-} GD3_TAG_JS;
-
-GD3_TAG_JS GetVGMTAG() {
-	GD3_TAG_JS vgmtag;
-	//char* vgmtag.strTrackNameE;
-	sprintf(vgmtag.strTrackNameE,"%ls\n", VGMTag.strTrackNameE);
-	return vgmtag;
-}
-
-EMSCRIPTEN_BINDINGS(vgmtag) {
-	value_object<GD3_TAG_JS>("GD3_TAG_JS")
-		.field("strTrackNameE", &GD3_TAG_JS::strTrackNameE)
-		;
-
-	function("GetVGMTAG", &GetVGMTAG);
-}*/

@@ -5,6 +5,8 @@
 #include "../modules/vgmplay/VGMPlay/VGMPlay_Intf.h"
 #include <emscripten.h>
 #include <zlib.h>
+#include <locale.h>
+
 
 extern UINT32 SampleRate;
 extern bool VGMEnd;
@@ -14,6 +16,7 @@ extern GD3_TAG VGMTag;
 
 
 int main(int argc, char *argv[]) {
+	setlocale(LC_ALL, "");
 	EM_ASM(
 		//moduleInitialized=true;
 		vgmplay_js.loadWhenReady()

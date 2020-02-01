@@ -51,9 +51,9 @@ Need to handle these divs as well... but first they need to be implemented...
 			}
 		}
 		if (!this.useAsLibrary) {
-			//var script2 = document.createElement("script");
-			//script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
-			//document.head.appendChild(script2);
+			var script2 = document.createElement("script");
+			script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
+			document.head.appendChild(script2)
 
 			var link = document.createElement('link');
 			link.rel = 'stylesheet';
@@ -115,13 +115,33 @@ Need to handle these divs as well... but first they need to be implemented...
 
 	}
 
+	setKeyBindings() {
+		window.addEventListener('keydown', function(e) {
+				if(e.keyCode == 32) e.preventDefault();
+				});
+
+		Mousetrap.bind('space', (e) => {
+				this.togglePlayback();
+			});
+		Mousetrap.bind('n', (e) => {
+				this.changeTrack('next');
+			});
+		Mousetrap.bind('p', (e) => {
+				this.changeTrack('previous');
+			});
+		Mousetrap.bind('s', (e) => {
+				stop();
+			});
+	}
+
 	loadWhenReady() {
 		this.elms = document.getElementsByTagName("a"),
 		this.len = this.elms.length;
 		for(var ii = 0; ii < this.len; ii++) {
-			console.log(this.elms[ii].href);
+			//console.log(this.elms[ii].href);
 			if (this.elms[ii].href.match(/.zip/g)) this.loadZIPWithVGMFromURL(this.elms[ii].href);
 		}
+		this.setKeyBindings();
 	}
 
 	elementDrag(e) {
@@ -144,7 +164,6 @@ Need to handle these divs as well... but first they need to be implemented...
 	getVGMTag() {
 		if (this.titleWindow) {
 			this.VGMTag = this.ShowTitle().split("|||");
-			console.log(this.VGMTag);
 			this.tagType = 0;
 			this.titleWindow.innerHTML="";
 			for(this.i=0; this.i<this.VGMTag.length; this.i++) {
@@ -318,7 +337,6 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	changeTrack(action) {
-		console.log(this.activeGame.files);
                 if (typeof this.activeGame.files === 'undefined') {
 			if (action === "next") {
 				this.activeGame = this.games[0];
@@ -345,25 +363,18 @@ Need to handle these divs as well... but first they need to be implemented...
 	togglePlayback() {
 		if (this.checkEverythingReady()) {
 			if (!this.isVGMLoaded && !this.currentFileKey) {
-				return;
+				this.changeTrack('next');
+			} else {
+				if (this.isPlaybackPaused) {
+					this.play();
+					this.getVGMTag();
+				}
+				else this.pause();
 			}
-			if (this.isPlaybackPaused) {
-				this.play();
-				this.getVGMTag();
-			}
-			else this.pause();
 		}
 	}
 
 	async checkEverythingReady() {
-		/*if (typeof moduleInitialized == 'undefined') {
-			this.playerWindow.innerHTML = "Module not initialized... wait...";
-			setTimeout(this.showPlayer,1000);
-			return false;
-		}*/
-                console.log("togglePlayback(), isVGMLoaded: " + this.isVGMLoaded + ", isPlaybackPaused: " + this.isPlaybackPaused);
-		console.log("isWebAudioInitialized: " + this.isWebAudioInitialized);
-		console.log("functionsWrapped: " + this.functionsWrapped);
 		if (!this.isWebAudioInitialized) {
 			window.AudioContext = window.AudioContext||window.webkitAudioContext;
 			this.context = new AudioContext();
@@ -428,13 +439,10 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	play() {
-		console.log("play()");
                 document.getElementById("buttonTogglePlayback").innerHTML="||"; //fixen................
 		this.isPlaybackPaused = false;
 
-		console.log(this.isVGMPlaying);
 		if (!this.isVGMPlaying) {
-			console.log("PlayVGM() in library");
 			this.PlayVGM();
 			this.isVGMPlaying = true;
 		}

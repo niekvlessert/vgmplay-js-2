@@ -14,6 +14,7 @@ class VGMPlay_js {
 		this.displayTitleWindow = true;
 		this.displayPlayer = true;
 		this.displayZipFileList = true;
+		this.showZipFileListWindow = true;
 		this.games = [];
 		this.activeGame = "";
 		this.sampleRate = "";
@@ -33,6 +34,9 @@ class VGMPlay_js {
 		document.head.appendChild(script3);
 
 		const classContext = this;
+
+		//const getSrcOrigin = () => new URL(document.currentScript.src).origin;
+		//console.log(getSrcOrigin());
 
 /*
 Need to handle these divs as well... but first they need to be implemented...
@@ -105,7 +109,9 @@ Need to handle these divs as well... but first they need to be implemented...
 			if (this.displayZipFileList) {
 				this.zipFileListWindow = document.createElement('div');
 				this.zipFileListWindow.id = "vgmplayZipFileList";
+				//this.zipFileListWindow.innerHTML="<div style=\"position:absolute; right:20;\"><a style=\"color:white\" href='javascript:vgmplay_js.closeZipFileListWindow()'>X</a></div>"
 				this.vgmplayContainer.appendChild(this.zipFileListWindow);
+				this.showZipFileListWindow = true;
 				this.zipFileListWindow.className ="vgmplayZipFileListWindow";
 			}
 		}
@@ -157,8 +163,18 @@ Need to handle these divs as well... but first they need to be implemented...
 
 	showPlayer() {
 		this.playerWindow.className ="vgmplayPlayerWindow";
-		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> ";
+		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> <a style=\"color:white\" href='javascript:vgmplay_js.toggleDisplayZipFileListWindow()'>Z</a>";
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
+	}
+
+	toggleDisplayZipFileListWindow() {
+		if (this.showZipFileListWindow) {
+			this.vgmplayContainer.removeChild(this.zipFileListWindow);
+			this.showZipFileListWindow = false;
+		} else {
+			this.vgmplayContainer.appendChild(this.zipFileListWindow);
+			this.showZipFileListWindow = true;
+		}
 	}
 
 	getVGMTag() {
@@ -230,7 +246,6 @@ Need to handle these divs as well... but first they need to be implemented...
 
 	loadVGMFromURL(url) {
 		return new Promise (function (resolve, reject) {
-				//https://github.com/rf00/minizip-asm.js
 				//Otherwise try to play it with vgmplay.. how?
 				try {
 				FS.unlink("url.vgm");

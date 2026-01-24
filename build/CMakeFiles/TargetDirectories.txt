@@ -1,0 +1,4 @@
+C:/Users/k5020/hobby-projects/vgmplay-js-2/build/CMakeFiles/vgmplay.dir
+C:/Users/k5020/hobby-projects/vgmplay-js-2/build/CMakeFiles/vgmplay-js.dir
+C:/Users/k5020/hobby-projects/vgmplay-js-2/build/CMakeFiles/edit_cache.dir
+C:/Users/k5020/hobby-projects/vgmplay-js-2/build/CMakeFiles/rebuild_cache.dir

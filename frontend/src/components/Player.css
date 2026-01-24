@@ -1,0 +1,224 @@
+.player-container {
+  width: 100%;
+  max-width: 600px;
+  background: var(--bg-panel);
+  border: 4px solid var(--border-color);
+  padding: 20px;
+}
+
+/* Now Playing */
+.now-playing {
+  text-align: center;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--border-color);
+}
+
+.now-playing-label {
+  font-size: 8px;
+  color: var(--accent-green);
+  margin-bottom: 12px;
+  letter-spacing: 2px;
+}
+
+.now-playing-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.cover-image {
+  flex-shrink: 0;
+  width: 100px;
+  height: 100px;
+  border: 3px solid var(--border-color);
+  background: #2a2a4e;
+  overflow: hidden;
+  box-shadow:
+    0 0 15px rgba(0, 255, 247, 0.2),
+    inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.cover-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.track-info {
+  flex: 1;
+  min-height: 60px;
+  text-align: left;
+}
+
+.track-title {
+  font-size: 12px;
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px var(--accent-cyan);
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.track-title.empty {
+  color: var(--text-secondary);
+  text-shadow: none;
+}
+
+.track-game {
+  font-size: 10px;
+  color: var(--accent-yellow);
+  margin-bottom: 4px;
+}
+
+.track-system {
+  font-size: 8px;
+  color: var(--accent-magenta);
+  margin-bottom: 8px;
+}
+
+.track-length {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.control-btn {
+  font-family: 'Press Start 2P', cursive;
+  font-size: 16px;
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(180deg, #4a4a6a 0%, #2a2a4a 100%);
+  border: 3px solid var(--border-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.control-btn:hover {
+  background: linear-gradient(180deg, #5a5a7a 0%, #3a3a5a 100%);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 255, 247, 0.3);
+}
+
+.control-btn:active {
+  transform: scale(0.95);
+}
+
+.play-btn {
+  width: 60px;
+  height: 60px;
+  font-size: 20px;
+  border-color: var(--accent-cyan);
+}
+
+.stop-btn:hover {
+  border-color: var(--accent-magenta);
+  box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
+}
+
+/* Visualizer */
+.visualizer {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 4px;
+  height: 40px;
+  margin-bottom: 20px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--border-color);
+}
+
+.visualizer-bar {
+  width: 8px;
+  background: linear-gradient(180deg, var(--accent-cyan) 0%, var(--accent-green) 100%);
+  transition: height 0.1s;
+}
+
+.visualizer-bar.active {
+  animation: visualize 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes visualize {
+  0% { height: 4px; }
+  100% { height: 32px; }
+}
+
+/* Track List */
+.track-list {
+  border: 2px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.track-list-header {
+  font-size: 8px;
+  color: var(--accent-orange);
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 2px solid var(--border-color);
+  letter-spacing: 2px;
+}
+
+.track-list-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(74, 74, 106, 0.3);
+  transition: all 0.1s;
+}
+
+.track-item:hover {
+  background: rgba(0, 255, 247, 0.1);
+}
+
+.track-item.active {
+  background: rgba(0, 255, 247, 0.2);
+  border-left: 4px solid var(--accent-cyan);
+}
+
+.track-number {
+  font-size: 8px;
+  color: var(--accent-yellow);
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.track-name {
+  font-size: 9px;
+  color: var(--accent-cyan);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+  text-shadow: 0 0 5px rgba(0, 255, 247, 0.3);
+}
+
+.track-item.active .track-name {
+  color: var(--accent-yellow);
+  text-shadow: 0 0 8px rgba(255, 255, 0, 0.5);
+}
+
+.track-duration {
+  font-size: 8px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}

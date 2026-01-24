@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git submodule:*)",
+      "Bash(emsdk.bat install:*)",
+      "Bash(cmd /c \"cd C:\\\\Users\\\\k5020\\\\hobby-projects\\\\emsdk && emsdk.bat install latest\")",
+      "Bash(python emsdk.py install:*)",
+      "Bash(python emsdk.py:*)",
+      "Bash(C:Usersk5020hobby-projectsemsdkupstreamemscriptenemcmake cmake ..)",
+      "Bash(/c/Users/k5020/hobby-projects/emsdk/upstream/emscripten/emcmake cmake:*)",
+      "Bash(python:*)",
+      "Bash(winget install:*)",
+      "Bash(PATH=\"$PATH:/c/Program Files/CMake/bin:/c/Users/k5020/AppData/Local/Microsoft/WinGet/Links\" python:*)",
+      "Bash(npm create vite@latest frontend -- --template react)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run generate-manifest:*)"
+    ]
+  }
+}

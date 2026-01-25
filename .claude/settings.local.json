@@ -25,7 +25,12 @@
       "Bash(npm run build:*)",
       "Bash(git restore:*)",
       "Bash(git mv:*)",
-      "Bash(cmd //c \"rename dist music\")"
+      "Bash(cmd //c \"rename dist music\")",
+      "Bash(git push:*)",
+      "Bash(git remote:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr view:*)"
     ]
   }
 }

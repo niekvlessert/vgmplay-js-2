@@ -1,6 +1,6 @@
 {
-  "name": "9-Player (舊-Player)",
-  "short_name": "9-Player",
+  "name": "9 Player",
+  "short_name": "9 Player",
   "description": "브라우저에서 레트로 게임 음악(VGM)을 재생하는 모던 웹 플레이어",
   "start_url": "/",
   "display": "standalone",

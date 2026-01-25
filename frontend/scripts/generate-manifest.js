@@ -6,8 +6,8 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const DIST_DIR = path.join(__dirname, '../../dist')
-const OUTPUT_DIR = path.join(__dirname, '../public/dist')
+const DIST_DIR = path.join(__dirname, '../../vgz')
+const OUTPUT_DIR = path.join(__dirname, '../public/music')
 const COVERS_DIR = path.join(OUTPUT_DIR, 'covers')
 const MANIFEST_PATH = path.join(OUTPUT_DIR, 'manifest.json')
 

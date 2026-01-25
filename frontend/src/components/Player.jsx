@@ -90,7 +90,7 @@ export function Player({
               height: expandedImageSize.height
             } : {}}>
               <img
-                src={`/dist/${coverImage}`}
+                src={`/music/${coverImage}`}
                 alt="Cover Expanded"
                 onLoad={handleImageLoad}
               />
@@ -107,7 +107,7 @@ export function Player({
         <div className="now-playing-content">
           {coverImage && (
             <div className="cover-image" onClick={() => setIsImageExpanded(true)}>
-              <img src={`/dist/${coverImage}`} alt="Cover" />
+              <img src={`/music/${coverImage}`} alt="Cover" />
             </div>
           )}
           {trackInfo ? (

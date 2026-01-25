@@ -14,7 +14,7 @@ function App() {
 
   // Load manifest
   useEffect(() => {
-    fetch('/dist/manifest.json')
+    fetch('/music/manifest.json')
       .then(res => res.json())
       .then(data => {
         setGames(data.games)
@@ -67,7 +67,7 @@ function App() {
     setLoadingGame(true)
 
     // Use static files from public folder
-    const tracks = await player.loadZip(`/dist/${game.zipFile}`)
+    const tracks = await player.loadZip(`/music/${game.zipFile}`)
     setLoadingGame(false)
     setScreen('player')
 
@@ -171,7 +171,7 @@ function App() {
                     <div className="game-image">
                       {game.coverImage ? (
                         <img
-                          src={`/dist/${game.coverImage}`}
+                          src={`/music/${game.coverImage}`}
                           alt={game.title}
                           onError={(e) => {
                             e.target.style.display = 'none'

@@ -26,125 +26,8 @@ export function useVGMPlayer() {
   const nextTrackRef = useRef(null)
   const wakeLockRef = useRef(null)
 
-  // Screen Wake Lock: prevent screen from turning off while the site is in use
-  useEffect(() => {
-    const requestWakeLock = async () => {
-      if (!('wakeLock' in navigator)) return
-      // Only request if not already held and page is visible
-      if (wakeLockRef.current || document.visibilityState !== 'visible') return
 
-      try {
-        wakeLockRef.current = await navigator.wakeLock.request('screen')
-        wakeLockRef.current.addEventListener('release', () => {
-          wakeLockRef.current = null
-        })
-      } catch (e) {
-        // Wake lock request failed (e.g., low battery, background tab)
-      }
-    }
 
-    const releaseWakeLock = async () => {
-      if (wakeLockRef.current) {
-        try {
-          await wakeLockRef.current.release()
-          wakeLockRef.current = null
-        } catch (e) { }
-      }
-    }
-
-    // Request wake lock when component mounts or visibility changes to visible
-    requestWakeLock()
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        requestWakeLock()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      releaseWakeLock()
-    }
-  }, [])
-
-  // Media Session API: enable background playback and lock screen controls
-  useEffect(() => {
-    if (!('mediaSession' in navigator)) return
-
-    if (trackInfo) {
-      navigator.mediaSession.metadata = new window.MediaMetadata({
-        title: trackInfo.title,
-        artist: trackInfo.author || 'Unknown Artist',
-        album: trackInfo.game || '9-Player VGM Archive',
-        artwork: [
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }
-        ]
-
-      })
-    }
-
-    navigator.mediaSession.setActionHandler('play', () => {
-      togglePlayback()
-    })
-    navigator.mediaSession.setActionHandler('pause', () => {
-      togglePlayback()
-    })
-    navigator.mediaSession.setActionHandler('stop', () => {
-      stop()
-    })
-    navigator.mediaSession.setActionHandler('previoustrack', () => {
-      prevTrack()
-    })
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
-      nextTrack()
-    })
-
-    return () => {
-      // Clear handlers
-      navigator.mediaSession.setActionHandler('play', null)
-      navigator.mediaSession.setActionHandler('pause', null)
-      navigator.mediaSession.setActionHandler('stop', null)
-      navigator.mediaSession.setActionHandler('previoustrack', null)
-      navigator.mediaSession.setActionHandler('nexttrack', null)
-    }
-  }, [trackInfo, togglePlayback, stop, nextTrack, prevTrack])
-
-  useEffect(() => {
-    if (!('mediaSession' in navigator)) return
-    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
-  }, [isPlaying])
-
-  // Load scripts
-  useEffect(() => {
-    const loadScript = (src) => {
-      return new Promise((resolve, reject) => {
-        if (document.querySelector(`script[src="${src}"]`)) {
-          resolve()
-          return
-        }
-        const script = document.createElement('script')
-        script.src = src
-        script.onload = resolve
-        script.onerror = reject
-        document.head.appendChild(script)
-      })
-    }
-
-    Promise.all([
-      loadScript('https://niekvlessert.github.io/vgmplay-js-2/vgmplay-js.js'),
-      loadScript('https://niekvlessert.github.io/vgmplay-js-2/minizip-asm.min.js')
-    ]).then(() => {
-      // Wait for Module to be ready
-      const checkModule = setInterval(() => {
-        if (window.Module && window.Module.cwrap && window.Minizip) {
-          clearInterval(checkModule)
-          initPlayer()
-        }
-      }, 100)
-    })
-  }, [])
 
   const initPlayer = useCallback(() => {
     try {
@@ -208,39 +91,6 @@ export function useVGMPlayer() {
     }
   }, [])
 
-  // Frequency data loop: sample frequency data from the analyser and map it to 16 bins
-  useEffect(() => {
-    if (!analyserRef.current || !isReady) return
-    let rafId = null
-    const freqUint8 = new Uint8Array(analyserRef.current.frequencyBinCount)
-
-    const tick = () => {
-      try {
-        analyserRef.current.getByteFrequencyData(freqUint8)
-        // Downsample to 16 bins
-        const bins = 16
-        const binSize = Math.max(1, Math.floor(freqUint8.length / bins))
-        const next = []
-        for (let i = 0; i < bins; i++) {
-          let sum = 0
-          const start = i * binSize
-          for (let j = 0; j < binSize; j++) {
-            const idx = start + j
-            if (idx < freqUint8.length) sum += freqUint8[idx]
-          }
-          next[i] = Math.round(sum / binSize)
-        }
-        setFrequencyData(next)
-      } catch (_) {
-        // ignore
-      }
-      rafId = requestAnimationFrame(tick)
-    }
-    rafId = requestAnimationFrame(tick)
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-    }
-  }, [isReady])
 
   // UI elapsed timer for display only (not for auto-advance)
   // UI elapsed timer for display only (not for auto-advance)
@@ -558,10 +408,168 @@ export function useVGMPlayer() {
     setTimeout(() => play(prevIdx), 100)
   }, [currentTrackIndex, trackList.length, stop, play])
 
+  // --- Effects ---
+
+  // Screen Wake Lock: prevent screen from turning off while the site is in use
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if (!('wakeLock' in navigator)) return
+      // Only request if not already held and page is visible
+      if (wakeLockRef.current || document.visibilityState !== 'visible') return
+
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request('screen')
+        wakeLockRef.current.addEventListener('release', () => {
+          wakeLockRef.current = null
+        })
+      } catch (e) {
+        // Wake lock request failed (e.g., low battery, background tab)
+      }
+    }
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release()
+          wakeLockRef.current = null
+        } catch (e) { }
+      }
+    }
+
+    // Request wake lock when component mounts or visibility changes to visible
+    requestWakeLock()
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      releaseWakeLock()
+    }
+  }, [])
+
+  // Load scripts
+  useEffect(() => {
+    const loadScript = (src) => {
+      return new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${src}"]`)) {
+          resolve()
+          return
+        }
+        const script = document.createElement('script')
+        script.src = src
+        script.onload = resolve
+        script.onerror = reject
+        document.head.appendChild(script)
+      })
+    }
+
+    Promise.all([
+      loadScript('https://niekvlessert.github.io/vgmplay-js-2/vgmplay-js.js'),
+      loadScript('https://niekvlessert.github.io/vgmplay-js-2/minizip-asm.min.js')
+    ]).then(() => {
+      // Wait for Module to be ready
+      const checkModule = setInterval(() => {
+        if (window.Module && window.Module.cwrap && window.Minizip) {
+          clearInterval(checkModule)
+          initPlayer()
+        }
+      }, 100)
+    })
+  }, [initPlayer])
+
+  // Frequency data loop: sample frequency data from the analyser and map it to 16 bins
+  useEffect(() => {
+    if (!analyserRef.current || !isReady) return
+    let rafId = null
+    const freqUint8 = new Uint8Array(analyserRef.current.frequencyBinCount)
+
+    const tick = () => {
+      try {
+        analyserRef.current.getByteFrequencyData(freqUint8)
+        // Downsample to 16 bins
+        const bins = 16
+        const binSize = Math.max(1, Math.floor(freqUint8.length / bins))
+        const next = []
+        for (let i = 0; i < bins; i++) {
+          let sum = 0
+          const start = i * binSize
+          for (let j = 0; j < binSize; j++) {
+            const idx = start + j
+            if (idx < freqUint8.length) sum += freqUint8[idx]
+          }
+          next[i] = Math.round(sum / binSize)
+        }
+        setFrequencyData(next)
+      } catch (_) {
+        // ignore
+      }
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  }, [isReady])
+
   // Keep latest nextTrack in a ref to avoid closures across events
   useEffect(() => {
     nextTrackRef.current = nextTrack
   }, [nextTrack])
+
+  // Media Session API: enable background playback and lock screen controls
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+
+    if (trackInfo) {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: trackInfo.title,
+        artist: trackInfo.author || 'Unknown Artist',
+        album: trackInfo.game || '9-Player VGM Archive',
+        artwork: [
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }
+        ]
+      })
+    }
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      togglePlayback()
+    })
+    navigator.mediaSession.setActionHandler('pause', () => {
+      togglePlayback()
+    })
+    navigator.mediaSession.setActionHandler('stop', () => {
+      stop()
+    })
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      prevTrack()
+    })
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      nextTrack()
+    })
+
+    return () => {
+      // Clear handlers
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', null)
+        navigator.mediaSession.setActionHandler('pause', null)
+        navigator.mediaSession.setActionHandler('stop', null)
+        navigator.mediaSession.setActionHandler('previoustrack', null)
+        navigator.mediaSession.setActionHandler('nexttrack', null)
+      }
+    }
+  }, [trackInfo, togglePlayback, stop, nextTrack, prevTrack])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
+  }, [isPlaying])
+
 
   return {
     isReady,

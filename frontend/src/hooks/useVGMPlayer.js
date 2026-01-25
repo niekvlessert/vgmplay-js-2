@@ -26,12 +26,18 @@ export function useVGMPlayer() {
   const nextTrackRef = useRef(null)
   const wakeLockRef = useRef(null)
 
-  // Screen Wake Lock: prevent screen from turning off during playback
+  // Screen Wake Lock: prevent screen from turning off while the site is in use
   useEffect(() => {
     const requestWakeLock = async () => {
       if (!('wakeLock' in navigator)) return
+      // Only request if not already held and page is visible
+      if (wakeLockRef.current || document.visibilityState !== 'visible') return
+
       try {
         wakeLockRef.current = await navigator.wakeLock.request('screen')
+        wakeLockRef.current.addEventListener('release', () => {
+          wakeLockRef.current = null
+        })
       } catch (e) {
         // Wake lock request failed (e.g., low battery, background tab)
       }
@@ -46,15 +52,11 @@ export function useVGMPlayer() {
       }
     }
 
-    if (isPlaying) {
-      requestWakeLock()
-    } else {
-      releaseWakeLock()
-    }
+    // Request wake lock when component mounts or visibility changes to visible
+    requestWakeLock()
 
-    // Re-acquire wake lock when page becomes visible again
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && isPlaying) {
+      if (document.visibilityState === 'visible') {
         requestWakeLock()
       }
     }
@@ -64,6 +66,54 @@ export function useVGMPlayer() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       releaseWakeLock()
     }
+  }, [])
+
+  // Media Session API: enable background playback and lock screen controls
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+
+    if (trackInfo) {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: trackInfo.title,
+        artist: trackInfo.author || 'Unknown Artist',
+        album: trackInfo.game || '9-Player VGM Archive',
+        artwork: [
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }
+        ]
+
+      })
+    }
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      togglePlayback()
+    })
+    navigator.mediaSession.setActionHandler('pause', () => {
+      togglePlayback()
+    })
+    navigator.mediaSession.setActionHandler('stop', () => {
+      stop()
+    })
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      prevTrack()
+    })
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      nextTrack()
+    })
+
+    return () => {
+      // Clear handlers
+      navigator.mediaSession.setActionHandler('play', null)
+      navigator.mediaSession.setActionHandler('pause', null)
+      navigator.mediaSession.setActionHandler('stop', null)
+      navigator.mediaSession.setActionHandler('previoustrack', null)
+      navigator.mediaSession.setActionHandler('nexttrack', null)
+    }
+  }, [trackInfo, togglePlayback, stop, nextTrack, prevTrack])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
   }, [isPlaying])
 
   // Load scripts

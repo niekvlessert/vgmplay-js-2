@@ -391,9 +391,22 @@ export function useVGMPlayer() {
   }, [])
 
   const stop = useCallback(() => {
-    if (nodeRef.current && contextRef.current) {
+    // Disconnect audio nodes and clear onaudioprocess callback
+    if (nodeRef.current) {
       try {
-        nodeRef.current.disconnect(contextRef.current.destination)
+        nodeRef.current.onaudioprocess = null
+        nodeRef.current.disconnect()
+      } catch (e) {}
+    }
+    if (analyserRef.current) {
+      try {
+        analyserRef.current.disconnect()
+      } catch (e) {}
+    }
+    // Close audio context to fully stop audio output
+    if (contextRef.current) {
+      try {
+        contextRef.current.close()
       } catch (e) {}
     }
     if (functionsRef.current) {

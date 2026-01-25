@@ -31,6 +31,15 @@
   height: 20px;
 }
 
+.version {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 8px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
 .title {
   font-size: 24px;
   color: var(--accent-cyan);

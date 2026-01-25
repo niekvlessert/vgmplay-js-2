@@ -412,24 +412,36 @@ export function useVGMPlayer() {
 
   // Screen Wake Lock: prevent screen from turning off while music is playing
   useEffect(() => {
-    let wakeLock = null;
-
     const requestWakeLock = async () => {
       if (!('wakeLock' in navigator)) return;
+      // Only request if playing, visible, and not already held
+      if (!isPlaying || document.visibilityState !== 'visible' || wakeLockRef.current) return;
+
       try {
-        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
         console.log('Wake Lock is active');
-        wakeLock.addEventListener('release', () => {
+        wakeLockRef.current.addEventListener('release', () => {
           console.log('Wake Lock was released');
-          wakeLock = null;
+          wakeLockRef.current = null;
         });
       } catch (err) {
         console.error(`Wake Lock request failed: ${err.name}, ${err.message}`);
       }
     };
 
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release();
+          wakeLockRef.current = null;
+        } catch (err) {
+          console.error(`Wake Lock release failed: ${err.name}, ${err.message}`);
+        }
+      }
+    };
+
     const handleVisibilityChange = async () => {
-      if (wakeLock !== null && document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible') {
         await requestWakeLock();
       }
     };
@@ -437,15 +449,13 @@ export function useVGMPlayer() {
     if (isPlaying) {
       requestWakeLock();
       document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      releaseWakeLock();
     }
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (wakeLock !== null) {
-        wakeLock.release().then(() => {
-          wakeLock = null;
-        });
-      }
+      releaseWakeLock();
     };
   }, [isPlaying]);
 
@@ -471,11 +481,20 @@ export function useVGMPlayer() {
     ]).then(() => {
       // Wait for Module to be ready
       const checkModule = setInterval(() => {
-        if (window.Module && window.Module.cwrap && window.Minizip) {
-          clearInterval(checkModule)
-          initPlayer()
+        try {
+          if (window.Module && window.Module.cwrap && window.Minizip) {
+            clearInterval(checkModule)
+            initPlayer()
+          }
+        } catch (e) {
+          console.error("Module check failed", e);
         }
-      }, 100)
+      }, 200)
+
+      // Cleanup fallback
+      setTimeout(() => clearInterval(checkModule), 10000);
+    }).catch(err => {
+      console.error("Script loading failed", err);
     })
   }, [initPlayer])
 
@@ -522,49 +541,57 @@ export function useVGMPlayer() {
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
 
-    if (trackInfo) {
-      navigator.mediaSession.metadata = new window.MediaMetadata({
-        title: trackInfo.title,
-        artist: trackInfo.author || 'Unknown Artist',
-        album: trackInfo.game || '9-Player VGM Archive',
-        artwork: [
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }
-        ]
-      })
-    }
+    try {
+      if (trackInfo) {
+        navigator.mediaSession.metadata = new window.MediaMetadata({
+          title: trackInfo.title,
+          artist: trackInfo.author || 'Unknown Artist',
+          album: trackInfo.game || '9-Player VGM Archive',
+          artwork: [
+            { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' }
+          ]
+        })
+      }
 
-    navigator.mediaSession.setActionHandler('play', () => {
-      togglePlayback()
-    })
-    navigator.mediaSession.setActionHandler('pause', () => {
-      togglePlayback()
-    })
-    navigator.mediaSession.setActionHandler('stop', () => {
-      stop()
-    })
-    navigator.mediaSession.setActionHandler('previoustrack', () => {
-      prevTrack()
-    })
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
-      nextTrack()
-    })
+      navigator.mediaSession.setActionHandler('play', () => {
+        togglePlayback()
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        togglePlayback()
+      })
+      navigator.mediaSession.setActionHandler('stop', () => {
+        stop()
+      })
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        prevTrack()
+      })
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        nextTrack()
+      })
+    } catch (e) {
+      console.error("Media Session API failed", e);
+    }
 
     return () => {
       // Clear handlers
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', null)
-        navigator.mediaSession.setActionHandler('pause', null)
-        navigator.mediaSession.setActionHandler('stop', null)
-        navigator.mediaSession.setActionHandler('previoustrack', null)
-        navigator.mediaSession.setActionHandler('nexttrack', null)
-      }
+      try {
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.setActionHandler('play', null)
+          navigator.mediaSession.setActionHandler('pause', null)
+          navigator.mediaSession.setActionHandler('stop', null)
+          navigator.mediaSession.setActionHandler('previoustrack', null)
+          navigator.mediaSession.setActionHandler('nexttrack', null)
+        }
+      } catch (e) { }
     }
   }, [trackInfo, togglePlayback, stop, nextTrack, prevTrack])
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
-    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
+    try {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
+    } catch (e) { }
   }, [isPlaying])
 
 

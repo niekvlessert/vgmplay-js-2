@@ -410,47 +410,44 @@ export function useVGMPlayer() {
 
   // --- Effects ---
 
-  // Screen Wake Lock: prevent screen from turning off while the site is in use
+  // Screen Wake Lock: prevent screen from turning off while music is playing
   useEffect(() => {
+    let wakeLock = null;
+
     const requestWakeLock = async () => {
-      if (!('wakeLock' in navigator)) return
-      // Only request if not already held and page is visible
-      if (wakeLockRef.current || document.visibilityState !== 'visible') return
-
+      if (!('wakeLock' in navigator)) return;
       try {
-        wakeLockRef.current = await navigator.wakeLock.request('screen')
-        wakeLockRef.current.addEventListener('release', () => {
-          wakeLockRef.current = null
-        })
-      } catch (e) {
-        // Wake lock request failed (e.g., low battery, background tab)
+        wakeLock = await navigator.wakeLock.request('screen');
+        console.log('Wake Lock is active');
+        wakeLock.addEventListener('release', () => {
+          console.log('Wake Lock was released');
+          wakeLock = null;
+        });
+      } catch (err) {
+        console.error(`Wake Lock request failed: ${err.name}, ${err.message}`);
       }
-    }
+    };
 
-    const releaseWakeLock = async () => {
-      if (wakeLockRef.current) {
-        try {
-          await wakeLockRef.current.release()
-          wakeLockRef.current = null
-        } catch (e) { }
+    const handleVisibilityChange = async () => {
+      if (wakeLock !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
       }
-    }
+    };
 
-    // Request wake lock when component mounts or visibility changes to visible
-    requestWakeLock()
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        requestWakeLock()
-      }
+    if (isPlaying) {
+      requestWakeLock();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      releaseWakeLock()
-    }
-  }, [])
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock !== null) {
+        wakeLock.release().then(() => {
+          wakeLock = null;
+        });
+      }
+    };
+  }, [isPlaying]);
 
   // Load scripts
   useEffect(() => {

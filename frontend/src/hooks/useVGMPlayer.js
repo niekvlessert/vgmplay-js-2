@@ -42,7 +42,7 @@ export function useVGMPlayer() {
         try {
           await wakeLockRef.current.release()
           wakeLockRef.current = null
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -193,6 +193,9 @@ export function useVGMPlayer() {
   }, [isReady])
 
   // UI elapsed timer for display only (not for auto-advance)
+  // UI elapsed timer for display only (not for auto-advance)
+  // Removed as per request to hide remaining time logic
+  /* 
   useEffect(() => {
     if (isPlaying && currentTrack) {
       uiStartRef.current = Date.now()
@@ -208,6 +211,7 @@ export function useVGMPlayer() {
       uiStartRef.current = null
     }
   }, [isPlaying, currentTrack])
+  */
 
   // Remove separate effect for nextTrack; nextTrack will set its own ref when called
   // Note: avoid referencing nextTrack in a useEffect before nextTrack is defined
@@ -229,10 +233,10 @@ export function useVGMPlayer() {
         if (file.endsWith('.vgm') || file.endsWith('.vgz')) {
           try {
             window.FS.unlink('/' + file)
-          } catch (e) {}
+          } catch (e) { }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const response = await fetch(url)
@@ -254,7 +258,7 @@ export function useVGMPlayer() {
 
           try {
             window.FS.unlink(safePath)
-          } catch (e) {}
+          } catch (e) { }
           window.FS.createDataFile('/', safePath, fileArray, true, true)
 
           // Get track info
@@ -324,22 +328,27 @@ export function useVGMPlayer() {
       isGeneratingRef.current = false
     }
 
-    // Close old audio context and create new one to avoid leftover audio
-    if (contextRef.current) {
-      try {
-        contextRef.current.close()
-      } catch (e) {}
+    // Reuse existing AudioContext.
+    // Ensure it exists (initialized in initPlayer).
+    if (!contextRef.current || contextRef.current.state === 'closed') {
+      window.AudioContext = window.AudioContext || window.webkitAudioContext
+      contextRef.current = new AudioContext()
     }
 
-    // Create fresh audio context and node
-    contextRef.current = new AudioContext()
+    // Resume context if suspended (browser autoplay policy, handles mobile wake up)
+    if (contextRef.current.state === 'suspended') {
+      contextRef.current.resume().catch(e => console.error("Audio resume failed", e))
+    }
+
+    // Always create a fresh ScriptProcessor and Analyser to ensure clean state
+    // Disconnect old nodes if they exist to prevent memory leaks/glitches
+    if (nodeRef.current) {
+      try { nodeRef.current.disconnect() } catch (e) { }
+    }
     nodeRef.current = contextRef.current.createScriptProcessor(16384, 2, 2)
 
-    // Setup or recreate analyser in the current context for visualization
     if (analyserRef.current) {
-      try {
-        analyserRef.current.disconnect()
-      } catch (e) {}
+      try { analyserRef.current.disconnect() } catch (e) { }
     }
     const newAnalyser = contextRef.current.createAnalyser()
     newAnalyser.fftSize = 256
@@ -377,7 +386,7 @@ export function useVGMPlayer() {
     // Wire up the audio graph: ScriptProcessor -> Analyser -> Destination
     try {
       nodeRef.current.disconnect()
-    } catch (e) {}
+    } catch (e) { }
     if (analyserRef.current) {
       nodeRef.current.connect(analyserRef.current)
       analyserRef.current.connect(contextRef.current.destination)
@@ -389,7 +398,7 @@ export function useVGMPlayer() {
       const output0 = e.outputBuffer.getChannelData(0)
       const output1 = e.outputBuffer.getChannelData(1)
 
-    if (functionsRef.current.VGMEnded()) {
+      if (functionsRef.current.VGMEnded()) {
         // Auto next track with guard to avoid double triggers on short tracks
         const now = Date.now()
         if (now - nextTrackGuardRef.current > 800) {
@@ -437,18 +446,19 @@ export function useVGMPlayer() {
       try {
         nodeRef.current.onaudioprocess = null
         nodeRef.current.disconnect()
-      } catch (e) {}
+      } catch (e) { }
     }
     if (analyserRef.current) {
       try {
         analyserRef.current.disconnect()
-      } catch (e) {}
+      } catch (e) { }
     }
-    // Close audio context to fully stop audio output
-    if (contextRef.current) {
+    // Do not close AudioContext here, as we reuse it.
+    // Just ensure it's suspended if needed, or just leave it running (processing 0s)
+    if (contextRef.current && contextRef.current.state === 'running') {
       try {
-        contextRef.current.close()
-      } catch (e) {}
+        contextRef.current.suspend()
+      } catch (e) { }
     }
     if (functionsRef.current) {
       functionsRef.current.StopVGM()
@@ -470,7 +480,7 @@ export function useVGMPlayer() {
         if (analyserRef.current) {
           try {
             nodeRef.current.disconnect()
-          } catch (e) {}
+          } catch (e) { }
           nodeRef.current.connect(analyserRef.current)
           analyserRef.current.connect(contextRef.current.destination)
         } else {
@@ -483,14 +493,14 @@ export function useVGMPlayer() {
     }
   }, [isPlaying, currentTrack, pause, play])
 
-const nextTrack = useCallback(() => {
-  // persist latest function reference to avoid closure issues when called from events
-  nextTrackRef.current = nextTrack
-  // compute next index and switch
-  const nextIdx = (currentTrackIndex + 1) % trackList.length
-  stop()
-  setTimeout(() => play(nextIdx), 100)
-}, [currentTrackIndex, trackList.length, stop, play])
+  const nextTrack = useCallback(() => {
+    // persist latest function reference to avoid closure issues when called from events
+    nextTrackRef.current = nextTrack
+    // compute next index and switch
+    const nextIdx = (currentTrackIndex + 1) % trackList.length
+    stop()
+    setTimeout(() => play(nextIdx), 100)
+  }, [currentTrackIndex, trackList.length, stop, play])
 
   const prevTrack = useCallback(() => {
     const prevIdx = currentTrackIndex === 0 ? trackList.length - 1 : currentTrackIndex - 1
@@ -511,7 +521,6 @@ const nextTrack = useCallback(() => {
     trackList,
     trackInfo,
     frequencyData,
-    remaining: Math.max(0, (currentTrack?.length ?? 0) - uiElapsed),
     loadZip,
     play,
     pause,

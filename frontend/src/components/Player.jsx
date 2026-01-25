@@ -14,8 +14,7 @@ export function Player({
   onPrev,
   onStop,
   onSelectTrack,
-  frequencyData,
-  remaining
+  frequencyData
 }) {
   const canvasRef = useRef(null)
   const overlayCanvasRef = useRef(null)
@@ -35,16 +34,6 @@ export function Player({
       height: naturalHeight * scale
     })
   }
-
-  // format remaining time helper for display in UI
-  const formatTime = (sec) => {
-    if (sec == null || Number.isNaN(sec)) return '0:00'
-    const s = Math.max(0, Math.floor(sec))
-    const m = Math.floor(s / 60)
-    const r = s % 60
-    return `${m}:${r.toString().padStart(2, '0')}`
-  }
-  const remainingText = remaining != null ? `Remaining ${formatTime(remaining)}` : null
 
   // Draw frequency spectrum on canvas when frequencyData updates
   useEffect(() => {
@@ -85,7 +74,6 @@ export function Player({
                 {gameSystem && <div className="overlay-system">{gameSystem}</div>}
                 {gameAuthor && <div className="overlay-author">{gameAuthor}</div>}
                 <div className="overlay-length">{trackInfo.length}</div>
-                {remainingText && <div className="overlay-remaining">{remainingText}</div>}
               </div>
             )}
             <div className="expanded-image-wrapper" style={expandedImageSize.width ? {
@@ -120,7 +108,6 @@ export function Player({
               {gameSystem && <div className="track-system">{gameSystem}</div>}
               {gameAuthor && <div className="track-author">{gameAuthor}</div>}
               <div className="track-length">{trackInfo.length}</div>
-              {remainingText && <div className="track-remaining" style={{marginTop:4}}>{remainingText}</div>}
             </div>
           ) : (
             <div className="track-info">

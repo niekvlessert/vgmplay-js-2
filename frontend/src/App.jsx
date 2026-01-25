@@ -159,7 +159,7 @@ function App() {
             ) : games.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">📁</div>
-                <p className="empty-text">NO MUSIC FOUND<br/>ADD ZIP FILES TO DIST FOLDER</p>
+                <p className="empty-text">NO MUSIC FOUND<br />ADD ZIP FILES TO DIST FOLDER</p>
               </div>
             ) : (
               <div className="game-grid">
@@ -187,7 +187,7 @@ function App() {
                       <h3 className="game-title">
                         {game.title}
                         {game.titleJp && game.titleJp !== game.title && (
-                          <><br/><small style={{opacity: 0.7}}>{game.titleJp}</small></>
+                          <><br /><small style={{ opacity: 0.7 }}>{game.titleJp}</small></>
                         )}
                       </h3>
                       <span className="game-system">{game.system}</span>
@@ -236,10 +236,9 @@ function App() {
                 onTogglePlayback={player.togglePlayback}
                 onNext={player.nextTrack}
                 onPrev={player.prevTrack}
-              onStop={player.stop}
-              onSelectTrack={player.play}
-              frequencyData={player.frequencyData}
-              remaining={player.remaining}
+                onStop={player.stop}
+                onSelectTrack={player.play}
+                frequencyData={player.frequencyData}
               />
             )}
           </>

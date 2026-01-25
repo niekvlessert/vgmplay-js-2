@@ -86,7 +86,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1 className="title">VGM PLAYER</h1>
+        <h1 className="title">NINE-PLAYER</h1>
         <p className="subtitle">Honux's Video Game Music Archive</p>
       </header>
 

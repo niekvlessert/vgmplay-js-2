@@ -24,6 +24,47 @@ export function useVGMPlayer() {
   const isGeneratingRef = useRef(false)
   const sampleRateRef = useRef(44100)
   const nextTrackRef = useRef(null)
+  const wakeLockRef = useRef(null)
+
+  // Screen Wake Lock: prevent screen from turning off during playback
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if (!('wakeLock' in navigator)) return
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request('screen')
+      } catch (e) {
+        // Wake lock request failed (e.g., low battery, background tab)
+      }
+    }
+
+    const releaseWakeLock = async () => {
+      if (wakeLockRef.current) {
+        try {
+          await wakeLockRef.current.release()
+          wakeLockRef.current = null
+        } catch (e) {}
+      }
+    }
+
+    if (isPlaying) {
+      requestWakeLock()
+    } else {
+      releaseWakeLock()
+    }
+
+    // Re-acquire wake lock when page becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isPlaying) {
+        requestWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      releaseWakeLock()
+    }
+  }, [isPlaying])
 
   // Load scripts
   useEffect(() => {

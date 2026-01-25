@@ -1,6 +1,128 @@
 {
-  "generatedAt": "2026-01-25T03:10:24.520Z",
+  "generatedAt": "2026-01-25T05:20:39.781Z",
   "games": [
+    {
+      "id": "Daikoukai_Jidai__Sharp_X68000_",
+      "zipFile": "Daikoukai_Jidai_(Sharp_X68000).zip",
+      "title": "Daikoukai Jidai",
+      "titleJp": "大航海時代",
+      "system": "Sharp X68000",
+      "author": "Yoko Kanno",
+      "coverImage": "covers/Daikoukai_Jidai__Sharp_X68000_.png",
+      "trackCount": 22,
+      "tracks": [
+        {
+          "filename": "01 Waves.vgz",
+          "name": "Waves",
+          "nameJp": "波"
+        },
+        {
+          "filename": "02 Stormy Voyage.vgz",
+          "name": "Stormy Voyage",
+          "nameJp": "嵐の航海"
+        },
+        {
+          "filename": "03 Opening.vgz",
+          "name": "Opening",
+          "nameJp": "オープニング"
+        },
+        {
+          "filename": "04 Pre-Story.vgz",
+          "name": "Pre-Story",
+          "nameJp": "プレ・ストーリー"
+        },
+        {
+          "filename": "05 Initialization.vgz",
+          "name": "Initialization",
+          "nameJp": "初期設定"
+        },
+        {
+          "filename": "06 Portugal.vgz",
+          "name": "Portugal",
+          "nameJp": "ポルトガル"
+        },
+        {
+          "filename": "07 Bar.vgz",
+          "name": "Bar",
+          "nameJp": "酒場"
+        },
+        {
+          "filename": "08 Mediterranean Sea.vgz",
+          "name": "Mediterranean Sea",
+          "nameJp": "地中海"
+        },
+        {
+          "filename": "09 Harbour - Noth.vgz",
+          "name": "Harbour: Noth",
+          "nameJp": "港北部"
+        },
+        {
+          "filename": "10 Offshore - North.vgz",
+          "name": "Offshore: North",
+          "nameJp": "洋上北部"
+        },
+        {
+          "filename": "11 Harbour - South.vgz",
+          "name": "Harbour: South",
+          "nameJp": "港南部"
+        },
+        {
+          "filename": "12 Offshore - South.vgz",
+          "name": "Offshore: South",
+          "nameJp": "洋上南部"
+        },
+        {
+          "filename": "13 Royal Palace.vgz",
+          "name": "Royal Palace",
+          "nameJp": "王宮"
+        },
+        {
+          "filename": "14 Queen.vgz",
+          "name": "Queen",
+          "nameJp": "女王"
+        },
+        {
+          "filename": "15 Event.vgz",
+          "name": "Event",
+          "nameJp": "イベント"
+        },
+        {
+          "filename": "16 War.vgz",
+          "name": "War",
+          "nameJp": "戦争"
+        },
+        {
+          "filename": "17 Defeat.vgz",
+          "name": "Defeat",
+          "nameJp": "敗退"
+        },
+        {
+          "filename": "18 Post-war Procession.vgz",
+          "name": "Post-war Procession",
+          "nameJp": "戦後処理"
+        },
+        {
+          "filename": "19 Capture.vgz",
+          "name": "Capture",
+          "nameJp": "逮捕"
+        },
+        {
+          "filename": "20 Game Over.vgz",
+          "name": "Game Over",
+          "nameJp": "GAMEOVER"
+        },
+        {
+          "filename": "21 Ending.vgz",
+          "name": "Ending",
+          "nameJp": "エンディング"
+        },
+        {
+          "filename": "22 Ending (Main).vgz",
+          "name": "Ending (Main)",
+          "nameJp": "エンディングメイン"
+        }
+      ]
+    },
     {
       "id": "Daikoukai_Jidai_II__FM_Towns_",
       "zipFile": "Daikoukai_Jidai_II_(FM_Towns).zip",
@@ -120,128 +242,6 @@
           "filename": "22 Ending A.vgz",
           "name": "Ending A",
           "nameJp": "エンディングA"
-        }
-      ]
-    },
-    {
-      "id": "Daikoukai_Jidai_II__Sharp_X68000_",
-      "zipFile": "Daikoukai_Jidai_II_(Sharp_X68000).zip",
-      "title": "Daikoukai Jidai II",
-      "titleJp": "大航海時代Ⅱ",
-      "system": "Sharp X68000",
-      "author": "Yoko Kanno",
-      "coverImage": "covers/Daikoukai_Jidai_II__Sharp_X68000_.png",
-      "trackCount": 22,
-      "tracks": [
-        {
-          "filename": "01 Wind Ahead.vgz",
-          "name": "Wind Ahead",
-          "nameJp": "WIND AHEAD ～ウィンド・アヘッド～"
-        },
-        {
-          "filename": "02 Mast in the Mist.vgz",
-          "name": "Mast in the Mist",
-          "nameJp": "MAST IN THE MIST ～霧の港～"
-        },
-        {
-          "filename": "03 Initial Setting.vgz",
-          "name": "Initial Setting",
-          "nameJp": "INITIAL SETTING ～初期設定～"
-        },
-        {
-          "filename": "04 Caprice For Lute.vgz",
-          "name": "Caprice For Lute",
-          "nameJp": "CAPRICE FOR LUTE ～リュートの為の奇想曲～"
-        },
-        {
-          "filename": "05 Theme of Otto.vgz",
-          "name": "Theme of Otto",
-          "nameJp": "OTTO ～オットー～"
-        },
-        {
-          "filename": "06 Catalina.vgz",
-          "name": "Catalina",
-          "nameJp": "CATALINA ～カタリーナのテーマ～"
-        },
-        {
-          "filename": "07 Theme of Pietro.vgz",
-          "name": "Theme of Pietro",
-          "nameJp": "PIETRO ～ピエトロ～"
-        },
-        {
-          "filename": "08 Theme of Ali.vgz",
-          "name": "Theme of Ali",
-          "nameJp": "ALI ～アル～"
-        },
-        {
-          "filename": "09 Theme of Ernest.vgz",
-          "name": "Theme of Ernest",
-          "nameJp": "ERNEST ～エルネスト～"
-        },
-        {
-          "filename": "10 Fiddler's Green.vgz",
-          "name": "Fiddler's Green",
-          "nameJp": "FIDDLER'S GREEN ～船乗りたちの酒場～"
-        },
-        {
-          "filename": "11 The Chase.vgz",
-          "name": "The Chase",
-          "nameJp": "THE CHASE ～チェイス～"
-        },
-        {
-          "filename": "12 Victory Fanfare.vgz",
-          "name": "Victory Fanfare",
-          "nameJp": "VICTORY FANFARE ～ファンファーレ～"
-        },
-        {
-          "filename": "13 Capturing Enemies' Ships.vgz",
-          "name": "Capturing Enemies' Ships",
-          "nameJp": "EUROPE ～ヨーロッパ～"
-        },
-        {
-          "filename": "14 Royal Palace.vgz",
-          "name": "Royal Palace",
-          "nameJp": "INTERLUDE ～間奏曲 ：王宮のテーマ～"
-        },
-        {
-          "filename": "15 Empty Eyes.vgz",
-          "name": "Empty Eyes",
-          "nameJp": "EMPTY EYES ～エメラルドの海～"
-        },
-        {
-          "filename": "16 Moslem Dance.vgz",
-          "name": "Moslem Dance",
-          "nameJp": "MOSLEM DANCE ～イスラムの踊り～"
-        },
-        {
-          "filename": "17 The Mahout.vgz",
-          "name": "The Mahout",
-          "nameJp": "THE MAHOUT ～インドの象使い～"
-        },
-        {
-          "filename": "18 Land of Luxury.vgz",
-          "name": "Land of Luxury",
-          "nameJp": "LAND OF LUXURY ～黄金の地～"
-        },
-        {
-          "filename": "19 Supply Port.vgz",
-          "name": "Supply Port",
-          "nameJp": "SUPPLY HARBOR ～集落・補給港～"
-        },
-        {
-          "filename": "20 Duke.vgz",
-          "name": "Duke",
-          "nameJp": "DUKE ～公爵～"
-        },
-        {
-          "filename": "21 Close to Home.vgz",
-          "name": "Close to Home",
-          "nameJp": "CLOSE TO HOME ～クロース・トゥ・ホーム～"
-        },
-        {
-          "filename": "22 Defeated.vgz",
-          "name": "Defeated",
-          "nameJp": "DEATH ～死亡～"
         }
       ]
     },
@@ -892,6 +892,258 @@
       ]
     },
     {
+      "id": "Metal_Gear_2___Solid_Snake__MSX2_",
+      "zipFile": "Metal_Gear_2_-_Solid_Snake_(MSX2).zip",
+      "title": "Metal Gear 2: Solid Snake",
+      "titleJp": "メタルギア2 ソリッドスネーク",
+      "system": "MSX2",
+      "author": "Konami Kukeiha Club",
+      "coverImage": "covers/Metal_Gear_2___Solid_Snake__MSX2_.png",
+      "trackCount": 48,
+      "tracks": [
+        {
+          "filename": "01 Theme of Solid Snake (Opening BGM 1).vgz",
+          "name": "Theme of Solid Snake (Opening BGM 1)",
+          "nameJp": "THEME OF SOLID SNAKE (オープニングBGM1）"
+        },
+        {
+          "filename": "02 Zanzibar Breeze (Opening BGM 2).vgz",
+          "name": "Zanzibar Breeze (Opening BGM 2)",
+          "nameJp": "ZANZIBER BREEZE (オープニングBGM2)"
+        },
+        {
+          "filename": "03 A Notice (Start Demo BGM).vgz",
+          "name": "A Notice (Start Demo BGM)",
+          "nameJp": "A NOTICE (スタートデモBGM)"
+        },
+        {
+          "filename": "04 First Instruction Part 1 (Opening Transceiver Demo Part 1).vgz",
+          "name": "First Instruction Part 1 (Opening Transceiver Demo)",
+          "nameJp": "FIRST INSTRUCTION PART 1 (オープニング無線デモ)"
+        },
+        {
+          "filename": "05 First Instruction Part 2 (Opening Transceiver Demo Part 2).vgz",
+          "name": "First Instruction Part 2 (Opening Transceiver Demo)",
+          "nameJp": "FIRST INSTRUCTION PART 2 (オープニング無線デモ)"
+        },
+        {
+          "filename": "06 Frequency 140.85 (Alert Mode Level 1 Part 1).vgz",
+          "name": "Frequency 140.85 (Alert Mode Level 1 Part 1)",
+          "nameJp": "FREQENCY 140.85 (警戒体制レベル1 part1)"
+        },
+        {
+          "filename": "07 Alert.vgz",
+          "name": "Alert",
+          "nameJp": "ALERT (警戒)"
+        },
+        {
+          "filename": "08 Level 3 Warning (Alert Mode Level 3).vgz",
+          "name": "Level 3 Warning (Alert Mode Level 3)",
+          "nameJp": "LEVEL3 WARNING (警戒体制レベル3)"
+        },
+        {
+          "filename": "09 Crawling (Duct BGM) [temp.].vgz",
+          "name": "Crawling (Duct BGM) [temp.]",
+          "nameJp": "CRAWLING (ダクトBGM) [仮]"
+        },
+        {
+          "filename": "10 Advance Immediately (Alert Mode Level 1 Part 2).vgz",
+          "name": "Advance Immediately (Alert Mode Level 1 Part 2)",
+          "nameJp": "ADVANCE IMMEDIATECY (警戒体制レベル1 part2)"
+        },
+        {
+          "filename": "11 Imminent (Alert Mode Level 1 Part 3).vgz",
+          "name": "Imminent (Alert Mode Level 1 Part 3)",
+          "nameJp": "IMMINENT (警戒体制レベル1 part3)"
+        },
+        {
+          "filename": "12 Shallow (Alert Mode Level 1 Part 4 & Swamp BGM).vgz",
+          "name": "Shallow (Alert Mode Level 1 Part 4 & Swamp BGM)",
+          "nameJp": "SHALLOW (警戒体制レベル1 part4・沼BGM)"
+        },
+        {
+          "filename": "13 Surprise (Boss Jingle) [temp.].vgz",
+          "name": "Surprise (Boss Jingle) [temp.]",
+          "nameJp": "SURPRISE (ボスジングル) [仮]"
+        },
+        {
+          "filename": "14 Awaiting (Conversation Demo _Boss_) [temp.].vgz",
+          "name": "Awaiting (Conversation Demo <Boss>) [temp.]",
+          "nameJp": "AWAITING (会話デモ＜ボス＞) [仮]"
+        },
+        {
+          "filename": "15 Killers (Boss BGM 1).vgz",
+          "name": "Killers (Boss BGM 1)",
+          "nameJp": "KILLERS (ボスBGM1)"
+        },
+        {
+          "filename": "16 An Advance (Conversation Demo _Suspense_).vgz",
+          "name": "An Advance (Conversation Demo <Suspense>)",
+          "nameJp": "AN ADVENCE (会話デモ＜サスペンス＞)"
+        },
+        {
+          "filename": "17 Level 1 Warning (Alert Mode Level 1 Part 5).vgz",
+          "name": "Level 1 Warning (Alert Mode Level 1 Part 5)",
+          "nameJp": "LEVEL1 WARNING (警戒体制レベル1 part5)"
+        },
+        {
+          "filename": "18 Return to Dust (Alert Mode Level 1 Part 6).vgz",
+          "name": "Return to Dust (Alert Mode Level 1 Part 6)",
+          "nameJp": "RETURN TO DUST (警戒体制レベル1 part6)"
+        },
+        {
+          "filename": "19 Chasing the Green Beret.vgz",
+          "name": "Chasing the Green Beret",
+          "nameJp": "CHASING THE GREEN BERET (グリーンベレー尾行BGM)"
+        },
+        {
+          "filename": "20 Under the Cloud of Darkness (Alert Mode Level 1 Part 7 & Nighttime Infiltration BGM).vgz",
+          "name": "Under the Cloud of Darkness (Alert Mode Level 1 Part 7 & Nighttime Infiltration BGM)",
+          "nameJp": "UNDER THE CLOUD OF DARKNESS (警戒体制レベル1 part7・夜間潜入BGM)"
+        },
+        {
+          "filename": "21 Battle Against Time (Boss BGM 2).vgz",
+          "name": "Battle Against Time (Boss BGM 2)",
+          "nameJp": "BATTLE AGAINST TIME (ボスBGM2)"
+        },
+        {
+          "filename": "22 Mechanic (Boss BGM 3).vgz",
+          "name": "Mechanic (Boss BGM 3)",
+          "nameJp": "MECANIC (ボスBGM3)"
+        },
+        {
+          "filename": "23 The Front Line (Alert Mode Level 1 Part 8).vgz",
+          "name": "The Front Line (Alert Mode Level 1 Part 8)",
+          "nameJp": "THE FRONT LINE (警戒体制レベル1 part8)"
+        },
+        {
+          "filename": "24 Insecurity (Holly Is Captured).vgz",
+          "name": "Insecurity (Holly Is Captured)",
+          "nameJp": "IN SECURITY (ホーリー捕まる)"
+        },
+        {
+          "filename": "25 Nightfall (Conversation Demo _Holly, 3 People_).vgz",
+          "name": "Nightfall (Conversation Demo <Holly, 3 People>)",
+          "nameJp": "NIGHT FALL (会話デモ＜ホーリー・3人＞)"
+        },
+        {
+          "filename": "26 Infiltration (Alert Mode Level 1 Part 9).vgz",
+          "name": "Infiltration (Alert Mode Level 1 Part 9)",
+          "nameJp": "INFILTRATION (警戒体制レベル1 part9)"
+        },
+        {
+          "filename": "27 Reprieve of the Doctor (Sewer).vgz",
+          "name": "Reprieve of the Doctor (Sewer)",
+          "nameJp": "REPRIEVE OF THE DOCTOR (地下水道)"
+        },
+        {
+          "filename": "28 Wavelet (Conversation Demo _Sorrow_).vgz",
+          "name": "Wavelet (Conversation Demo <Sorrow>)",
+          "nameJp": "WAVELET (会話デモ＜悲哀＞)"
+        },
+        {
+          "filename": "29 Ambush (Bridge Attack) [temp.].vgz",
+          "name": "Ambush (Bridge Attack) [temp.]",
+          "nameJp": "AMBUSH (橋で伏勢) [仮]"
+        },
+        {
+          "filename": "30 Mourning (Conversation Demo _Tragedy_) [temp.].vgz",
+          "name": "Mourning (Conversation Demo <Tragedy>) [temp.]",
+          "nameJp": "MOURNING (会話デモ＜惨事＞) [仮]"
+        },
+        {
+          "filename": "31 Metal Gear D (Entrance Jingle) [temp.].vgz",
+          "name": "Metal Gear D (Entrance Jingle) [temp.]",
+          "nameJp": "METAL GEAR D (メタルギアD登場ジングル) [仮]"
+        },
+        {
+          "filename": "32 Zanzibar Land National Anthem.vgz",
+          "name": "Zanzibar Land National Anthem",
+          "nameJp": "ZANZIBERLAND NATIONAL ANTHEM (ザンジバーランド国歌 part1)"
+        },
+        {
+          "filename": "33 Zanzibar Land National Anthem Part 2.vgz",
+          "name": "Zanzibar Land National Anthem Part 2",
+          "nameJp": "ZANZIBERLAND NATIONAL ANTHEM PART2 (ザンジバーランド国歌 part2)"
+        },
+        {
+          "filename": "34 Spiral (Battle on the Spiral Stairs).vgz",
+          "name": "Spiral (Battle on the Spiral Stairs)",
+          "nameJp": "SPIRAL (螺旋階段でのバトル)"
+        },
+        {
+          "filename": "35 Flight into Enemy Territory.vgz",
+          "name": "Flight into Enemy Territory",
+          "nameJp": "FIGHT INTO ENEMY TERITORY (敵地潜入BGM)"
+        },
+        {
+          "filename": "36 Phantom (Boss BGM 4) [temp.].vgz",
+          "name": "Phantom (Boss BGM 4) [temp.]",
+          "nameJp": "PHANTOM (ボスBGM4) [仮]"
+        },
+        {
+          "filename": "37 Tears (Conversation Demo _Gray Fox_).vgz",
+          "name": "Tears (Conversation Demo <Gray Fox>)",
+          "nameJp": "TEARS (会話デモ ＜グレイフォックス＞)"
+        },
+        {
+          "filename": "38 Big Boss (Conversation Demo).vgz",
+          "name": "Big Boss (Conversation Demo)",
+          "nameJp": "BIG BOSS (ビッグボス会話デモ)"
+        },
+        {
+          "filename": "39 Escape.vgz",
+          "name": "Escape",
+          "nameJp": "ESCAPE (脱出BGM)"
+        },
+        {
+          "filename": "40 Return.vgz",
+          "name": "Return",
+          "nameJp": "RETURN (帰還デモ)"
+        },
+        {
+          "filename": "41 Red Sun (End Demo 1).vgz",
+          "name": "Red Sun (End Demo 1)",
+          "nameJp": "RED SUN (エンドデモ1)"
+        },
+        {
+          "filename": "42 Farewell (End Demo 2).vgz",
+          "name": "Farewell (End Demo 2)",
+          "nameJp": "FAREWELL (エンドデモ2)"
+        },
+        {
+          "filename": "43 Afterimage (Player Killed BGM).vgz",
+          "name": "Afterimage (Player Killed BGM)",
+          "nameJp": "AFTERIMAGE (プレイヤーアウトBGM)"
+        },
+        {
+          "filename": "44 Disposable Life (Game Over BGM).vgz",
+          "name": "Disposable Life (Game Over BGM)",
+          "nameJp": "DISPOSABLE LIFE (ゲームオーバーBGM)"
+        },
+        {
+          "filename": "45 Swing, Swing (Radio Mode BGM).vgz",
+          "name": "Swing, Swing (Radio Mode BGM)",
+          "nameJp": "SWING, SWING (ラジオモードBGM)"
+        },
+        {
+          "filename": "46 ''A'' Jam Blues (Radio Mode BGM 2).vgz",
+          "name": "\"A\" Jam Blues (Radio Mode BGM 2)",
+          "nameJp": "\"A\" JAM BLUES (ラジオモードBGM2)"
+        },
+        {
+          "filename": "47 Frequency 140.85 (Alert Mode Level 1 Part 1, alternate).vgz",
+          "name": "Frequency 140.85 (Alert Mode Level 1 Part 1, alternate)",
+          "nameJp": "FREQENCY 140.85 (警戒体制レベル1 part1・代替)"
+        },
+        {
+          "filename": "48 The Front Line (Alert Mode Level 1 Part 3, alternate).vgz",
+          "name": "The Front Line (Alert Mode Level 1 Part 3, alternate)",
+          "nameJp": "THE FRONT LINE (警戒体制レベル1 part3・代替)"
+        }
+      ]
+    },
+    {
       "id": "Mother",
       "zipFile": "Mother.zip",
       "title": "Mother",
@@ -1099,6 +1351,178 @@
         {
           "filename": "40 ENDING.vgz",
           "name": "ENDING",
+          "nameJp": ""
+        }
+      ]
+    },
+    {
+      "id": "Ys_III___Wanderers_from_Ys__Sharp_X68000_",
+      "zipFile": "Ys_III_-_Wanderers_from_Ys_(Sharp_X68000).zip",
+      "title": "Ys III: Wanderers from Ys",
+      "titleJp": "イースIII",
+      "system": "Sharp X68000",
+      "author": "Mieko Ishikawa",
+      "coverImage": "covers/Ys_III___Wanderers_from_Ys__Sharp_X68000_.png",
+      "trackCount": 32,
+      "tracks": [
+        {
+          "filename": "01 Dancing on the Road.vgz",
+          "name": "Dancing on the Road",
+          "nameJp": ""
+        },
+        {
+          "filename": "02 A Premonition =Styx=.vgz",
+          "name": "A Premonition =Styx=",
+          "nameJp": "予感 =スティクス="
+        },
+        {
+          "filename": "03 Trading Town of Redmont.vgz",
+          "name": "Trading Town of Redmont",
+          "nameJp": "貿易の街 レドモント"
+        },
+        {
+          "filename": "04 Quiet Moments.vgz",
+          "name": "Quiet Moments",
+          "nameJp": "静かな刻"
+        },
+        {
+          "filename": "05 Welcome!!.vgz",
+          "name": "Welcome!!",
+          "nameJp": ""
+        },
+        {
+          "filename": "06 Prelude to The Adventure.vgz",
+          "name": "Prelude to The Adventure",
+          "nameJp": "冒険への序曲"
+        },
+        {
+          "filename": "07 The Boy's Got Wings.vgz",
+          "name": "The Boy's Got Wings",
+          "nameJp": "翼を持った少年"
+        },
+        {
+          "filename": "08 Be Careful.vgz",
+          "name": "Be Careful",
+          "nameJp": ""
+        },
+        {
+          "filename": "09 Ilberns Ruins.vgz",
+          "name": "Ilberns Ruins",
+          "nameJp": "イルバーンズの遺跡"
+        },
+        {
+          "filename": "10 A Searing Struggle.vgz",
+          "name": "A Searing Struggle",
+          "nameJp": "灼熱の死闘"
+        },
+        {
+          "filename": "11 Snare of Darkness.vgz",
+          "name": "Snare of Darkness",
+          "nameJp": "暗黒の罠"
+        },
+        {
+          "filename": "12 Shock of The Death God.vgz",
+          "name": "Shock of The Death God",
+          "nameJp": "死神の電撃"
+        },
+        {
+          "filename": "13 Quickening Dream.vgz",
+          "name": "Quickening Dream",
+          "nameJp": "いっときの夢"
+        },
+        {
+          "filename": "14 Steeling The Will to Fight.vgz",
+          "name": "Steeling The Will to Fight",
+          "nameJp": "厳格なる闘志"
+        },
+        {
+          "filename": "15 Tearful Twilight.vgz",
+          "name": "Tearful Twilight",
+          "nameJp": "哀愁のトワイライト"
+        },
+        {
+          "filename": "16 Varestain Castle.vgz",
+          "name": "Varestain Castle",
+          "nameJp": "バレスタイン城"
+        },
+        {
+          "filename": "17 Prayer for Love.vgz",
+          "name": "Prayer for Love",
+          "nameJp": "慈愛の祈り"
+        },
+        {
+          "filename": "18 Radiant Key.vgz",
+          "name": "Radiant Key",
+          "nameJp": "光りの鍵"
+        },
+        {
+          "filename": "19 Sealed Time.vgz",
+          "name": "Sealed Time",
+          "nameJp": "時の封印"
+        },
+        {
+          "filename": "20 Beat of Destruction.vgz",
+          "name": "Beat of Destruction",
+          "nameJp": "破滅への鼓動"
+        },
+        {
+          "filename": "21 Tower of Destiny.vgz",
+          "name": "Tower of Destiny",
+          "nameJp": "運命の塔"
+        },
+        {
+          "filename": "22 Behold!!.vgz",
+          "name": "Behold!!",
+          "nameJp": "これを見よ!!"
+        },
+        {
+          "filename": "23 The Strongest Foe.vgz",
+          "name": "The Strongest Foe",
+          "nameJp": "最強の敵"
+        },
+        {
+          "filename": "24 Departure at Sunrise.vgz",
+          "name": "Departure at Sunrise",
+          "nameJp": "旅立ちの朝"
+        },
+        {
+          "filename": "25 Wanderers from Ys.vgz",
+          "name": "Wanderers from Ys",
+          "nameJp": ""
+        },
+        {
+          "filename": "26 Dear My Brother.vgz",
+          "name": "Dear My Brother",
+          "nameJp": ""
+        },
+        {
+          "filename": "27 Lovely Elena.vgz",
+          "name": "Lovely Elena",
+          "nameJp": "愛しのエレナ"
+        },
+        {
+          "filename": "28 Introduction!!.vgz",
+          "name": "Introduction!!",
+          "nameJp": ""
+        },
+        {
+          "filename": "29 The Theme of Chester.vgz",
+          "name": "The Theme of Chester",
+          "nameJp": ""
+        },
+        {
+          "filename": "30 Chop!!.vgz",
+          "name": "Chop!!",
+          "nameJp": ""
+        },
+        {
+          "filename": "31 Believe in My Heart.vgz",
+          "name": "Believe in My Heart",
+          "nameJp": ""
+        },
+        {
+          "filename": "32 Lucky Treasure Box.vgz",
+          "name": "Lucky Treasure Box",
           "nameJp": ""
         }
       ]

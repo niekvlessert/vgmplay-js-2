@@ -230,6 +230,8 @@ function App() {
                 trackList={player.trackList}
                 currentTrackIndex={player.currentTrackIndex}
                 coverImage={selectedGame?.coverImage}
+                gameAuthor={selectedGame?.author}
+                gameSystem={selectedGame?.system}
                 onTogglePlayback={player.togglePlayback}
                 onNext={player.nextTrack}
                 onPrev={player.prevTrack}

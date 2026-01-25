@@ -123,6 +123,12 @@
 .overlay-system {
   font-size: 10px;
   color: var(--accent-magenta);
+  margin-bottom: 4px;
+}
+
+.overlay-author {
+  font-size: 10px;
+  color: var(--accent-orange);
   margin-bottom: 8px;
 }
 
@@ -236,6 +242,12 @@
 .track-system {
   font-size: 8px;
   color: var(--accent-magenta);
+  margin-bottom: 8px;
+}
+
+.track-author {
+  font-size: 8px;
+  color: var(--accent-orange);
   margin-bottom: 8px;
 }
 

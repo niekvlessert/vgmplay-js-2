@@ -7,6 +7,8 @@ export function Player({
   trackList,
   currentTrackIndex,
   coverImage,
+  gameAuthor,
+  gameSystem,
   onTogglePlayback,
   onNext,
   onPrev,
@@ -80,7 +82,8 @@ export function Player({
               <div className="overlay-track-info">
                 <div className="overlay-title">{trackInfo.title}</div>
                 {trackInfo.game && <div className="overlay-game">{trackInfo.game}</div>}
-                {trackInfo.system && <div className="overlay-system">{trackInfo.system}</div>}
+                {gameSystem && <div className="overlay-system">{gameSystem}</div>}
+                {gameAuthor && <div className="overlay-author">{gameAuthor}</div>}
                 <div className="overlay-length">{trackInfo.length}</div>
                 {remainingText && <div className="overlay-remaining">{remainingText}</div>}
               </div>
@@ -114,7 +117,8 @@ export function Player({
             <div className="track-info">
               <div className="track-title">{trackInfo.title}</div>
               {trackInfo.game && <div className="track-game">{trackInfo.game}</div>}
-              {trackInfo.system && <div className="track-system">{trackInfo.system}</div>}
+              {gameSystem && <div className="track-system">{gameSystem}</div>}
+              {gameAuthor && <div className="track-author">{gameAuthor}</div>}
               <div className="track-length">{trackInfo.length}</div>
               {remainingText && <div className="track-remaining" style={{marginTop:4}}>{remainingText}</div>}
             </div>

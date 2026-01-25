@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-25T03:02:43.435Z",
+  "generatedAt": "2026-01-25T03:07:28.784Z",
   "games": [
     {
       "id": "Daikoukai_Jidai_II__FM_Towns_",
@@ -242,6 +242,293 @@
           "filename": "22 Defeated.vgz",
           "name": "Defeated",
           "nameJp": "DEATH ～死亡～"
+        }
+      ]
+    },
+    {
+      "id": "Doukyusei__NEC_PC_9801_",
+      "zipFile": "Doukyusei_(NEC_PC-9801).zip",
+      "title": "Doukyusei",
+      "titleJp": "同級生",
+      "system": "NEC PC-9801",
+      "author": "Manabu Kunieda",
+      "coverImage": "covers/Doukyusei__NEC_PC_9801_.png",
+      "trackCount": 55,
+      "tracks": [
+        {
+          "filename": "01 Title.vgz",
+          "name": "Title",
+          "nameJp": "タイトル"
+        },
+        {
+          "filename": "02 Takurou's Room 1.vgz",
+          "name": "Takurou's Room 1",
+          "nameJp": "卓朗の部屋1"
+        },
+        {
+          "filename": "03 Takurou's Room 2.vgz",
+          "name": "Takurou's Room 2",
+          "nameJp": "卓朗の部屋2"
+        },
+        {
+          "filename": "04 Takurou's Room 3.vgz",
+          "name": "Takurou's Room 3",
+          "nameJp": "卓朗の部屋3"
+        },
+        {
+          "filename": "05 Tarou's Theme.vgz",
+          "name": "Tarou's Theme",
+          "nameJp": "太郎のテーマ"
+        },
+        {
+          "filename": "06 Ako's Theme.vgz",
+          "name": "Ako's Theme",
+          "nameJp": "亜子のテーマ"
+        },
+        {
+          "filename": "07 Chiharu's Theme.vgz",
+          "name": "Chiharu's Theme",
+          "nameJp": "ちはるのテーマ"
+        },
+        {
+          "filename": "08 Hiromi's Theme.vgz",
+          "name": "Hiromi's Theme",
+          "nameJp": "ひろみのテーマ"
+        },
+        {
+          "filename": "09 Kaori's Theme.vgz",
+          "name": "Kaori's Theme",
+          "nameJp": "かおりのテーマ"
+        },
+        {
+          "filename": "10 Kurumi's Theme.vgz",
+          "name": "Kurumi's Theme",
+          "nameJp": "くるみのテーマ"
+        },
+        {
+          "filename": "11 Mai's Theme.vgz",
+          "name": "Mai's Theme",
+          "nameJp": "舞のテーマ"
+        },
+        {
+          "filename": "12 Mako's Theme.vgz",
+          "name": "Mako's Theme",
+          "nameJp": "真子のテーマ"
+        },
+        {
+          "filename": "13 Miho's Theme.vgz",
+          "name": "Miho's Theme",
+          "nameJp": "美穂のテーマ"
+        },
+        {
+          "filename": "14 Misa's Theme.vgz",
+          "name": "Misa's Theme",
+          "nameJp": "美沙のテーマ"
+        },
+        {
+          "filename": "15 Natsuko's Theme.vgz",
+          "name": "Natsuko's Theme",
+          "nameJp": "夏子のテーマ"
+        },
+        {
+          "filename": "16 Reiko's Theme.vgz",
+          "name": "Reiko's Theme",
+          "nameJp": "麗子のテーマ"
+        },
+        {
+          "filename": "17 Satomi's Theme.vgz",
+          "name": "Satomi's Theme",
+          "nameJp": "さとみのテーマ"
+        },
+        {
+          "filename": "18 Yayoi's Theme.vgz",
+          "name": "Yayoi's Theme",
+          "nameJp": "やよいのテーマ"
+        },
+        {
+          "filename": "19 Teacher Yoshiko's Theme.vgz",
+          "name": "Teacher Yoshiko's Theme",
+          "nameJp": "よしこ先生のテーマ"
+        },
+        {
+          "filename": "20 H Scene 1.vgz",
+          "name": "H Scene 1",
+          "nameJp": "Hシーン1"
+        },
+        {
+          "filename": "21 H Scene 2.vgz",
+          "name": "H Scene 2",
+          "nameJp": "Hシーン2"
+        },
+        {
+          "filename": "22 H Scene 3.vgz",
+          "name": "H Scene 3",
+          "nameJp": "Hシーン3"
+        },
+        {
+          "filename": "23 H Scene 4.vgz",
+          "name": "H Scene 4",
+          "nameJp": "Hシーン4"
+        },
+        {
+          "filename": "24 Panic!.vgz",
+          "name": "Panic!",
+          "nameJp": "パニック！"
+        },
+        {
+          "filename": "25 Old Woman Fortune Teller.vgz",
+          "name": "Old Woman Fortune Teller",
+          "nameJp": "占い婆さん"
+        },
+        {
+          "filename": "26 Old Man Fourth Dimension.vgz",
+          "name": "Old Man Fourth Dimension",
+          "nameJp": "4次元じじい"
+        },
+        {
+          "filename": "27 Haunted House.vgz",
+          "name": "Haunted House",
+          "nameJp": "お化け屋敷"
+        },
+        {
+          "filename": "28 Town Moving Theme.vgz",
+          "name": "Town Moving Theme",
+          "nameJp": "町を移動中のテーマ"
+        },
+        {
+          "filename": "29 Inside School Theme.vgz",
+          "name": "Inside School Theme",
+          "nameJp": "学校内のテーマ"
+        },
+        {
+          "filename": "30 Amusement Park With Natsuko.vgz",
+          "name": "Amusement Park With Natsuko",
+          "nameJp": "夏子と遊園地"
+        },
+        {
+          "filename": "31 Amusement Park Theme.vgz",
+          "name": "Amusement Park Theme",
+          "nameJp": "遊園地のテーマ"
+        },
+        {
+          "filename": "32 Quiz Brothers.vgz",
+          "name": "Quiz Brothers",
+          "nameJp": "クイズ兄弟"
+        },
+        {
+          "filename": "33 August 31 Theme.vgz",
+          "name": "August 31 Theme",
+          "nameJp": "8月31日のテーマ"
+        },
+        {
+          "filename": "34 Date In Yabuki Park.vgz",
+          "name": "Date In Yabuki Park",
+          "nameJp": "矢吹公園でデート"
+        },
+        {
+          "filename": "35 Bar.vgz",
+          "name": "Bar",
+          "nameJp": "BAR"
+        },
+        {
+          "filename": "36 Graduation Scene.vgz",
+          "name": "Graduation Scene",
+          "nameJp": "卒業シーン"
+        },
+        {
+          "filename": "37 After H.vgz",
+          "name": "After H",
+          "nameJp": "アフターH"
+        },
+        {
+          "filename": "38 SE Confession Sucess.vgz",
+          "name": "SE Confession Sucess",
+          "nameJp": "SE 告白成功"
+        },
+        {
+          "filename": "39 Confession Sucess.vgz",
+          "name": "Confession Sucess",
+          "nameJp": "告白成功"
+        },
+        {
+          "filename": "40 Confession Friend.vgz",
+          "name": "Confession Friend",
+          "nameJp": "告白友達"
+        },
+        {
+          "filename": "41 SE Confession Failure 1.vgz",
+          "name": "SE Confession Failure 1",
+          "nameJp": "SE 告白失敗1"
+        },
+        {
+          "filename": "42 SE Confession Failure 2.vgz",
+          "name": "SE Confession Failure 2",
+          "nameJp": "SE 告白失敗2"
+        },
+        {
+          "filename": "43 SE Confession Failure 3.vgz",
+          "name": "SE Confession Failure 3",
+          "nameJp": "SE 告白失敗3"
+        },
+        {
+          "filename": "44 SE Confession Failure 4.vgz",
+          "name": "SE Confession Failure 4",
+          "nameJp": "SE 告白失敗4"
+        },
+        {
+          "filename": "45 Confession Failure.vgz",
+          "name": "Confession Failure",
+          "nameJp": "告白失敗"
+        },
+        {
+          "filename": "46 Ending.vgz",
+          "name": "Ending",
+          "nameJp": "エンディング"
+        },
+        {
+          "filename": "47 Piano.vgz",
+          "name": "Piano",
+          "nameJp": ""
+        },
+        {
+          "filename": "48 Violin.vgz",
+          "name": "Violin",
+          "nameJp": ""
+        },
+        {
+          "filename": "49 Piano (Unused).vgz",
+          "name": "Piano (Unused)",
+          "nameJp": ""
+        },
+        {
+          "filename": "50 Violin (Unused).vgz",
+          "name": "Violin (Unused)",
+          "nameJp": ""
+        },
+        {
+          "filename": "51 Unused 1.vgz",
+          "name": "Unused 1",
+          "nameJp": ""
+        },
+        {
+          "filename": "52 Unused 2.vgz",
+          "name": "Unused 2",
+          "nameJp": ""
+        },
+        {
+          "filename": "53 Unused 3.vgz",
+          "name": "Unused 3",
+          "nameJp": ""
+        },
+        {
+          "filename": "54 Unused 4.vgz",
+          "name": "Unused 4",
+          "nameJp": ""
+        },
+        {
+          "filename": "55 Unused 5.vgz",
+          "name": "Unused 5",
+          "nameJp": ""
         }
       ]
     },

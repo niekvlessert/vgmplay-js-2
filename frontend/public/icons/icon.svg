@@ -1,29 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Background -->
   <rect width="512" height="512" fill="#1a1a2e"/>
-  <rect x="20" y="20" width="472" height="472" fill="#2a2a4e" stroke="#4a4a6a" stroke-width="4"/>
-
-  <!-- Controller body -->
-  <path d="M100 200 Q100 160 140 160 L220 160 L220 180 L292 180 L292 160 L372 160 Q412 160 412 200 L412 320 Q412 380 352 380 L300 380 Q280 380 260 340 L252 340 Q232 380 212 380 L160 380 Q100 380 100 320 Z"
-        fill="#2a2a4e" stroke="#00e5ff" stroke-width="6"/>
-
-  <!-- D-pad -->
-  <rect x="140" y="230" width="24" height="70" fill="#4a4a6a" stroke="#00e5ff" stroke-width="2"/>
-  <rect x="117" y="253" width="70" height="24" fill="#4a4a6a" stroke="#00e5ff" stroke-width="2"/>
-
-  <!-- Action buttons -->
-  <circle cx="340" cy="240" r="18" fill="#ff00ff" stroke="#00e5ff" stroke-width="2"/>
-  <circle cx="380" cy="265" r="18" fill="#00e5ff" stroke="#4a4a6a" stroke-width="2"/>
-  <circle cx="340" cy="290" r="18" fill="#ffff00" stroke="#00e5ff" stroke-width="2"/>
-  <circle cx="300" cy="265" r="18" fill="#00ff88" stroke="#00e5ff" stroke-width="2"/>
-
-  <!-- Center buttons -->
-  <rect x="230" y="250" width="24" height="12" rx="3" fill="#4a4a6a"/>
-  <rect x="258" y="250" width="24" height="12" rx="3" fill="#4a4a6a"/>
-
-  <!-- Glow effect on border -->
-  <rect x="20" y="20" width="472" height="472" fill="none" stroke="#00e5ff" stroke-width="2" opacity="0.5"/>
-
-  <!-- "9" text -->
-  <text x="256" y="440" font-family="monospace" font-size="48" font-weight="bold" fill="#00e5ff" text-anchor="middle">9-PLAYER</text>
+  <rect x="40" y="40" width="432" height="432" fill="#2a2a4e" stroke="#00e5ff" stroke-width="8"/>
+  <text x="256" y="300" font-family="monospace" font-size="200" font-weight="bold" fill="#00e5ff" text-anchor="middle">9</text>
+  <text x="256" y="420" font-family="monospace" font-size="60" fill="#ffff00" text-anchor="middle">PLAYER</text>
 </svg>

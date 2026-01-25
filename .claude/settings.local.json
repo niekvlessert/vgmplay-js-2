@@ -16,7 +16,11 @@
       "Bash(npm run dev:*)",
       "Bash(curl:*)",
       "Bash(npm install:*)",
-      "Bash(npm run generate-manifest:*)"
+      "Bash(npm run generate-manifest:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git push)"
     ]
   }
 }

@@ -87,7 +87,7 @@ function App() {
     <div className="app">
       <header className="header">
         <h1 className="title">VGM PLAYER</h1>
-        <p className="subtitle">VIDEO GAME MUSIC ARCHIVE</p>
+        <p className="subtitle">Honux's Video Game Music Archive</p>
       </header>
 
       <main className="main-content">
@@ -228,8 +228,10 @@ function App() {
                 onTogglePlayback={player.togglePlayback}
                 onNext={player.nextTrack}
                 onPrev={player.prevTrack}
-                onStop={player.stop}
-                onSelectTrack={player.play}
+              onStop={player.stop}
+              onSelectTrack={player.play}
+              frequencyData={player.frequencyData}
+              remaining={player.remaining}
               />
             )}
           </>

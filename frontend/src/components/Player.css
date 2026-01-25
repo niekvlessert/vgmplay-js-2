@@ -30,14 +30,175 @@
 
 .cover-image {
   flex-shrink: 0;
-  width: 100px;
-  height: 100px;
+  width: 140px;
+  height: 140px;
   border: 3px solid var(--border-color);
   background: #2a2a4e;
   overflow: hidden;
   box-shadow:
     0 0 15px rgba(0, 255, 247, 0.2),
     inset 0 0 10px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.cover-image:hover {
+  transform: scale(1.05);
+  box-shadow:
+    0 0 25px rgba(0, 255, 247, 0.4),
+    inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Image Overlay for expanded view */
+.image-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  cursor: pointer;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.overlay-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expanded-image-wrapper {
+  position: relative;
+  border: 4px solid var(--accent-cyan);
+  box-shadow: 0 0 40px rgba(0, 255, 247, 0.5);
+  animation: scaleIn 0.2s ease-out;
+}
+
+.expanded-image-wrapper img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+
+/* Overlay track info - default: overlay on image */
+.overlay-track-info {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 2px solid var(--border-color);
+  animation: fadeIn 0.3s ease-out;
+  z-index: 1;
+}
+
+.overlay-title {
+  font-size: 14px;
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px var(--accent-cyan);
+  margin-bottom: 8px;
+}
+
+.overlay-game {
+  font-size: 12px;
+  color: var(--accent-yellow);
+  margin-bottom: 4px;
+}
+
+.overlay-system {
+  font-size: 10px;
+  color: var(--accent-magenta);
+  margin-bottom: 8px;
+}
+
+.overlay-length {
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.overlay-remaining {
+  font-size: 10px;
+  color: var(--accent-green);
+  text-shadow: 0 0 6px rgba(0, 255, 247, 0.6);
+  margin-top: 4px;
+}
+
+/* Overlay visualizer - default: overlay on image */
+.overlay-visualizer {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  height: 160px;
+  z-index: 1;
+}
+
+.overlay-visualizer canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Mobile portrait mode: stack vertically */
+@media (orientation: portrait) {
+  .overlay-content {
+    flex-direction: column;
+    gap: 12px;
+    max-height: 100vh;
+    padding: 12px;
+    overflow: auto;
+  }
+
+  .overlay-track-info {
+    position: static;
+    order: 1;
+    width: 100%;
+    max-width: 90vw;
+  }
+
+  .expanded-image-wrapper {
+    order: 2;
+    max-width: 90vw;
+    max-height: 50vh;
+  }
+
+  .expanded-image-wrapper img {
+    object-fit: contain;
+  }
+
+  .overlay-visualizer {
+    position: static;
+    order: 3;
+    width: 100%;
+    max-width: 90vw;
+    height: 100px;
+  }
 }
 
 .cover-image img {
@@ -81,6 +242,11 @@
 .track-length {
   font-size: 10px;
   color: var(--text-secondary);
+}
+.track-remaining {
+  font-size: 10px;
+  color: var(--accent-green);
+  text-shadow: 0 0 6px rgba(0,255,247,0.6);
 }
 
 /* Controls */
@@ -128,32 +294,30 @@
   box-shadow: 0 0 10px rgba(255, 0, 255, 0.3);
 }
 
-/* Visualizer */
 .visualizer {
   display: flex;
   justify-content: center;
-  align-items: flex-end;
-  gap: 4px;
-  height: 40px;
+  align-items: center;
+  height: 120px;
   margin-bottom: 20px;
   padding: 8px;
   background: rgba(0, 0, 0, 0.3);
   border: 2px solid var(--border-color);
 }
-
-.visualizer-bar {
-  width: 8px;
-  background: linear-gradient(180deg, var(--accent-cyan) 0%, var(--accent-green) 100%);
-  transition: height 0.1s;
+.visualizer canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
-
-.visualizer-bar.active {
-  animation: visualize 0.5s ease-in-out infinite alternate;
-}
-
-@keyframes visualize {
-  0% { height: 4px; }
-  100% { height: 32px; }
+.visualizer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 120px;
+  margin-bottom: 20px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--border-color);
 }
 
 /* Track List */

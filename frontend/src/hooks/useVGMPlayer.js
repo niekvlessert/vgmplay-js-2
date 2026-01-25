@@ -8,6 +8,10 @@ export function useVGMPlayer() {
   const [trackInfo, setTrackInfo] = useState(null)
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0)
   const [frequencyData, setFrequencyData] = useState(new Array(16).fill(0))
+  const [elapsed, setElapsed] = useState(0)
+  const [uiElapsed, setUiElapsed] = useState(0)
+  const uiStartRef = useRef(null)
+  const nextTrackGuardRef = useRef(0)
 
   const contextRef = useRef(null)
   const nodeRef = useRef(null)
@@ -19,6 +23,7 @@ export function useVGMPlayer() {
   const buffersRef = useRef([[], []])
   const isGeneratingRef = useRef(false)
   const sampleRateRef = useRef(44100)
+  const nextTrackRef = useRef(null)
 
   // Load scripts
   useEffect(() => {
@@ -57,6 +62,16 @@ export function useVGMPlayer() {
       sampleRateRef.current = contextRef.current.sampleRate
       nodeRef.current = contextRef.current.createScriptProcessor(16384, 2, 2)
 
+      // Setup analyser for real-time frequency data visualization
+      const analyser = contextRef.current.createAnalyser()
+      // Small FFT to get a decent frequency resolution for visualization
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.8
+      analyserRef.current = analyser
+      // Route the script processor through the analyser to destination
+      nodeRef.current.connect(analyser)
+      analyser.connect(contextRef.current.destination)
+
       const Module = window.Module
       functionsRef.current = {
         VGMPlay_Init: Module.cwrap('VGMPlay_Init'),
@@ -82,11 +97,80 @@ export function useVGMPlayer() {
       functionsRef.current.SetSampleRate(sampleRateRef.current)
       functionsRef.current.VGMPlay_Init2()
 
+      // Optional: silence meaningless/debug prints from the loaded vgmplay-js library
+      try {
+        const origLog = console.log
+        console.log = (...args) => {
+          const text = args.map((a) => (typeof a === 'string' ? a : typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')
+          // Heuristic: skip logs that look like random non-ASCII noise
+          if (text.length > 40 && /[^\x20-\x7E]+/.test(text)) {
+            return
+          }
+          origLog.apply(console, args)
+        }
+      } catch (e) {
+        // ignore silently
+      }
       setIsReady(true)
     } catch (e) {
       console.error('Failed to init player:', e)
     }
   }, [])
+
+  // Frequency data loop: sample frequency data from the analyser and map it to 16 bins
+  useEffect(() => {
+    if (!analyserRef.current || !isReady) return
+    let rafId = null
+    const freqUint8 = new Uint8Array(analyserRef.current.frequencyBinCount)
+
+    const tick = () => {
+      try {
+        analyserRef.current.getByteFrequencyData(freqUint8)
+        // Downsample to 16 bins
+        const bins = 16
+        const binSize = Math.max(1, Math.floor(freqUint8.length / bins))
+        const next = []
+        for (let i = 0; i < bins; i++) {
+          let sum = 0
+          const start = i * binSize
+          for (let j = 0; j < binSize; j++) {
+            const idx = start + j
+            if (idx < freqUint8.length) sum += freqUint8[idx]
+          }
+          next[i] = Math.round(sum / binSize)
+        }
+        setFrequencyData(next)
+      } catch (_) {
+        // ignore
+      }
+      rafId = requestAnimationFrame(tick)
+    }
+    rafId = requestAnimationFrame(tick)
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  }, [isReady])
+
+  // UI elapsed timer for display only (not for auto-advance)
+  useEffect(() => {
+    if (isPlaying && currentTrack) {
+      uiStartRef.current = Date.now()
+      const dur = currentTrack?.length || 0
+      const id = setInterval(() => {
+        const t = ((Date.now() - uiStartRef.current) / 1000) | 0
+        const clamped = Math.min(dur, t)
+        setUiElapsed(clamped)
+      }, 250)
+      return () => clearInterval(id)
+    } else {
+      setUiElapsed(0)
+      uiStartRef.current = null
+    }
+  }, [isPlaying, currentTrack])
+
+  // Remove separate effect for nextTrack; nextTrack will set its own ref when called
+  // Note: avoid referencing nextTrack in a useEffect before nextTrack is defined
+  // Removed elapsed-based auto-advance to rely solely on VGMEnded debounce logic
 
   const loadZip = useCallback(async (url) => {
     if (!isReady) return
@@ -210,6 +294,17 @@ export function useVGMPlayer() {
     contextRef.current = new AudioContext()
     nodeRef.current = contextRef.current.createScriptProcessor(16384, 2, 2)
 
+    // Setup or recreate analyser in the current context for visualization
+    if (analyserRef.current) {
+      try {
+        analyserRef.current.disconnect()
+      } catch (e) {}
+    }
+    const newAnalyser = contextRef.current.createAnalyser()
+    newAnalyser.fftSize = 256
+    newAnalyser.smoothingTimeConstant = 0.8
+    analyserRef.current = newAnalyser
+
     // Clear buffers
     buffersRef.current[0] = new Array(16384).fill(0)
     buffersRef.current[1] = new Array(16384).fill(0)
@@ -238,13 +333,30 @@ export function useVGMPlayer() {
     // Generate initial buffer
     generateBuffer()
 
+    // Wire up the audio graph: ScriptProcessor -> Analyser -> Destination
+    try {
+      nodeRef.current.disconnect()
+    } catch (e) {}
+    if (analyserRef.current) {
+      nodeRef.current.connect(analyserRef.current)
+      analyserRef.current.connect(contextRef.current.destination)
+    } else {
+      nodeRef.current.connect(contextRef.current.destination)
+    }
+
     nodeRef.current.onaudioprocess = (e) => {
       const output0 = e.outputBuffer.getChannelData(0)
       const output1 = e.outputBuffer.getChannelData(1)
 
-      if (functionsRef.current.VGMEnded()) {
-        // Auto next track
-        setTimeout(() => nextTrack(), 500)
+    if (functionsRef.current.VGMEnded()) {
+        // Auto next track with guard to avoid double triggers on short tracks
+        const now = Date.now()
+        if (now - nextTrackGuardRef.current > 800) {
+          nextTrackGuardRef.current = now
+          setTimeout(() => {
+            if (nextTrackRef.current) nextTrackRef.current()
+          }, 500)
+        }
         return
       }
 
@@ -255,14 +367,25 @@ export function useVGMPlayer() {
       generateBuffer()
     }
 
-    nodeRef.current.connect(contextRef.current.destination)
+    // Route through analyser for visualization purposes
+    if (analyserRef.current) {
+      nodeRef.current.connect(analyserRef.current)
+      analyserRef.current.connect(contextRef.current.destination)
+    } else {
+      nodeRef.current.connect(contextRef.current.destination)
+    }
     isGeneratingRef.current = true
     setIsPlaying(true)
   }, [isReady, trackList, currentTrackIndex, generateBuffer])
 
   const pause = useCallback(() => {
-    if (nodeRef.current && contextRef.current) {
-      nodeRef.current.disconnect(contextRef.current.destination)
+    if (nodeRef.current) {
+      try {
+        // Disconnect all connections from the ScriptProcessor to avoid context mismatches
+        nodeRef.current.disconnect()
+      } catch (e) {
+        // ignore
+      }
     }
     setIsPlaying(false)
   }, [])
@@ -278,6 +401,7 @@ export function useVGMPlayer() {
       functionsRef.current.CloseVGMFile()
     }
     isGeneratingRef.current = false
+    setElapsed(0)
     setIsPlaying(false)
     setCurrentTrack(null)
     setTrackInfo(null)
@@ -289,7 +413,15 @@ export function useVGMPlayer() {
     } else if (currentTrack) {
       // Resume
       if (contextRef.current && nodeRef.current) {
-        nodeRef.current.connect(contextRef.current.destination)
+        if (analyserRef.current) {
+          try {
+            nodeRef.current.disconnect()
+          } catch (e) {}
+          nodeRef.current.connect(analyserRef.current)
+          analyserRef.current.connect(contextRef.current.destination)
+        } else {
+          nodeRef.current.connect(contextRef.current.destination)
+        }
         setIsPlaying(true)
       }
     } else {
@@ -297,17 +429,25 @@ export function useVGMPlayer() {
     }
   }, [isPlaying, currentTrack, pause, play])
 
-  const nextTrack = useCallback(() => {
-    const nextIdx = (currentTrackIndex + 1) % trackList.length
-    stop()
-    setTimeout(() => play(nextIdx), 100)
-  }, [currentTrackIndex, trackList.length, stop, play])
+const nextTrack = useCallback(() => {
+  // persist latest function reference to avoid closure issues when called from events
+  nextTrackRef.current = nextTrack
+  // compute next index and switch
+  const nextIdx = (currentTrackIndex + 1) % trackList.length
+  stop()
+  setTimeout(() => play(nextIdx), 100)
+}, [currentTrackIndex, trackList.length, stop, play])
 
   const prevTrack = useCallback(() => {
     const prevIdx = currentTrackIndex === 0 ? trackList.length - 1 : currentTrackIndex - 1
     stop()
     setTimeout(() => play(prevIdx), 100)
   }, [currentTrackIndex, trackList.length, stop, play])
+
+  // Keep latest nextTrack in a ref to avoid closures across events
+  useEffect(() => {
+    nextTrackRef.current = nextTrack
+  }, [nextTrack])
 
   return {
     isReady,
@@ -316,6 +456,8 @@ export function useVGMPlayer() {
     currentTrackIndex,
     trackList,
     trackInfo,
+    frequencyData,
+    remaining: Math.max(0, (currentTrack?.length ?? 0) - uiElapsed),
     loadZip,
     play,
     pause,

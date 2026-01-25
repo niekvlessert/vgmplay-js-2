@@ -86,6 +86,11 @@ function App() {
   return (
     <div className="app">
       <header className="header">
+        <img
+          src="https://api.visitorbadge.io/api/visitors?path=https%3A%2F%2F9-player.vercel.app&label=VISITORS&labelColor=%231a1a2e&countColor=%2300e5ff"
+          alt="visitor count"
+          className="visitor-counter"
+        />
         <h1 className="title">NINE-PLAYER</h1>
         <p className="subtitle">Honux's Video Game Music Archive</p>
       </header>
@@ -135,20 +140,6 @@ function App() {
                 {error}
               </p>
             )}
-            <div style={{
-              marginTop: '40px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '8px'
-            }}>
-              <span style={{ fontSize: '8px', color: 'var(--text-secondary)' }}>VISITORS</span>
-              <img
-                src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2F9-player.vercel.app&count_bg=%231a1a2e&title_bg=%232a2a4e&icon=&icon_color=%23E7E7E7&title=visits&edge_flat=true"
-                alt="visitor count"
-                style={{ height: '20px' }}
-              />
-            </div>
           </div>
         )}
 

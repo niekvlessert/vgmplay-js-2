@@ -24,6 +24,13 @@
   opacity: 0.5;
 }
 
+.visitor-counter {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  height: 20px;
+}
+
 .title {
   font-size: 24px;
   color: var(--accent-cyan);

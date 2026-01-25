@@ -1,0 +1,23 @@
+{
+  "name": "9-Player (舊-Player)",
+  "short_name": "9-Player",
+  "description": "브라우저에서 레트로 게임 음악(VGM)을 재생하는 모던 웹 플레이어",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#1a1a2e",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

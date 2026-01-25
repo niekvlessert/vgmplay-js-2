@@ -1,6 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
   <rect width="512" height="512" fill="#1a1a2e"/>
-  <rect x="40" y="40" width="432" height="432" fill="#2a2a4e" stroke="#00e5ff" stroke-width="8"/>
-  <text x="256" y="300" font-family="monospace" font-size="200" font-weight="bold" fill="#00e5ff" text-anchor="middle">9</text>
-  <text x="256" y="420" font-family="monospace" font-size="60" fill="#ffff00" text-anchor="middle">PLAYER</text>
+  <rect x="32" y="32" width="448" height="448" fill="#2a2a4e" stroke="#00e5ff" stroke-width="8" rx="24"/>
+
+  <!-- Large 9 in center -->
+  <text x="256" y="320" font-family="monospace" font-size="280" font-weight="bold" fill="#00e5ff" text-anchor="middle">9</text>
+
+  <!-- Music note (top-left) - hot pink -->
+  <g transform="translate(70, 70)">
+    <ellipse cx="28" cy="65" rx="20" ry="14" fill="#ff1493" transform="rotate(-20, 28, 65)"/>
+    <rect x="44" y="8" width="7" height="60" fill="#ff1493"/>
+    <path d="M51 8 Q78 22 51 42" stroke="#ff1493" stroke-width="7" fill="none"/>
+  </g>
+
+  <!-- D-pad (bottom-left) -->
+  <g transform="translate(70, 380)">
+    <rect x="0" y="22" width="56" height="18" rx="3" fill="#ffff00"/>
+    <rect x="19" y="0" width="18" height="62" rx="3" fill="#ffff00"/>
+  </g>
+
+  <!-- Two buttons (bottom-right) -->
+  <g transform="translate(380, 390)">
+    <circle cx="0" cy="20" r="18" fill="#ff1493"/>
+    <circle cx="50" cy="20" r="18" fill="#00e5ff"/>
+  </g>
 </svg>

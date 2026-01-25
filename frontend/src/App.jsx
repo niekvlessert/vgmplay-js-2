@@ -92,9 +92,8 @@ function App() {
           alt="visitor count"
           className="visitor-counter"
         />
-        <span className="version">v{VERSION}</span>
         <h1 className="title">NINE-PLAYER</h1>
-        <p className="subtitle">Honux's Video Game Music Archive</p>
+        <p className="subtitle">Honux's Video Game Music Archive <span className="version">v{VERSION}</span></p>
       </header>
 
       <main className="main-content">

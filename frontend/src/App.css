@@ -32,12 +32,10 @@
 }
 
 .version {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   font-size: 8px;
   color: var(--text-secondary);
   opacity: 0.6;
+  margin-left: 8px;
 }
 
 .title {

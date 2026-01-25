@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-25T03:07:28.784Z",
+  "generatedAt": "2026-01-25T03:10:24.520Z",
   "games": [
     {
       "id": "Daikoukai_Jidai_II__FM_Towns_",
@@ -246,14 +246,14 @@
       ]
     },
     {
-      "id": "Doukyusei__NEC_PC_9801_",
-      "zipFile": "Doukyusei_(NEC_PC-9801).zip",
+      "id": "Doukyusei__FM_Towns_",
+      "zipFile": "Doukyusei_(FM_Towns).zip",
       "title": "Doukyusei",
       "titleJp": "同級生",
-      "system": "NEC PC-9801",
+      "system": "FM Towns",
       "author": "Manabu Kunieda",
-      "coverImage": "covers/Doukyusei__NEC_PC_9801_.png",
-      "trackCount": 55,
+      "coverImage": "covers/Doukyusei__FM_Towns_.png",
+      "trackCount": 49,
       "tracks": [
         {
           "filename": "01 Title.vgz",
@@ -426,107 +426,77 @@
           "nameJp": "矢吹公園でデート"
         },
         {
-          "filename": "35 Bar.vgz",
-          "name": "Bar",
-          "nameJp": "BAR"
-        },
-        {
-          "filename": "36 Graduation Scene.vgz",
+          "filename": "35 Graduation Scene.vgz",
           "name": "Graduation Scene",
           "nameJp": "卒業シーン"
         },
         {
-          "filename": "37 After H.vgz",
+          "filename": "36 After H.vgz",
           "name": "After H",
           "nameJp": "アフターH"
         },
         {
-          "filename": "38 SE Confession Sucess.vgz",
+          "filename": "37 SE Confession Sucess.vgz",
           "name": "SE Confession Sucess",
           "nameJp": "SE 告白成功"
         },
         {
-          "filename": "39 Confession Sucess.vgz",
+          "filename": "38 Confession Sucess.vgz",
           "name": "Confession Sucess",
           "nameJp": "告白成功"
         },
         {
-          "filename": "40 Confession Friend.vgz",
+          "filename": "39 Confession Friend.vgz",
           "name": "Confession Friend",
           "nameJp": "告白友達"
         },
         {
-          "filename": "41 SE Confession Failure 1.vgz",
+          "filename": "40 SE Confession Failure 1.vgz",
           "name": "SE Confession Failure 1",
           "nameJp": "SE 告白失敗1"
         },
         {
-          "filename": "42 SE Confession Failure 2.vgz",
+          "filename": "41 SE Confession Failure 2.vgz",
           "name": "SE Confession Failure 2",
           "nameJp": "SE 告白失敗2"
         },
         {
-          "filename": "43 SE Confession Failure 3.vgz",
+          "filename": "42 SE Confession Failure 3.vgz",
           "name": "SE Confession Failure 3",
           "nameJp": "SE 告白失敗3"
         },
         {
-          "filename": "44 SE Confession Failure 4.vgz",
+          "filename": "43 SE Confession Failure 4.vgz",
           "name": "SE Confession Failure 4",
           "nameJp": "SE 告白失敗4"
         },
         {
-          "filename": "45 Confession Failure.vgz",
+          "filename": "44 Confession Failure.vgz",
           "name": "Confession Failure",
           "nameJp": "告白失敗"
         },
         {
-          "filename": "46 Ending.vgz",
+          "filename": "45 Ending.vgz",
           "name": "Ending",
           "nameJp": "エンディング"
         },
         {
-          "filename": "47 Piano.vgz",
+          "filename": "46 Piano.vgz",
           "name": "Piano",
           "nameJp": ""
         },
         {
-          "filename": "48 Violin.vgz",
+          "filename": "47 Violin.vgz",
           "name": "Violin",
           "nameJp": ""
         },
         {
-          "filename": "49 Piano (Unused).vgz",
-          "name": "Piano (Unused)",
-          "nameJp": ""
-        },
-        {
-          "filename": "50 Violin (Unused).vgz",
-          "name": "Violin (Unused)",
-          "nameJp": ""
-        },
-        {
-          "filename": "51 Unused 1.vgz",
-          "name": "Unused 1",
-          "nameJp": ""
-        },
-        {
-          "filename": "52 Unused 2.vgz",
-          "name": "Unused 2",
-          "nameJp": ""
-        },
-        {
-          "filename": "53 Unused 3.vgz",
-          "name": "Unused 3",
-          "nameJp": ""
-        },
-        {
-          "filename": "54 Unused 4.vgz",
+          "filename": "48 Unused 4.vgz",
           "name": "Unused 4",
           "nameJp": ""
         },
         {
-          "filename": "55 Unused 5.vgz",
+          "filename": "49 Unused 5.vgz",
           "name": "Unused 5",
           "nameJp": ""
         }

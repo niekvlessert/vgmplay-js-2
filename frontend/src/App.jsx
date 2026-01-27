@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useVGMPlayer } from './hooks/useVGMPlayer'
 import { Player } from './components/Player'
-import { VERSION } from './constants/version'
 import './App.css'
 
 function App() {
@@ -93,7 +92,7 @@ function App() {
           className="visitor-counter"
         />
         <h1 className="title">NINE-PLAYER</h1>
-        <p className="subtitle">Honux's Video Game Music Archive <span className="version">v{VERSION}</span></p>
+        <p className="subtitle">Honux's Video Game Music Archive <span className="version">v{__APP_VERSION__}</span></p>
       </header>
 
       <main className="main-content">

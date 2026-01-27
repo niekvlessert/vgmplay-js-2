@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-25T05:20:39.781Z",
+  "generatedAt": "2026-01-27T05:38:19.100Z",
   "games": [
     {
       "id": "Daikoukai_Jidai__Sharp_X68000_",
@@ -242,6 +242,133 @@
           "filename": "22 Ending A.vgz",
           "name": "Ending A",
           "nameJp": "エンディングA"
+        }
+      ]
+    },
+    {
+      "id": "Doom__PC_",
+      "zipFile": "Doom_(PC).zip",
+      "title": "Doom",
+      "titleJp": "",
+      "system": "IBM PC/AT",
+      "author": "Robert Prince",
+      "coverImage": "covers/Doom__PC_.png",
+      "trackCount": 23,
+      "tracks": [
+        {
+          "filename": "01 Title Screen.vgz",
+          "name": "Title Screen",
+          "nameJp": ""
+        },
+        {
+          "filename": "02 At Doom's Gate.vgz",
+          "name": "At Doom's Gate",
+          "nameJp": ""
+        },
+        {
+          "filename": "03 The Imp's Song.vgz",
+          "name": "The Imp's Song",
+          "nameJp": ""
+        },
+        {
+          "filename": "04 Dark Halls.vgz",
+          "name": "Dark Halls",
+          "nameJp": ""
+        },
+        {
+          "filename": "05 Kitchen Ace (and Taking Names).vgz",
+          "name": "Kitchen Ace (and Taking Names)",
+          "nameJp": ""
+        },
+        {
+          "filename": "06 Suspense.vgz",
+          "name": "Suspense",
+          "nameJp": ""
+        },
+        {
+          "filename": "07 On the Hunt.vgz",
+          "name": "On the Hunt",
+          "nameJp": ""
+        },
+        {
+          "filename": "08 Demons on the Prey.vgz",
+          "name": "Demons on the Prey",
+          "nameJp": ""
+        },
+        {
+          "filename": "09 Sign of Evil.vgz",
+          "name": "Sign of Evil",
+          "nameJp": ""
+        },
+        {
+          "filename": "10 Hiding the Secrets.vgz",
+          "name": "Hiding the Secrets",
+          "nameJp": ""
+        },
+        {
+          "filename": "11 I Sawed the Demons.vgz",
+          "name": "I Sawed the Demons",
+          "nameJp": ""
+        },
+        {
+          "filename": "12 The Demons from Adrian's Pen.vgz",
+          "name": "The Demons from Adrian's Pen",
+          "nameJp": ""
+        },
+        {
+          "filename": "13 They're Going to Get You.vgz",
+          "name": "They're Going to Get You",
+          "nameJp": ""
+        },
+        {
+          "filename": "14 Sinister.vgz",
+          "name": "Sinister",
+          "nameJp": ""
+        },
+        {
+          "filename": "15 Waltz of the Demons.vgz",
+          "name": "Waltz of the Demons",
+          "nameJp": ""
+        },
+        {
+          "filename": "16 Nobody Told Me About id.vgz",
+          "name": "Nobody Told Me About id",
+          "nameJp": ""
+        },
+        {
+          "filename": "17 Untitled.vgz",
+          "name": "Untitled",
+          "nameJp": ""
+        },
+        {
+          "filename": "18 Donna to the Rescue.vgz",
+          "name": "Donna to the Rescue",
+          "nameJp": ""
+        },
+        {
+          "filename": "19 Deep into the Code.vgz",
+          "name": "Deep into the Code",
+          "nameJp": ""
+        },
+        {
+          "filename": "20 Facing the Spider.vgz",
+          "name": "Facing the Spider",
+          "nameJp": ""
+        },
+        {
+          "filename": "21 Intermission from Doom.vgz",
+          "name": "Intermission from Doom",
+          "nameJp": ""
+        },
+        {
+          "filename": "22 The End of Doom.vgz",
+          "name": "The End of Doom",
+          "nameJp": ""
+        },
+        {
+          "filename": "23 Sweet Little Dead Bunny.vgz",
+          "name": "Sweet Little Dead Bunny",
+          "nameJp": ""
         }
       ]
     },
@@ -1144,6 +1271,538 @@
       ]
     },
     {
+      "id": "Monkey_Island_2___LeChuck_s_Revenge__IBM_PC_AT_",
+      "zipFile": "Monkey_Island_2_-_LeChuck's_Revenge_(IBM_PC_AT).zip",
+      "title": "Monkey Island 2: LeChuck's Revenge",
+      "titleJp": "",
+      "system": "IBM PC/AT",
+      "author": "Michael Z. Land, Peter McConnell, Clint Bajakian, Robin Goldstein, J. Anthony White",
+      "coverImage": "covers/Monkey_Island_2___LeChuck_s_Revenge__IBM_PC_AT_.png",
+      "trackCount": 104,
+      "tracks": [
+        {
+          "filename": "001 Introduction.vgz",
+          "name": "Introduction",
+          "nameJp": ""
+        },
+        {
+          "filename": "002 At the Campfire (from Introduction, with coda).vgz",
+          "name": "At the Campfire (from Introduction, with coda)",
+          "nameJp": ""
+        },
+        {
+          "filename": "003 Part Scroll.vgz",
+          "name": "Part Scroll",
+          "nameJp": ""
+        },
+        {
+          "filename": "004 Largo LaGrande.vgz",
+          "name": "Largo LaGrande",
+          "nameJp": ""
+        },
+        {
+          "filename": "005 Woodtick.vgz",
+          "name": "Woodtick",
+          "nameJp": ""
+        },
+        {
+          "filename": "006 The Bloody Lip Bar.vgz",
+          "name": "The Bloody Lip Bar",
+          "nameJp": ""
+        },
+        {
+          "filename": "007 Monkey Ragtime.vgz",
+          "name": "Monkey Ragtime",
+          "nameJp": ""
+        },
+        {
+          "filename": "008 Wally B. Feed.vgz",
+          "name": "Wally B. Feed",
+          "nameJp": ""
+        },
+        {
+          "filename": "009 Carpenter.vgz",
+          "name": "Carpenter",
+          "nameJp": ""
+        },
+        {
+          "filename": "010 Mad Marty and the Men of Low Moral Fiber.vgz",
+          "name": "Mad Marty and the Men of Low Moral Fiber",
+          "nameJp": ""
+        },
+        {
+          "filename": "011 Swamp Rot Inn with Largo's Room.vgz",
+          "name": "Swamp Rot Inn with Largo's Room",
+          "nameJp": ""
+        },
+        {
+          "filename": "012 Scabb Island Beach and Overview.vgz",
+          "name": "Scabb Island Beach and Overview",
+          "nameJp": ""
+        },
+        {
+          "filename": "013 At the Campfire (clean opening, looped).vgz",
+          "name": "At the Campfire (clean opening, looped)",
+          "nameJp": ""
+        },
+        {
+          "filename": "014 Swamp with International House of Mojo.vgz",
+          "name": "Swamp with International House of Mojo",
+          "nameJp": ""
+        },
+        {
+          "filename": "015 Cemetery.vgz",
+          "name": "Cemetery",
+          "nameJp": ""
+        },
+        {
+          "filename": "016 Grave Robbery.vgz",
+          "name": "Grave Robbery",
+          "nameJp": ""
+        },
+        {
+          "filename": "017 Vanquishing Largo.vgz",
+          "name": "Vanquishing Largo",
+          "nameJp": ""
+        },
+        {
+          "filename": "018 Swamp After Largo Gone.vgz",
+          "name": "Swamp After Largo Gone",
+          "nameJp": ""
+        },
+        {
+          "filename": "019 Meeting Captain Dread.vgz",
+          "name": "Meeting Captain Dread",
+          "nameJp": ""
+        },
+        {
+          "filename": "020 Captain Dread's Theme.vgz",
+          "name": "Captain Dread's Theme",
+          "nameJp": ""
+        },
+        {
+          "filename": "021 Unfold Captain Dread's Map.vgz",
+          "name": "Unfold Captain Dread's Map",
+          "nameJp": ""
+        },
+        {
+          "filename": "022 Where Do You Wanna Go.vgz",
+          "name": "Where Do You Wanna Go?",
+          "nameJp": ""
+        },
+        {
+          "filename": "023 Travelling with Captain Dread.vgz",
+          "name": "Travelling with Captain Dread",
+          "nameJp": ""
+        },
+        {
+          "filename": "024 Meanwhile... in LeChuck's Fortress.vgz",
+          "name": "Meanwhile... in LeChuck's Fortress",
+          "nameJp": ""
+        },
+        {
+          "filename": "025 Getting Arrested.vgz",
+          "name": "Getting Arrested",
+          "nameJp": ""
+        },
+        {
+          "filename": "026 Talking to Governor Phatt.vgz",
+          "name": "Talking to Governor Phatt",
+          "nameJp": ""
+        },
+        {
+          "filename": "027 Phatt Island Jail.vgz",
+          "name": "Phatt Island Jail",
+          "nameJp": ""
+        },
+        {
+          "filename": "028 Phatt Island Pier and Overview.vgz",
+          "name": "Phatt Island Pier and Overview",
+          "nameJp": ""
+        },
+        {
+          "filename": "029 Dark Alley Behind Street Casino.vgz",
+          "name": "Dark Alley Behind Street Casino",
+          "nameJp": ""
+        },
+        {
+          "filename": "030 Street Casino.vgz",
+          "name": "Street Casino",
+          "nameJp": ""
+        },
+        {
+          "filename": "031 Outside Governor Phatt's Mansion.vgz",
+          "name": "Outside Governor Phatt's Mansion",
+          "nameJp": ""
+        },
+        {
+          "filename": "032 Guard Blocking the Stairs.vgz",
+          "name": "Guard Blocking the Stairs",
+          "nameJp": ""
+        },
+        {
+          "filename": "033 The Mansion's Lobby.vgz",
+          "name": "The Mansion's Lobby",
+          "nameJp": ""
+        },
+        {
+          "filename": "034 Phatt's Bedroom.vgz",
+          "name": "Phatt's Bedroom",
+          "nameJp": ""
+        },
+        {
+          "filename": "035 Waterfall.vgz",
+          "name": "Waterfall",
+          "nameJp": ""
+        },
+        {
+          "filename": "036 Passage Behind Waterfall.vgz",
+          "name": "Passage Behind Waterfall",
+          "nameJp": ""
+        },
+        {
+          "filename": "037 Rum Roger's Island.vgz",
+          "name": "Rum Roger's Island",
+          "nameJp": ""
+        },
+        {
+          "filename": "038 Rom Roger's Cottage.vgz",
+          "name": "Rom Roger's Cottage",
+          "nameJp": ""
+        },
+        {
+          "filename": "039 Drinking Contest - Guybrush Loses.vgz",
+          "name": "Drinking Contest - Guybrush Loses",
+          "nameJp": ""
+        },
+        {
+          "filename": "040 Drinking Contest - Guybrush Wins His Turn.vgz",
+          "name": "Drinking Contest - Guybrush Wins His Turn",
+          "nameJp": ""
+        },
+        {
+          "filename": "041 Drinking Contest - Rum Rogers Loses.vgz",
+          "name": "Drinking Contest - Rum Rogers Loses",
+          "nameJp": ""
+        },
+        {
+          "filename": "042 Trapdoor.vgz",
+          "name": "Trapdoor",
+          "nameJp": ""
+        },
+        {
+          "filename": "043 Cottage Cellar - Chute at Wrong Angle.vgz",
+          "name": "Cottage Cellar - Chute at Wrong Angle",
+          "nameJp": ""
+        },
+        {
+          "filename": "044 Cottage Cellar - Chute at Correct Angle.vgz",
+          "name": "Cottage Cellar - Chute at Correct Angle",
+          "nameJp": ""
+        },
+        {
+          "filename": "045 Booty Island.vgz",
+          "name": "Booty Island",
+          "nameJp": ""
+        },
+        {
+          "filename": "046 Ville de la Booty Town Square.vgz",
+          "name": "Ville de la Booty Town Square",
+          "nameJp": ""
+        },
+        {
+          "filename": "047 Antiques Shop.vgz",
+          "name": "Antiques Shop",
+          "nameJp": ""
+        },
+        {
+          "filename": "048 Costume Shop.vgz",
+          "name": "Costume Shop",
+          "nameJp": ""
+        },
+        {
+          "filename": "049 Spitting Contest.vgz",
+          "name": "Spitting Contest",
+          "nameJp": ""
+        },
+        {
+          "filename": "050 Stan's Previously Owned Coffins.vgz",
+          "name": "Stan's Previously Owned Coffins",
+          "nameJp": ""
+        },
+        {
+          "filename": "051 Crypt.vgz",
+          "name": "Crypt",
+          "nameJp": ""
+        },
+        {
+          "filename": "052 Ash-2-Life on Rapp Scallion.vgz",
+          "name": "Ash-2-Life on Rapp Scallion",
+          "nameJp": ""
+        },
+        {
+          "filename": "053 Rapp Dead Again.vgz",
+          "name": "Rapp Dead Again",
+          "nameJp": ""
+        },
+        {
+          "filename": "054 Rapp Dead, His Soul at Peace.vgz",
+          "name": "Rapp Dead, His Soul at Peace",
+          "nameJp": ""
+        },
+        {
+          "filename": "055 Searching for the Mad Monkey.vgz",
+          "name": "Searching for the Mad Monkey",
+          "nameJp": ""
+        },
+        {
+          "filename": "056 Jumping In.vgz",
+          "name": "Jumping In",
+          "nameJp": ""
+        },
+        {
+          "filename": "057 Diving Deeper.vgz",
+          "name": "Diving Deeper",
+          "nameJp": ""
+        },
+        {
+          "filename": "058 Finding the Mad Monkey.vgz",
+          "name": "Finding the Mad Monkey",
+          "nameJp": ""
+        },
+        {
+          "filename": "059 Elaine's Garden.vgz",
+          "name": "Elaine's Garden",
+          "nameJp": ""
+        },
+        {
+          "filename": "060 The Mad Cook.vgz",
+          "name": "The Mad Cook",
+          "nameJp": ""
+        },
+        {
+          "filename": "061 Elaine's Party.vgz",
+          "name": "Elaine's Party",
+          "nameJp": ""
+        },
+        {
+          "filename": "062 Stealing the Map Piece.vgz",
+          "name": "Stealing the Map Piece",
+          "nameJp": ""
+        },
+        {
+          "filename": "063 Elaine and Guybrush Meet Again (Love Theme).vgz",
+          "name": "Elaine and Guybrush Meet Again (Love Theme)",
+          "nameJp": ""
+        },
+        {
+          "filename": "064 Bird Grabs Map Piece.vgz",
+          "name": "Bird Grabs Map Piece",
+          "nameJp": ""
+        },
+        {
+          "filename": "065 Plank Breaks.vgz",
+          "name": "Plank Breaks",
+          "nameJp": ""
+        },
+        {
+          "filename": "066 The Dream Begins.vgz",
+          "name": "The Dream Begins",
+          "nameJp": ""
+        },
+        {
+          "filename": "067 The Bone Song.vgz",
+          "name": "The Bone Song",
+          "nameJp": ""
+        },
+        {
+          "filename": "068 LeChuck Appears in Dream.vgz",
+          "name": "LeChuck Appears in Dream",
+          "nameJp": ""
+        },
+        {
+          "filename": "069 Wally Has Been Kidnapped.vgz",
+          "name": "Wally Has Been Kidnapped",
+          "nameJp": ""
+        },
+        {
+          "filename": "070 LeChuck's Fortress.vgz",
+          "name": "LeChuck's Fortress",
+          "nameJp": ""
+        },
+        {
+          "filename": "071 Guybrush is Captured.vgz",
+          "name": "Guybrush is Captured",
+          "nameJp": ""
+        },
+        {
+          "filename": "072 LeChuck's Torture Speech.vgz",
+          "name": "LeChuck's Torture Speech",
+          "nameJp": ""
+        },
+        {
+          "filename": "073 Hangin'.vgz",
+          "name": "Hangin'",
+          "nameJp": ""
+        },
+        {
+          "filename": "074 Guybrush Threepwood Has Escaped.vgz",
+          "name": "Guybrush Threepwood Has Escaped",
+          "nameJp": ""
+        },
+        {
+          "filename": "075 Beach of Dinky Island.vgz",
+          "name": "Beach of Dinky Island",
+          "nameJp": ""
+        },
+        {
+          "filename": "076 Jungle.vgz",
+          "name": "Jungle",
+          "nameJp": ""
+        },
+        {
+          "filename": "077 'X' Marks the Spot.vgz",
+          "name": "'X' Marks the Spot",
+          "nameJp": ""
+        },
+        {
+          "filename": "078 Big Whoop in View.vgz",
+          "name": "Big Whoop in View",
+          "nameJp": ""
+        },
+        {
+          "filename": "079 Throwing a Rope.vgz",
+          "name": "Throwing a Rope",
+          "nameJp": ""
+        },
+        {
+          "filename": "080 Hanging Again.vgz",
+          "name": "Hanging Again",
+          "nameJp": ""
+        },
+        {
+          "filename": "081 Guybrush Falls.vgz",
+          "name": "Guybrush Falls",
+          "nameJp": ""
+        },
+        {
+          "filename": "082 LeChuck's Revelation.vgz",
+          "name": "LeChuck's Revelation",
+          "nameJp": ""
+        },
+        {
+          "filename": "083 LeChuck Presents His Voodoo Doll.vgz",
+          "name": "LeChuck Presents His Voodoo Doll",
+          "nameJp": ""
+        },
+        {
+          "filename": "084 LeChuck Encounter #1.vgz",
+          "name": "LeChuck Encounter #1",
+          "nameJp": ""
+        },
+        {
+          "filename": "085 LeChuck Encounter #2.vgz",
+          "name": "LeChuck Encounter #2",
+          "nameJp": ""
+        },
+        {
+          "filename": "086 LeChuck Encounter #3.vgz",
+          "name": "LeChuck Encounter #3",
+          "nameJp": ""
+        },
+        {
+          "filename": "087 LeChuck Encounter #4.vgz",
+          "name": "LeChuck Encounter #4",
+          "nameJp": ""
+        },
+        {
+          "filename": "088 LeChuck Encounter #5.vgz",
+          "name": "LeChuck Encounter #5",
+          "nameJp": ""
+        },
+        {
+          "filename": "089 LeChuck Encounter #6.vgz",
+          "name": "LeChuck Encounter #6",
+          "nameJp": ""
+        },
+        {
+          "filename": "090 LeChuck Encounter #7.vgz",
+          "name": "LeChuck Encounter #7",
+          "nameJp": ""
+        },
+        {
+          "filename": "091 LeChuck Encounter #8.vgz",
+          "name": "LeChuck Encounter #8",
+          "nameJp": ""
+        },
+        {
+          "filename": "092 Underground Tunnels #1.vgz",
+          "name": "Underground Tunnels #1",
+          "nameJp": ""
+        },
+        {
+          "filename": "093 Underground Tunnels #2.vgz",
+          "name": "Underground Tunnels #2",
+          "nameJp": ""
+        },
+        {
+          "filename": "094 Underground Tunnels #3.vgz",
+          "name": "Underground Tunnels #3",
+          "nameJp": ""
+        },
+        {
+          "filename": "095 Underground Tunnels #4.vgz",
+          "name": "Underground Tunnels #4",
+          "nameJp": ""
+        },
+        {
+          "filename": "096 Underground Tunnels #5.vgz",
+          "name": "Underground Tunnels #5",
+          "nameJp": ""
+        },
+        {
+          "filename": "097 Underground Tunnels #6.vgz",
+          "name": "Underground Tunnels #6",
+          "nameJp": ""
+        },
+        {
+          "filename": "098 Armed with Voodoo Doll.vgz",
+          "name": "Armed with Voodoo Doll",
+          "nameJp": ""
+        },
+        {
+          "filename": "099 Losing a Leg.vgz",
+          "name": "Losing a Leg",
+          "nameJp": ""
+        },
+        {
+          "filename": "100 Take This Mask Off.vgz",
+          "name": "Take This Mask Off",
+          "nameJp": ""
+        },
+        {
+          "filename": "101 Brother Chuckie Revealed.vgz",
+          "name": "Brother Chuckie Revealed",
+          "nameJp": ""
+        },
+        {
+          "filename": "102 Amusement Park.vgz",
+          "name": "Amusement Park",
+          "nameJp": ""
+        },
+        {
+          "filename": "103 End Credits.vgz",
+          "name": "End Credits",
+          "nameJp": ""
+        },
+        {
+          "filename": "104 Something Constructive.vgz",
+          "name": "Something Constructive",
+          "nameJp": ""
+        }
+      ]
+    },
+    {
       "id": "Mother",
       "zipFile": "Mother.zip",
       "title": "Mother",
@@ -1356,6 +2015,599 @@
       ]
     },
     {
+      "id": "Princess_Maker_2__PC_",
+      "zipFile": "Princess_Maker_2_(PC).zip",
+      "title": "Princess Maker 2",
+      "titleJp": "プリンセスメーカー 2",
+      "system": "IBM PC/AT",
+      "author": "Masahiro Kajihara",
+      "coverImage": "covers/Princess_Maker_2__PC_.png",
+      "trackCount": 38,
+      "tracks": [
+        {
+          "filename": "01 Profile determination.vgz",
+          "name": "Profile determination",
+          "nameJp": "プロフィール決定"
+        },
+        {
+          "filename": "02 Opening 1.vgz",
+          "name": "Opening 1",
+          "nameJp": "オープニング１"
+        },
+        {
+          "filename": "03 Opening 2.vgz",
+          "name": "Opening 2",
+          "nameJp": "オープニング２"
+        },
+        {
+          "filename": "04 Main screen (Spring).vgz",
+          "name": "Main screen (Spring)",
+          "nameJp": "メイン画面春"
+        },
+        {
+          "filename": "05 Main screen (Summer).vgz",
+          "name": "Main screen (Summer)",
+          "nameJp": "メイン画面夏"
+        },
+        {
+          "filename": "06 Main screen (Autumn).vgz",
+          "name": "Main screen (Autumn)",
+          "nameJp": "メイン画面秋"
+        },
+        {
+          "filename": "07 Main screen (Winter).vgz",
+          "name": "Main screen (Winter)",
+          "nameJp": "メイン画面冬"
+        },
+        {
+          "filename": "08 Main screen (Disease).vgz",
+          "name": "Main screen (Disease)",
+          "nameJp": "病気"
+        },
+        {
+          "filename": "09 To the castle.vgz",
+          "name": "To the castle",
+          "nameJp": "お城へ行く"
+        },
+        {
+          "filename": "10 To the city.vgz",
+          "name": "To the city",
+          "nameJp": "街へ行く"
+        },
+        {
+          "filename": "11 To the church.vgz",
+          "name": "To the church",
+          "nameJp": "教会へ"
+        },
+        {
+          "filename": "12 Part-time job.vgz",
+          "name": "Part-time job",
+          "nameJp": "アルバイト"
+        },
+        {
+          "filename": "13 Training.vgz",
+          "name": "Training",
+          "nameJp": "訓練"
+        },
+        {
+          "filename": "14 Knight-errantry.vgz",
+          "name": "Knight-errantry",
+          "nameJp": "武者修行"
+        },
+        {
+          "filename": "15 Monster encounter (Warning).vgz",
+          "name": "Monster encounter (Warning)",
+          "nameJp": "怪物と出会う（警戒）"
+        },
+        {
+          "filename": "16 People encounter.vgz",
+          "name": "People encounter",
+          "nameJp": "人間と出会う"
+        },
+        {
+          "filename": "17 Battle.vgz",
+          "name": "Battle",
+          "nameJp": "戦闘"
+        },
+        {
+          "filename": "18 Sea vacation.vgz",
+          "name": "Sea vacation",
+          "nameJp": "海のバカンス"
+        },
+        {
+          "filename": "19 Mountain vacation.vgz",
+          "name": "Mountain vacation",
+          "nameJp": "山のバカンス"
+        },
+        {
+          "filename": "20 Rest.vgz",
+          "name": "Rest",
+          "nameJp": "休息"
+        },
+        {
+          "filename": "21 Art exhibition.vgz",
+          "name": "Art exhibition",
+          "nameJp": "芸術祭"
+        },
+        {
+          "filename": "22 Fighting exhibition.vgz",
+          "name": "Fighting exhibition",
+          "nameJp": "武闘会"
+        },
+        {
+          "filename": "23 Martial-arts bout.vgz",
+          "name": "Martial-arts bout",
+          "nameJp": "武芸の試合"
+        },
+        {
+          "filename": "24 Dance party.vgz",
+          "name": "Dance party",
+          "nameJp": "ダンスパーティー"
+        },
+        {
+          "filename": "25 Cooking competition.vgz",
+          "name": "Cooking competition",
+          "nameJp": "お料理コンクール"
+        },
+        {
+          "filename": "26 Awards ceremony.vgz",
+          "name": "Awards ceremony",
+          "nameJp": "表彰式"
+        },
+        {
+          "filename": "27 Mystery (Event).vgz",
+          "name": "Mystery (Event)",
+          "nameJp": "神秘（イベント）"
+        },
+        {
+          "filename": "28 House visitor (Event).vgz",
+          "name": "House visitor (Event)",
+          "nameJp": "来客（イベント）"
+        },
+        {
+          "filename": "29 Tension (Event).vgz",
+          "name": "Tension (Event)",
+          "nameJp": "緊迫（イベント）"
+        },
+        {
+          "filename": "30 Ending.vgz",
+          "name": "Ending",
+          "nameJp": "エンディング"
+        },
+        {
+          "filename": "31 Credits.vgz",
+          "name": "Credits",
+          "nameJp": "クレジット"
+        },
+        {
+          "filename": "32 High shock kang.vgz",
+          "name": "High shock kang",
+          "nameJp": "カン高いショック"
+        },
+        {
+          "filename": "33 Heavy shock.vgz",
+          "name": "Heavy shock",
+          "nameJp": "ヘビィなショック"
+        },
+        {
+          "filename": "34 Meeting important people.vgz",
+          "name": "Meeting important people",
+          "nameJp": "要人と面会"
+        },
+        {
+          "filename": "35 A pleasant event.vgz",
+          "name": "A pleasant event",
+          "nameJp": "嬉しい事件"
+        },
+        {
+          "filename": "36 A sorrowful event.vgz",
+          "name": "A sorrowful event",
+          "nameJp": "悲しい事件"
+        },
+        {
+          "filename": "37 Bad end.vgz",
+          "name": "Bad end",
+          "nameJp": "バッドエンド "
+        },
+        {
+          "filename": "38 Harvest Festival Fanfare.vgz",
+          "name": "Harvest Festival Fanfare",
+          "nameJp": "収穫際ファンファーレ"
+        }
+      ]
+    },
+    {
+      "id": "Romance_of_the_Three_Kingdoms_III__Mega_Drive__Genesis_",
+      "zipFile": "Romance of the Three Kingdoms III (Mega Drive, Genesis).zip",
+      "title": "Romance of the Three Kingdoms III",
+      "titleJp": "三國志 III",
+      "system": "Sega Genesis",
+      "author": "Minoru Mukaiya",
+      "coverImage": "covers/Romance_of_the_Three_Kingdoms_III__Mega_Drive__Genesis_.png",
+      "trackCount": 23,
+      "tracks": [
+        {
+          "filename": "01 - Overture.vgz",
+          "name": "Overture",
+          "nameJp": ""
+        },
+        {
+          "filename": "02 - Usual Theme.vgz",
+          "name": "Usual Theme",
+          "nameJp": ""
+        },
+        {
+          "filename": "03 - Diplomacy.vgz",
+          "name": "Diplomacy",
+          "nameJp": ""
+        },
+        {
+          "filename": "04 - War - General.vgz",
+          "name": "War: General",
+          "nameJp": ""
+        },
+        {
+          "filename": "05 - War - Field Operation.vgz",
+          "name": "War: Field Operation",
+          "nameJp": ""
+        },
+        {
+          "filename": "06 - War - Night.vgz",
+          "name": "War: Night",
+          "nameJp": ""
+        },
+        {
+          "filename": "07 - War - Siege.vgz",
+          "name": "War: Siege",
+          "nameJp": ""
+        },
+        {
+          "filename": "08 - War - Naval Battle.vgz",
+          "name": "War: Naval Battle",
+          "nameJp": ""
+        },
+        {
+          "filename": "09 - Victory.vgz",
+          "name": "Victory",
+          "nameJp": ""
+        },
+        {
+          "filename": "11 - Defeated.vgz",
+          "name": "Defeated",
+          "nameJp": ""
+        },
+        {
+          "filename": "12 - Wondering.vgz",
+          "name": "Wondering",
+          "nameJp": ""
+        },
+        {
+          "filename": "13 - Theme of Yuan Shao.vgz",
+          "name": "Theme of Yuan Shao",
+          "nameJp": ""
+        },
+        {
+          "filename": "14 - Theme of Wei and Wu.vgz",
+          "name": "Theme of Wei and Wu",
+          "nameJp": ""
+        },
+        {
+          "filename": "15 - Theme of Shu.vgz",
+          "name": "Theme of Shu",
+          "nameJp": ""
+        },
+        {
+          "filename": "16 - Mourning.vgz",
+          "name": "Mourning",
+          "nameJp": ""
+        },
+        {
+          "filename": "17 - Theme of Near the Unification.vgz",
+          "name": "Theme of Near the Unification",
+          "nameJp": ""
+        },
+        {
+          "filename": "18 - Ending 1.vgz",
+          "name": "Ending 1",
+          "nameJp": ""
+        },
+        {
+          "filename": "19 - Ending 2.vgz",
+          "name": "Ending 2",
+          "nameJp": ""
+        },
+        {
+          "filename": "20 - With Lightning Speed.vgz",
+          "name": "With Lightning Speed",
+          "nameJp": ""
+        },
+        {
+          "filename": "21 - Time for the Banner and Drums.vgz",
+          "name": "Time for the Banner and Drums",
+          "nameJp": ""
+        },
+        {
+          "filename": "22 - Present-Time Urgency.vgz",
+          "name": "Present-Time Urgency",
+          "nameJp": ""
+        },
+        {
+          "filename": "23 - Emperor.vgz",
+          "name": "Emperor",
+          "nameJp": ""
+        },
+        {
+          "filename": "24 - Unknown Jingle.vgz",
+          "name": "Unknown Jingle",
+          "nameJp": ""
+        }
+      ]
+    },
+    {
+      "id": "Sonic_the_Hedgehog_2__Mega_Drive__Genesis_",
+      "zipFile": "Sonic the Hedgehog 2 (Mega Drive, Genesis).zip",
+      "title": "Sonic the Hedgehog 2",
+      "titleJp": "ソニック・ザ・ヘッジホッグ２",
+      "system": "Sega Mega Drive",
+      "author": "Masato Nakamura",
+      "coverImage": "covers/Sonic_the_Hedgehog_2__Mega_Drive__Genesis_.png",
+      "trackCount": 31,
+      "tracks": [
+        {
+          "filename": "01 - Opening Theme.vgz",
+          "name": "Opening Theme",
+          "nameJp": ""
+        },
+        {
+          "filename": "02 - Options.vgz",
+          "name": "Options",
+          "nameJp": ""
+        },
+        {
+          "filename": "03 - Emerald Hill Zone.vgz",
+          "name": "Emerald Hill Zone",
+          "nameJp": "エメラルドヒル"
+        },
+        {
+          "filename": "04 - Act Clear.vgz",
+          "name": "Act Clear",
+          "nameJp": ""
+        },
+        {
+          "filename": "05 - Chemical Plant Zone.vgz",
+          "name": "Chemical Plant Zone",
+          "nameJp": "ケミカルプラント"
+        },
+        {
+          "filename": "06 - Drowning.vgz",
+          "name": "Drowning",
+          "nameJp": ""
+        },
+        {
+          "filename": "07 - Aquatic Ruin Zone.vgz",
+          "name": "Aquatic Ruin Zone",
+          "nameJp": "アクアティックルーイン"
+        },
+        {
+          "filename": "08 - Casino Night Zone.vgz",
+          "name": "Casino Night Zone",
+          "nameJp": "カジノナイト"
+        },
+        {
+          "filename": "09 - Hill Top Zone.vgz",
+          "name": "Hill Top Zone",
+          "nameJp": "ヒルトップ"
+        },
+        {
+          "filename": "10 - Mystic Cave Zone.vgz",
+          "name": "Mystic Cave Zone",
+          "nameJp": "ミスティックケイブ"
+        },
+        {
+          "filename": "11 - Oil Ocean Zone.vgz",
+          "name": "Oil Ocean Zone",
+          "nameJp": "オイルオーシャン"
+        },
+        {
+          "filename": "12 - Metropolis Zone.vgz",
+          "name": "Metropolis Zone",
+          "nameJp": "メトロポリス"
+        },
+        {
+          "filename": "13 - Sky Chase Zone.vgz",
+          "name": "Sky Chase Zone",
+          "nameJp": "スカイチェイス"
+        },
+        {
+          "filename": "14 - Wing Fortress Zone.vgz",
+          "name": "Wing Fortress Zone",
+          "nameJp": "ウィングフォートレス"
+        },
+        {
+          "filename": "15 - Death Egg Zone.vgz",
+          "name": "Death Egg Zone",
+          "nameJp": "デスエッグ"
+        },
+        {
+          "filename": "16 - Robotnik.vgz",
+          "name": "Robotnik",
+          "nameJp": ""
+        },
+        {
+          "filename": "17 - Final Boss.vgz",
+          "name": "Final Boss",
+          "nameJp": "エッグロボ"
+        },
+        {
+          "filename": "18 - Continue.vgz",
+          "name": "Continue?",
+          "nameJp": ""
+        },
+        {
+          "filename": "19 - Ending Theme.vgz",
+          "name": "Ending Theme",
+          "nameJp": ""
+        },
+        {
+          "filename": "20 - Staff Roll.vgz",
+          "name": "Staff Roll",
+          "nameJp": ""
+        },
+        {
+          "filename": "21 - Game Over.vgz",
+          "name": "Game Over",
+          "nameJp": ""
+        },
+        {
+          "filename": "22 - Invincibility.vgz",
+          "name": "Invincibility",
+          "nameJp": "無敵"
+        },
+        {
+          "filename": "23 - Super Sonic.vgz",
+          "name": "Super Sonic",
+          "nameJp": "スーパーソニック"
+        },
+        {
+          "filename": "24 - 1-up.vgz",
+          "name": "1-up",
+          "nameJp": ""
+        },
+        {
+          "filename": "25 - 2 Player Results.vgz",
+          "name": "2 Player Results",
+          "nameJp": ""
+        },
+        {
+          "filename": "26 - Emerald Hill (2P).vgz",
+          "name": "Emerald Hill (2 Player)",
+          "nameJp": "エメラルドヒル(２人用)"
+        },
+        {
+          "filename": "27 - Casino Night (2P).vgz",
+          "name": "Casino Night (2 Player)",
+          "nameJp": "カジノナイト(２人用)"
+        },
+        {
+          "filename": "28 - Mystic Cave (2P).vgz",
+          "name": "Mystic Cave (2 Player)",
+          "nameJp": "ミスティックケイブ(２人用)"
+        },
+        {
+          "filename": "29 - Special Stage.vgz",
+          "name": "Special Stage",
+          "nameJp": "スペシャルステージ"
+        },
+        {
+          "filename": "30 - Chaos Emerald.vgz",
+          "name": "Chaos Emerald",
+          "nameJp": ""
+        },
+        {
+          "filename": "31 - Hidden Palace Zone.vgz",
+          "name": "Unused (Sound Test 10)",
+          "nameJp": ""
+        }
+      ]
+    },
+    {
+      "id": "The_Secret_of_Monkey_Island__IBM_PC_AT_",
+      "zipFile": "The_Secret_of_Monkey_Island_(IBM_PC_AT).zip",
+      "title": "The Secret of Monkey Island",
+      "titleJp": "",
+      "system": "PC/DOS",
+      "author": "Michael Z. Land, Patrick Mundy",
+      "coverImage": "covers/The_Secret_of_Monkey_Island__IBM_PC_AT_.png",
+      "trackCount": 17,
+      "tracks": [
+        {
+          "filename": "01 Introduction.vgz",
+          "name": "Introduction",
+          "nameJp": ""
+        },
+        {
+          "filename": "02 The Lookout.vgz",
+          "name": "The Lookout",
+          "nameJp": ""
+        },
+        {
+          "filename": "03 Chapter BGM.vgz",
+          "name": "Chapter BGM",
+          "nameJp": ""
+        },
+        {
+          "filename": "04 The SCUMM Bar.vgz",
+          "name": "The SCUMM Bar",
+          "nameJp": ""
+        },
+        {
+          "filename": "05 M�l�e Island.vgz",
+          "name": "Mêlée Island",
+          "nameJp": ""
+        },
+        {
+          "filename": "06 The Fettucini Brothers.vgz",
+          "name": "The Fettucini Brothers",
+          "nameJp": ""
+        },
+        {
+          "filename": "07 Stalking the Shopkeeper.vgz",
+          "name": "Stalking the Shopkeeper",
+          "nameJp": ""
+        },
+        {
+          "filename": "08 The Voodoo Lady.vgz",
+          "name": "The Voodoo Lady",
+          "nameJp": ""
+        },
+        {
+          "filename": "09 Searching for Treasure.vgz",
+          "name": "Searching for Treasure",
+          "nameJp": ""
+        },
+        {
+          "filename": "10 The Journey.vgz",
+          "name": "The Journey",
+          "nameJp": ""
+        },
+        {
+          "filename": "11 Monkey Island.vgz",
+          "name": "Monkey Island",
+          "nameJp": ""
+        },
+        {
+          "filename": "12 LeChuck.vgz",
+          "name": "LeChuck",
+          "nameJp": ""
+        },
+        {
+          "filename": "13 The Ghost Ship.vgz",
+          "name": "The Ghost Ship",
+          "nameJp": ""
+        },
+        {
+          "filename": "14 The Church.vgz",
+          "name": "The Church",
+          "nameJp": ""
+        },
+        {
+          "filename": "15 Ending.vgz",
+          "name": "Ending",
+          "nameJp": ""
+        },
+        {
+          "filename": "16 THE MACHINE.vgz",
+          "name": "THE MACHINE",
+          "nameJp": ""
+        },
+        {
+          "filename": "17 Main Theme (EGA Demo).vgz",
+          "name": "Main Theme Version (EGA Demo)",
+          "nameJp": ""
+        }
+      ]
+    },
+    {
       "id": "Ys_III___Wanderers_from_Ys__Sharp_X68000_",
       "zipFile": "Ys_III_-_Wanderers_from_Ys_(Sharp_X68000).zip",
       "title": "Ys III: Wanderers from Ys",
@@ -1524,6 +2776,435 @@
           "filename": "32 Lucky Treasure Box.vgz",
           "name": "Lucky Treasure Box",
           "nameJp": ""
+        }
+      ]
+    },
+    {
+      "id": "Ys_II_Special__IBM_PC_AT_",
+      "zipFile": "Ys_II_Special_(IBM_PC_AT).zip",
+      "title": "Ys II Special",
+      "titleJp": "이스２스페셜",
+      "system": "IBM PC/AT / DOS",
+      "author": "Yuzo Koshiro, Goo-Hee Kwon, Dong-Il Kwak, Ki-Sung Park, Se-Yong Kim, Myung-Jin Ahn, Seung-Hwan Ro",
+      "coverImage": "covers/Ys_II_Special__IBM_PC_AT_.png",
+      "trackCount": 64,
+      "tracks": [
+        {
+          "filename": "01 The Morning Glow.vgz",
+          "name": "The Morning Glow",
+          "nameJp": "ＴＨＥ　ＭＯＲＮＩＮＧ　ＧＲＯＷ"
+        },
+        {
+          "filename": "02 To Make the End of Battle.vgz",
+          "name": "To Make the End of Battle",
+          "nameJp": "ＴＯ　ＭＡＫＥ　ＴＨＥ　ＥＮＤ　ＯＦ　ＢＡＴＴＬＥ"
+        },
+        {
+          "filename": "03 Lilia.vgz",
+          "name": "Lilia",
+          "nameJp": "ＬＩＬＩＡ"
+        },
+        {
+          "filename": "04 Too Full with Love.vgz",
+          "name": "Too Full with Love",
+          "nameJp": "ＴＯＯ　ＦＵＬＬ　ＷＩＴＨ　ＬＯＶＥ"
+        },
+        {
+          "filename": "05 Apathetic Story.vgz",
+          "name": "Apathetic Story",
+          "nameJp": "ＡＰＡＴＨＥＴＩＣ　ＳＴＯＲＹ"
+        },
+        {
+          "filename": "06 House.vgz",
+          "name": "House",
+          "nameJp": "민가"
+        },
+        {
+          "filename": "07 Blacksmith's Workshop.vgz",
+          "name": "Blacksmith's Workshop",
+          "nameJp": "대장간"
+        },
+        {
+          "filename": "08 Weapon Shop.vgz",
+          "name": "Weapon Shop",
+          "nameJp": "무기점"
+        },
+        {
+          "filename": "09 May I Help You.vgz",
+          "name": "May I Help You?",
+          "nameJp": "ＭＡＹ　Ｉ　ＨＥＬＰ　ＹＯＵ？"
+        },
+        {
+          "filename": "10 Tears of Sylph.vgz",
+          "name": "Tears of Sylph",
+          "nameJp": "ＴＥＡＲＳ　ＯＦ　ＳＹＬＰＨ"
+        },
+        {
+          "filename": "11 Inn.vgz",
+          "name": "Inn",
+          "nameJp": "여관"
+        },
+        {
+          "filename": "12 Adventurer's Anthem.vgz",
+          "name": "Adventurer's Anthem",
+          "nameJp": "필드"
+        },
+        {
+          "filename": "13 Inside of the Ice Wall.vgz",
+          "name": "Inside of the Ice Wall",
+          "nameJp": "ＩＮＳＩＤＥ　ＯＦ　ＴＨＥ　ＩＣＥ　ＷＡＬＬ"
+        },
+        {
+          "filename": "14 Mist.vgz",
+          "name": "Mist",
+          "nameJp": "비밀의 장소"
+        },
+        {
+          "filename": "15 Cavern of Rasteenie.vgz",
+          "name": "Cavern of Rasteenie",
+          "nameJp": "ＣＡＶＥＲＮ　ＯＦ　ＲＡＳＴＥＥＮＩＥ"
+        },
+        {
+          "filename": "16 Termination.vgz",
+          "name": "Termination",
+          "nameJp": "ＴＥＲＭＩＮＡＴＩＯＮ"
+        },
+        {
+          "filename": "17 Flower Garden of Celceta.vgz",
+          "name": "Flower Garden of Celceta",
+          "nameJp": "셀세타의 화원"
+        },
+        {
+          "filename": "18 Ruins of Moondoria.vgz",
+          "name": "Ruins of Moondoria",
+          "nameJp": "ＲＵＩＮＳ　ＯＦ　ＭＯＯＮＤＯＲＩＡ"
+        },
+        {
+          "filename": "19 Forest of Roda.vgz",
+          "name": "Forest of Roda",
+          "nameJp": "로다의 숲"
+        },
+        {
+          "filename": "20 Forest of Illusion.vgz",
+          "name": "Forest of Illusion",
+          "nameJp": "환영의 숲"
+        },
+        {
+          "filename": "21 Protectors.vgz",
+          "name": "Protectors",
+          "nameJp": "ＰＲＯＴＥＣＴＥＲＳ"
+        },
+        {
+          "filename": "22 Tower of Hadal.vgz",
+          "name": "Tower of Hadal",
+          "nameJp": "하달의 탑"
+        },
+        {
+          "filename": "23 Feel Blue.vgz",
+          "name": "Feel Blue",
+          "nameJp": "ＦＥＥＬ　ＢＬＵＥ"
+        },
+        {
+          "filename": "24 Village of Elves.vgz",
+          "name": "Village of Elves",
+          "nameJp": "엘프 마을"
+        },
+        {
+          "filename": "25 Tower of Tovah.vgz",
+          "name": "Tower of Tovah",
+          "nameJp": "토바의 탑"
+        },
+        {
+          "filename": "26 New Boss.vgz",
+          "name": "New Boss",
+          "nameJp": "보스 테마"
+        },
+        {
+          "filename": "27 Ice Ridge of Noltia (Arrange).vgz",
+          "name": "Ice Ridge of Noltia (Arrange)",
+          "nameJp": "ＩＣＥ　ＲＩＤＧＥ　ＯＦ　ＮＯＬＴＩＡ　（ＡＲＲＡＮＧＥ）"
+        },
+        {
+          "filename": "28 Walkways in the Snow.vgz",
+          "name": "Walkways in the Snow",
+          "nameJp": "놀티아 마을"
+        },
+        {
+          "filename": "29 Ice Ridge of Noltia.vgz",
+          "name": "Ice Ridge of Noltia",
+          "nameJp": "ＩＣＥ　ＲＩＤＧＥ　ＯＦ　ＮＯＬＴＩＡ"
+        },
+        {
+          "filename": "30 Village of Thieves.vgz",
+          "name": "Village of Thieves",
+          "nameJp": "도둑의 마을"
+        },
+        {
+          "filename": "31 Palace of Priests.vgz",
+          "name": "Palace of Priests",
+          "nameJp": "신관의 신전"
+        },
+        {
+          "filename": "32 Untitled Wings.vgz",
+          "name": "Untitled Wings",
+          "nameJp": "필드"
+        },
+        {
+          "filename": "33 Tower of Dabbie.vgz",
+          "name": "Tower of Dabbie",
+          "nameJp": "다비의 탑"
+        },
+        {
+          "filename": "34 Village of Dwarves.vgz",
+          "name": "Village of Dwarves",
+          "nameJp": "드와프 마을"
+        },
+        {
+          "filename": "35 Moat of Burnedbless.vgz",
+          "name": "Moat of Burnedbless",
+          "nameJp": "ＭＯＡＴ　ＯＦ　ＢＵＲＮＥＤＢＬＥＳＳ"
+        },
+        {
+          "filename": "36 Burnedbless.vgz",
+          "name": "Burnedbless",
+          "nameJp": "반드브레스"
+        },
+        {
+          "filename": "37 Pathway of Lava.vgz",
+          "name": "Pathway of Lava",
+          "nameJp": "용암의 길"
+        },
+        {
+          "filename": "38 Tower of Messa.vgz",
+          "name": "Tower of Messa",
+          "nameJp": "메사의 탑"
+        },
+        {
+          "filename": "39 Royal Palace of Goddesses.vgz",
+          "name": "Royal Palace of Goddesses",
+          "nameJp": "여신의 왕궁"
+        },
+        {
+          "filename": "40 Tower of Gemma.vgz",
+          "name": "Tower of Gemma",
+          "nameJp": "젬마의 탑"
+        },
+        {
+          "filename": "41 Valley of Wind.vgz",
+          "name": "Valley of Wind",
+          "nameJp": "바람의 계곡"
+        },
+        {
+          "filename": "42 Duel Place of Warriors.vgz",
+          "name": "Duel Place of Warriors",
+          "nameJp": "전사의 결투장"
+        },
+        {
+          "filename": "43 Tower of Fact.vgz",
+          "name": "Tower of Fact",
+          "nameJp": "펙트의 탑"
+        },
+        {
+          "filename": "44 Tender People.vgz",
+          "name": "Tender People",
+          "nameJp": "ＴＥＮＤＥＲ　ＰＥＯＰＬＥ"
+        },
+        {
+          "filename": "45 Palace of Salmon.vgz",
+          "name": "Palace of Salmon",
+          "nameJp": "ＰＡＬＡＣＥ　ＯＦ　ＳＡＬＭＯＮ"
+        },
+        {
+          "filename": "46 Subterranean Canal.vgz",
+          "name": "Subterranean Canal",
+          "nameJp": "ＳＵＢＴＥＲＲＡＮＥＡＮ　ＣＡＮＡＬ"
+        },
+        {
+          "filename": "47 Palace of Salmon (Arrange).vgz",
+          "name": "Palace of Salmon (Arrange)",
+          "nameJp": "ＰＡＬＡＣＥ　ＯＦ　ＳＡＬＭＯＮ　（ＡＲＲＡＮＧＥ）"
+        },
+        {
+          "filename": "48 Companile of Lane.vgz",
+          "name": "Companile of Lane",
+          "nameJp": "ＣＯＭＰＡＮＩＬＥ　ＯＦ　ＬＡＮＥ"
+        },
+        {
+          "filename": "49 Circular Tower.vgz",
+          "name": "Circular Tower",
+          "nameJp": "원형탑"
+        },
+        {
+          "filename": "50 Room of the Sage.vgz",
+          "name": "Room of the Sage",
+          "nameJp": "현자의 방"
+        },
+        {
+          "filename": "51 Rest in Peace.vgz",
+          "name": "Rest in Peace",
+          "nameJp": "ＲＥＳＴ　ＩＮ　ＰＥＡＣＥ"
+        },
+        {
+          "filename": "52 Feena.vgz",
+          "name": "Feena",
+          "nameJp": "ＦＥＥＮＡ"
+        },
+        {
+          "filename": "53 Duel with Dalles.vgz",
+          "name": "Duel with Dalles",
+          "nameJp": "다레스와의 결투"
+        },
+        {
+          "filename": "54 Noble District of Toal.vgz",
+          "name": "Noble District of Toal",
+          "nameJp": "ＮＯＢＬＥ　ＤＩＳＴＲＩＣＴ　ＯＦ　ＴＯＡＬ"
+        },
+        {
+          "filename": "55 Don't Go So Smoothly!.vgz",
+          "name": "Don't Go So Smoothly!",
+          "nameJp": "ＤＯＮ＇Ｔ　ＧＯ　ＳＯ　ＳＭＯＯＴＨＬＹ！"
+        },
+        {
+          "filename": "56 A Decisive Battle with Darm.vgz",
+          "name": "A Decisive Battle with Darm",
+          "nameJp": "다므와의 결전"
+        },
+        {
+          "filename": "57 A Still Time.vgz",
+          "name": "A Still Time",
+          "nameJp": "Ａ　ＳＴＩＬＬ　ＴＩＭＥ"
+        },
+        {
+          "filename": "58 Stay with Me Forever.vgz",
+          "name": "Stay with Me Forever",
+          "nameJp": "ＳＴＡＹ　ＷＩＴＨ　ＭＥ　ＦＯＲＥＶＥＲ"
+        },
+        {
+          "filename": "59 A New Journey.vgz",
+          "name": "A New Journey",
+          "nameJp": "새로운 여행"
+        },
+        {
+          "filename": "60 So Much for Today.vgz",
+          "name": "So Much for Today",
+          "nameJp": "ＳＯ　ＭＵＣＨ　ＦＯＲ　ＴＯＤＡＹ"
+        },
+        {
+          "filename": "61 Tower of Dangun [Secret Area].vgz",
+          "name": "Tower of Dangun [Secret Area]",
+          "nameJp": "단군의 탑"
+        },
+        {
+          "filename": "62 MANTRA Developer's Room [Secret Area].vgz",
+          "name": "MANTRA Developer's Room [Secret Area]",
+          "nameJp": "만트라 개발실"
+        },
+        {
+          "filename": "63 Lucky [Item Get SFX].vgz",
+          "name": "Lucky [Item Get SFX]",
+          "nameJp": "ＬＵＣＫＹ"
+        },
+        {
+          "filename": "64 The Last Moment of the Dark [unused].vgz",
+          "name": "The Last Moment of the Dark [unused]",
+          "nameJp": "ＴＨＥ　ＬＡＳＴ　ＭＯＭＥＮＴ　ＯＦ　ＴＨＥ　ＤＡＲＫ"
+        }
+      ]
+    },
+    {
+      "id": "Zeliard__IBM_PC_AT__OPL_",
+      "zipFile": "Zeliard_(IBM_PC_AT,_OPL).zip",
+      "title": "Zeliard",
+      "titleJp": "ゼリアード",
+      "system": "IBM PC/AT / DOS",
+      "author": "Masakuni Mitsuhashi, Hibiki Godai, Mecano Associates",
+      "coverImage": "covers/Zeliard__IBM_PC_AT__OPL_.png",
+      "trackCount": 17,
+      "tracks": [
+        {
+          "filename": "01 Radiance of Esmeranti.vgz",
+          "name": "Radiance of Esmeranti",
+          "nameJp": "エスメサンテの輝き"
+        },
+        {
+          "filename": "02 Departure.vgz",
+          "name": "Departure",
+          "nameJp": "旅立ち"
+        },
+        {
+          "filename": "03 To The World of Darkness.vgz",
+          "name": "To The World of Darkness",
+          "nameJp": "闇の世界へ"
+        },
+        {
+          "filename": "04 Dark Messenger.vgz",
+          "name": "Dark Messenger",
+          "nameJp": "闇の使者"
+        },
+        {
+          "filename": "05 Victory.vgz",
+          "name": "Victory",
+          "nameJp": "勝利"
+        },
+        {
+          "filename": "06 Subterranean City.vgz",
+          "name": "Subterranean City",
+          "nameJp": "地下の街"
+        },
+        {
+          "filename": "07 Beyond The Caves.vgz",
+          "name": "Beyond The Caves",
+          "nameJp": "洞窟を越えて"
+        },
+        {
+          "filename": "08 World of Trees.vgz",
+          "name": "World of Trees",
+          "nameJp": "樹の世界"
+        },
+        {
+          "filename": "09 A Moment's Rest.vgz",
+          "name": "A Moment's Rest",
+          "nameJp": "束の間の休息"
+        },
+        {
+          "filename": "10 World of Ice.vgz",
+          "name": "World of Ice",
+          "nameJp": "氷の世界"
+        },
+        {
+          "filename": "11 World of Decay.vgz",
+          "name": "World of Decay",
+          "nameJp": "腐土の世界"
+        },
+        {
+          "filename": "12 Secluded Town.vgz",
+          "name": "Secluded Town",
+          "nameJp": "閉ざされた街"
+        },
+        {
+          "filename": "13 World of Gold.vgz",
+          "name": "World of Gold",
+          "nameJp": "黄金の世界"
+        },
+        {
+          "filename": "14 World of Fire.vgz",
+          "name": "World of Fire",
+          "nameJp": "炎の世界"
+        },
+        {
+          "filename": "15 World of Wonder.vgz",
+          "name": "World of Wonder",
+          "nameJp": "不思議の世界"
+        },
+        {
+          "filename": "16 Demon King.vgz",
+          "name": "Demon King",
+          "nameJp": "魔王"
+        },
+        {
+          "filename": "17 To a New Adventure.vgz",
+          "name": "To a New Adventure",
+          "nameJp": "新たなる冒険へ"
         }
       ]
     }

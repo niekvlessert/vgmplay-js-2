@@ -9,8 +9,19 @@ function App() {
   const [selectedGame, setSelectedGame] = useState(null)
   const [loadingGame, setLoadingGame] = useState(false)
   const [error, setError] = useState(null)
+  const [installPrompt, setInstallPrompt] = useState(null)
 
   const player = useVGMPlayer()
+
+  // PWA install prompt
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
 
   // Load manifest
   useEffect(() => {
@@ -83,6 +94,15 @@ function App() {
     setSelectedGame(null)
   }
 
+  const handleInstall = async () => {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') {
+      setInstallPrompt(null)
+    }
+  }
+
   return (
     <div className="app">
       <header className="header">
@@ -91,7 +111,14 @@ function App() {
           alt="visitor count"
           className="visitor-counter"
         />
-        <h1 className="title">NINE-PLAYER</h1>
+        <div className="title-row">
+          <h1 className="title">NINE-PLAYER</h1>
+          {installPrompt && (
+            <button className="install-button" onClick={handleInstall}>
+              INSTALL
+            </button>
+          )}
+        </div>
         <p className="subtitle">Honux's Video Game Music Archive <span className="version">v{__APP_VERSION__}</span></p>
       </header>
 

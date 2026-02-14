@@ -25,25 +25,31 @@ class VGMPlay_js {
 		this.pos3 = 0;
 		this.pos4 = 0;
 
+		// Determine base URL for loading processor and other assets
+		this.baseURL = 'https://niekvlessert.github.io/vgmplay-js-2/';
+		try {
+			const currentScript = document.currentScript;
+			if (currentScript && currentScript.src) {
+				this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
+			}
+		} catch (e) { }
+
 		var script = document.createElement("script");
-		script.src = "https://niekvlessert.github.io/vgmplay-js-2/vgmplay-js.js"
+		script.src = this.baseURL + "vgmplay-js.js";
 		var script3 = document.createElement("script");
-		script3.src = "https://niekvlessert.github.io/vgmplay-js-2/minizip-asm.min.js";
+		script3.src = this.baseURL + "minizip-asm.min.js";
 
 		document.head.appendChild(script);
 		document.head.appendChild(script3);
 
 		const classContext = this;
 
-		//const getSrcOrigin = () => new URL(document.currentScript.src).origin;
-		//console.log(getSrcOrigin());
-
-/*
-Need to handle these divs as well... but first they need to be implemented...
-<div id="vgmplayLoopcountSetter"></div>
-<div id="vgmplayProgressBar"></div>
-<div id="vgmplayUploader"></div>
-*/
+		/*
+		Need to handle these divs as well... but first they need to be implemented..
+		<div id="vgmplayLoopcountSetter"></div>
+		<div id="vgmplayProgressBar"></div>
+		<div id="vgmplayUploader"></div>
+		*/
 
 		if (typeof vgmplaySettings !== 'undefined') {
 			console.log("vgmplaySettings defined");
@@ -62,13 +68,13 @@ Need to handle these divs as well... but first they need to be implemented...
 			var link = document.createElement('link');
 			link.rel = 'stylesheet';
 			link.type = 'text/css';
-			link.href = 'https://niekvlessert.github.io/vgmplay-js-2/css/style.css';
+			link.href = this.baseURL + 'css/style.css';
 			document.head.appendChild(link);
 
 			this.vgmplayContainer = document.createElement('div');
 			this.vgmplayContainer.id = "vgmplayContainer";
 			document.body.insertBefore(this.vgmplayContainer, document.body.firstChild);
-			this.vgmplayContainer.className="vgmplayContainer";
+			this.vgmplayContainer.className = "vgmplayContainer";
 
 			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
@@ -91,28 +97,27 @@ Need to handle these divs as well... but first they need to be implemented...
 				this.titleWindow = document.createElement('div');
 				this.titleWindow.id = "vgmplayTitleWindow";
 				this.vgmplayContainer.appendChild(this.titleWindow);
-				this.titleWindow.className ="vgmplayTitleWindow";
-				this.titleWindow.addEventListener("mousedown", () => {   
+				this.titleWindow.className = "vgmplayTitleWindow";
+				this.titleWindow.addEventListener("mousedown", () => {
 					window.addEventListener('mousemove', this.elementDrag);
 				});
 
 				window.addEventListener('mouseup', () => {
-				      window.removeEventListener('mousemove', this.elementDrag);
-			 	});
+					window.removeEventListener('mousemove', this.elementDrag);
+				});
 			}
 			if (this.displayPlayer) {
 				this.playerWindow = document.createElement('div');
 				this.playerWindow.id = "vgmplayPlayer";
-                                this.vgmplayContainer.appendChild(this.playerWindow);
+				this.vgmplayContainer.appendChild(this.playerWindow);
 				this.showPlayer();
 			}
 			if (this.displayZipFileList) {
 				this.zipFileListWindow = document.createElement('div');
 				this.zipFileListWindow.id = "vgmplayZipFileList";
-				//this.zipFileListWindow.innerHTML="<div style=\"position:absolute; right:20;\"><a style=\"color:white\" href='javascript:vgmplay_js.closeZipFileListWindow()'>X</a></div>"
 				this.vgmplayContainer.appendChild(this.zipFileListWindow);
 				this.showZipFileListWindow = true;
-				this.zipFileListWindow.className ="vgmplayZipFileListWindow";
+				this.zipFileListWindow.className = "vgmplayZipFileListWindow";
 			}
 		}
 
@@ -122,29 +127,28 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	setKeyBindings() {
-		window.addEventListener('keydown', function(e) {
-				if(e.keyCode == 32) e.preventDefault();
-				});
+		window.addEventListener('keydown', function (e) {
+			if (e.keyCode == 32) e.preventDefault();
+		});
 
 		Mousetrap.bind('space', (e) => {
-				this.togglePlayback();
-			});
+			this.togglePlayback();
+		});
 		Mousetrap.bind('n', (e) => {
-				this.changeTrack('next');
-			});
+			this.changeTrack('next');
+		});
 		Mousetrap.bind('p', (e) => {
-				this.changeTrack('previous');
-			});
+			this.changeTrack('previous');
+		});
 		Mousetrap.bind('s', (e) => {
-				stop();
-			});
+			stop();
+		});
 	}
 
 	loadWhenReady() {
 		this.elms = document.getElementsByTagName("a"),
-		this.len = this.elms.length;
-		for(var ii = 0; ii < this.len; ii++) {
-			//console.log(this.elms[ii].href);
+			this.len = this.elms.length;
+		for (var ii = 0; ii < this.len; ii++) {
 			if (this.elms[ii].href.match(/.zip/g)) this.loadZIPWithVGMFromURL(this.elms[ii].href);
 		}
 		this.setKeyBindings();
@@ -162,9 +166,18 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	showPlayer() {
-		this.playerWindow.className ="vgmplayPlayerWindow";
+		this.playerWindow.className = "vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> <a style=\"color:white\" href='javascript:vgmplay_js.toggleDisplayZipFileListWindow()'>Z</a>";
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
+
+		// Create spectrum analyser canvas
+		this.spectrumCanvas = document.createElement('canvas');
+		this.spectrumCanvas.id = 'vgmplaySpectrum';
+		this.spectrumCanvas.className = 'vgmplaySpectrum';
+		this.spectrumCanvas.width = 256;
+		this.spectrumCanvas.height = 64;
+		this.playerWindow.appendChild(this.spectrumCanvas);
+		this.spectrumCtx = this.spectrumCanvas.getContext('2d');
 	}
 
 	toggleDisplayZipFileListWindow() {
@@ -181,90 +194,82 @@ Need to handle these divs as well... but first they need to be implemented...
 		if (this.titleWindow) {
 			this.VGMTag = this.ShowTitle().split("|||");
 			this.tagType = 0;
-			this.titleWindow.innerHTML="";
-			for(this.i=0; this.i<this.VGMTag.length; this.i++) {
-				switch(this.i) {
+			this.titleWindow.innerHTML = "";
+			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
+				switch (this.i) {
 					case 0:
-						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML+="Title: ";
-						if (this.VGMTag[0]) this.titleWindow.innerHTML+=this.VGMTag[0];
-						if (this.VGMTag[0] && this.VGMTag[1]) this.titleWindow.innerHTML+=", ";
-						if (this.VGMTag[1]) this.titleWindow.innerHTML+=this.VGMTag[1];
-						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML+="<br/>";
-						this.titleWindow.innerHTML+="Length: " + this.trackLengthHumanReadeable+"<br/>";
+						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML += "Title: ";
+						if (this.VGMTag[0]) this.titleWindow.innerHTML += this.VGMTag[0];
+						if (this.VGMTag[0] && this.VGMTag[1]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[1]) this.titleWindow.innerHTML += this.VGMTag[1];
+						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML += "<br/>";
+						this.titleWindow.innerHTML += "Length: " + this.trackLengthHumanReadeable + "<br/>";
 						this.i++;
 						break;
 					case 2:
-						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML+="Game: ";
-						if (this.VGMTag[2]) this.titleWindow.innerHTML+=this.VGMTag[2];
-						if (this.VGMTag[2] && this.VGMTag[3]) this.titleWindow.innerHTML+=", ";
-						if (this.VGMTag[3]) this.titleWindow.innerHTML+=this.VGMTag[3];
-						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML+="<br/>";
+						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML += "Game: ";
+						if (this.VGMTag[2]) this.titleWindow.innerHTML += this.VGMTag[2];
+						if (this.VGMTag[2] && this.VGMTag[3]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[3]) this.titleWindow.innerHTML += this.VGMTag[3];
+						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML += "<br/>";
 						this.i++;
 						break;
 					case 4:
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML+="System: ";
-						if (this.VGMTag[4]) this.titleWindow.innerHTML+=this.VGMTag[4];
-						if (this.VGMTag[4] && this.VGMTag[5]) this.titleWindow.innerHTML+=", ";
-						if (this.VGMTag[5]) this.titleWindow.innerHTML+=this.VGMTag[5];
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML+="<br/>";
+						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "System: ";
+						if (this.VGMTag[4]) this.titleWindow.innerHTML += this.VGMTag[4];
+						if (this.VGMTag[4] && this.VGMTag[5]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[5]) this.titleWindow.innerHTML += this.VGMTag[5];
+						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "<br/>";
 						this.i++;
 						break;
 					case 6:
-						if (this.VGMTag[6] || this.VGMTag[7]) this.titleWindow.innerHTML+="Author: ";
-						if (this.VGMTag[6]) this.titleWindow.innerHTML+=this.VGMTag[6];
-						if (this.VGMTag[6] && this.VGMTag[7]) this.titleWindow.innerHTML+=", ";
-						if (this.VGMTag[7]) this.titleWindow.innerHTML+=this.VGMTag[7];
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML+="<br/>";
+						if (this.VGMTag[6] || this.VGMTag[7]) this.titleWindow.innerHTML += "Author: ";
+						if (this.VGMTag[6]) this.titleWindow.innerHTML += this.VGMTag[6];
+						if (this.VGMTag[6] && this.VGMTag[7]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[7]) this.titleWindow.innerHTML += this.VGMTag[7];
+						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "<br/>";
 						this.i++;
 						break;
 					case 8:
-						if (this.VGMTag[8]) { 
-							this.titleWindow.innerHTML+="Creator: ";
-							this.titleWindow.innerHTML+=this.VGMTag[8];
-							this.titleWindow.innerHTML+="<br/>";
+						if (this.VGMTag[8]) {
+							this.titleWindow.innerHTML += "Creator: ";
+							this.titleWindow.innerHTML += this.VGMTag[8];
+							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
 					case 9:
-						if (this.VGMTag[9].length>1) { 
-							this.titleWindow.innerHTML+="Notes: ";
-							this.titleWindow.innerHTML+=this.VGMTag[9];
-							this.titleWindow.innerHTML+="<br/>";
+						if (this.VGMTag[9].length > 1) {
+							this.titleWindow.innerHTML += "Notes: ";
+							this.titleWindow.innerHTML += this.VGMTag[9];
+							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
 				}
-						
+
 			}
 		}
-		/*this.contents = FS.readFile(this.pngFile);
-		this.blob = new Blob([this.contents], { type: "image/png" });
-		this.url = URL.createObjectURL(this.blob);
-		this.img = new Image();
-		this.img.src = this.url;
-		document.body.appendChild(this.img);
-		*/
 	}
 
 	loadVGMFromURL(url) {
-		return new Promise (function (resolve, reject) {
-				//Otherwise try to play it with vgmplay.. how?
-				try {
+		return new Promise(function (resolve, reject) {
+			try {
 				FS.unlink("url.vgm");
-				}catch(err) {}
+			} catch (err) { }
 
-				var xhr = new XMLHttpRequest();
-				xhr.responseType = "arraybuffer";
+			var xhr = new XMLHttpRequest();
+			xhr.responseType = "arraybuffer";
 
-				const classContext = this;
-				xhr.onreadystatechange = function() {
+			const classContext = this;
+			xhr.onreadystatechange = function () {
 				if (xhr.readyState == XMLHttpRequest.DONE) {
-				var arrayBuffer = xhr.response;
-				var byteArray = new Uint8Array(arrayBuffer);
-				FS.createDataFile("/", "url.vgm", byteArray, true, true);
-				resolve(xhr.response);
+					var arrayBuffer = xhr.response;
+					var byteArray = new Uint8Array(arrayBuffer);
+					FS.createDataFile("/", "url.vgm", byteArray, true, true);
+					resolve(xhr.response);
 				}
-				}
-				xhr.open('GET', url, true);
-				xhr.send(null);
+			}
+			xhr.open('GET', url, true);
+			xhr.send(null);
 		});
 	}
 
@@ -277,7 +282,7 @@ Need to handle these divs as well... but first they need to be implemented...
 		this.zipURLLoaded.push(url);
 
 		const classContext = this;
-		xhr.onreadystatechange = function() {
+		xhr.onreadystatechange = function () {
 			if (xhr.readyState == XMLHttpRequest.DONE) {
 				var m3uFile;
 				var txtFile;
@@ -290,15 +295,15 @@ Need to handle these divs as well... but first they need to be implemented...
 				for (var key in fileList) {
 					var fileArray = classContext.mz.extract(fileList[key].filepath);
 					var path = escape(fileList[key].filepath);
-					fileList[key].filepath=path;
-					FS.createDataFile("/", path, fileArray, true, true);
-					if (path.includes("m3u")) m3uFile = FS.readFile(path, { encoding: "utf8" } );
-					if (path.includes("txt")) txtFile = FS.readFile(path, { encoding: "utf8" } );
-					if (path.includes("png")) pngFile = new Blob ([FS.readFile(path)], { type: "image/png" });
+					fileList[key].filepath = path;
+					try { FS.createDataFile("/", path, fileArray, true, true); } catch (e) { }
+					if (path.includes("m3u")) m3uFile = FS.readFile(path, { encoding: "utf8" });
+					if (path.includes("txt")) txtFile = FS.readFile(path, { encoding: "utf8" });
+					if (path.includes("png")) pngFile = new Blob([FS.readFile(path)], { type: "image/png" });
 				}
-				var game = {files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile};
+				var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile };
 				classContext.games.push(game);
-				classContext.checkEverythingReady().then(classContext.showVGMFromZip(game));
+				classContext.checkEverythingReady().then(() => classContext.showVGMFromZip(game));
 			}
 		}
 		xhr.open('GET', url, true);
@@ -315,70 +320,65 @@ Need to handle these divs as well... but first they need to be implemented...
 				this.img.style.width = '256px';
 				this.img.style.height = '212px';
 				this.zipFileListWindow.appendChild(this.img);
-				this.zipFileListWindow.innerHTML+="<br/>";
+				this.zipFileListWindow.innerHTML += "<br/>";
 			}
 			for (var key = 0; key < this.fileList.length; key++) {
 				this.fileName = this.fileList[key].filepath;
 				if (this.fileName.includes("vgm") || this.fileName.includes("vgz")) {
 					this.OpenVGMFile(this.fileName);
 					this.PlayVGM();
-					this.totalSampleCount = this.GetTrackLength()*this.sampleRate/44100;
-					this.trackLengthSeconds = Math.round(this.totalSampleCount/this.sampleRate);
+					this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
+					this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
 					this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-					this.zipFileListWindow.innerHTML+="<a onclick=\"vgmplay_js.playFileFromFS(this, '"+this.fileName+"', "+this.games.length+", "+key+")\">"+unescape(this.fileName)+"<span style=\"float:right;\">" + this.trackLengthHumanReadeable + "</a><br/>"; 
+					this.zipFileListWindow.innerHTML += "<a onclick=\"vgmplay_js.playFileFromFS(this, '" + this.fileName + "', " + this.games.length + ", " + key + ")\">" + unescape(this.fileName) + "<span style=\"float:right;\">" + this.trackLengthHumanReadeable + "</a><br/>";
 					this.StopVGM();
 					this.CloseVGMFile();
-				} else { this.fileList.splice(key,1); key--; }
-			//this.zipFileListWindow.innerHTML+="<hr/>";
+				} else { this.fileList.splice(key, 1); key--; }
 			}
 		}
 	}
 
-	playFileFromFS(href_object, file, game, key) {
-			if (game) this.activeGame = this.games[game-1];
-			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
-			this.checkEverythingReady();
-			this.load(file);
-			this.currentFileKey=key;
-			this.play();
-			this.totalSampleCount = this.GetTrackLength()*this.sampleRate/44100;
-			this.trackLengthSeconds = Math.round(this.totalSampleCount/this.sampleRate);
-			this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-			//console.log(this.trackLengthHumanReadeable);
-			this.getVGMTag();
-			//if (this.zipFileListWindow && href_object) {
-				//if (href_object.innerHTML.indexOf(" - ") === -1) href_object.innerHTML+=" - "+this.trackLengthHumanReadeable;
-			//}
+	async playFileFromFS(href_object, file, game, key) {
+		if (game) this.activeGame = this.games[game - 1];
+		if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
+		await this.checkEverythingReady();
+		this.load(file);
+		this.currentFileKey = key;
+		this.play();
+		this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
+		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
+		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
+		this.getVGMTag();
 	}
 
-	changeTrack(action) {
-                if (typeof this.activeGame.files === 'undefined') {
+	async changeTrack(action) {
+		if (typeof this.activeGame.files === 'undefined') {
 			if (action === "next") {
 				this.activeGame = this.games[0];
-				this.currentFileKey=0;
+				this.currentFileKey = 0;
 			} else {
-				this.activeGame = this.games[this.games.length-1];
-				this.currentFileKey = this.activeGame.files.length-1;
+				this.activeGame = this.games[this.games.length - 1];
+				this.currentFileKey = this.activeGame.files.length - 1;
 			}
-			this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+			await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);
 		} else {
 			if (action === "next") {
-				if (this.currentFileKey+1 === this.activeGame.files.length) this.currentFileKey = 0; else this.currentFileKey++;
+				if (this.currentFileKey + 1 === this.activeGame.files.length) this.currentFileKey = 0; else this.currentFileKey++;
 				this.stop();
-				this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+				await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);
 			}
 			if (action === "previous") {
-				if (this.currentFileKey === 0) this.currentFileKey = this.activeGame.files.length-1; else this.currentFileKey--; 
+				if (this.currentFileKey === 0) this.currentFileKey = this.activeGame.files.length - 1; else this.currentFileKey--;
 				this.stop();
-				this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);	
+				await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);
 			}
 		}
 	}
 
-	togglePlayback() {
-		if (this.checkEverythingReady()) {
+	async togglePlayback() {
+		if (await this.checkEverythingReady()) {
 			if (!this.isVGMLoaded && !this.currentFileKey) {
-				this.changeTrack('next');
+				await this.changeTrack('next');
 			} else {
 				if (this.isPlaybackPaused) {
 					this.play();
@@ -390,34 +390,69 @@ Need to handle these divs as well... but first they need to be implemented...
 	}
 
 	async checkEverythingReady() {
+		// Use a promise lock to prevent concurrent initialization
+		if (!this._initPromise) {
+			this._initPromise = this._doInit();
+		}
+		return this._initPromise;
+	}
+
+	async _doInit() {
 		if (!this.isWebAudioInitialized) {
-			window.AudioContext = window.AudioContext||window.webkitAudioContext;
+			window.AudioContext = window.AudioContext || window.webkitAudioContext;
 			this.context = new AudioContext();
 			this.destination = this.destination || this.context.destination;
 			this.sampleRate = this.context.sampleRate;
-			this.node = this.context.createScriptProcessor(16384, 2, 2);
+
+			// Set up AnalyserNode for spectrum display
+			this.analyser = this.context.createAnalyser();
+			this.analyser.fftSize = 256;
+			this.analyser.smoothingTimeConstant = 0.7;
+			this.analyserData = new Uint8Array(this.analyser.frequencyBinCount);
+
+			// Load AudioWorklet processor
+			try {
+				await this.context.audioWorklet.addModule(this.baseURL + 'vgmplay-audio-processor.js');
+				this.workletNode = new AudioWorkletNode(this.context, 'vgmplay-processor', {
+					outputChannelCount: [2]
+				});
+				// Route: worklet -> analyser -> destination
+				this.workletNode.connect(this.analyser);
+				this.analyser.connect(this.context.destination);
+
+				// Handle data requests from the worklet
+				this.workletNode.port.onmessage = (e) => {
+					if (e.data.type === 'need-data') {
+						this._pumpBuffers();
+					}
+				};
+			} catch (err) {
+				console.error('AudioWorklet failed to load:', err);
+				return false;
+			}
+
 			this.isWebAudioInitialized = true;
 		}
 		if (!this.functionsWrapped) {
 			this.VGMPlay_Init = Module.cwrap('VGMPlay_Init');
 			this.VGMPlay_Init2 = Module.cwrap('VGMPlay_Init2');
-			this.FillBuffer = Module.cwrap('FillBuffer2','number',['number','number']);
-			this.OpenVGMFile = Module.cwrap('OpenVGMFile','number',['string']);
+			this.FillBuffer = Module.cwrap('FillBuffer2', 'number', ['number', 'number']);
+			this.OpenVGMFile = Module.cwrap('OpenVGMFile', 'number', ['string']);
 			this.CloseVGMFile = Module.cwrap('CloseVGMFile');
 			this.PlayVGM = Module.cwrap('PlayVGM');
 			this.StopVGM = Module.cwrap('StopVGM');
 			this.VGMEnded = Module.cwrap('VGMEnded');
 			this.GetTrackLength = Module.cwrap('GetTrackLength');
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
-			this.SeekVGM = Module.cwrap('SeekVGM','number',['number','number']);
-			this.SetSampleRate = Module.cwrap('SetSampleRate','number',['number']);
-			this.SetLoopCount = Module.cwrap('SetLoopCount','number',['number']);
-			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM','number',['number']);
-			this.ShowTitle = Module.cwrap('ShowTitle','string');
+			this.SeekVGM = Module.cwrap('SeekVGM', 'number', ['number', 'number']);
+			this.SetSampleRate = Module.cwrap('SetSampleRate', 'number', ['number']);
+			this.SetLoopCount = Module.cwrap('SetLoopCount', 'number', ['number']);
+			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM', 'number', ['number']);
+			this.ShowTitle = Module.cwrap('ShowTitle', 'string');
 
 			this.dataPtrs = [];
-			this.dataPtrs[0] = Module._malloc(16384*2);
-			this.dataPtrs[1] = Module._malloc(16384*2);
+			this.dataPtrs[0] = Module._malloc(16384 * 2);
+			this.dataPtrs[1] = Module._malloc(16384 * 2);
 
 			this.dataHeaps = [];
 			this.dataHeaps[0] = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[0], 16384);
@@ -431,7 +466,6 @@ Need to handle these divs as well... but first they need to be implemented...
 
 			this.VGMPlay_Init();
 			this.SetSampleRate(this.sampleRate);
-			//if (this.loopCount) this.SetLoopCount(this.loopCount); else this.loopCount = 2;
 			this.VGMPlay_Init2();
 
 			this.functionsWrapped = true;
@@ -440,21 +474,46 @@ Need to handle these divs as well... but first they need to be implemented...
 
 		return true;
 	}
-	
+
 	generateBuffer() {
 		this.FillBuffer(this.dataHeaps[0].byteOffset, this.dataHeaps[1].byteOffset);
-								
+
 		this.results[0] = new Int16Array(this.dataHeaps[0].buffer, this.dataHeaps[0].byteOffset, 16384);
 		this.results[1] = new Int16Array(this.dataHeaps[1].buffer, this.dataHeaps[1].byteOffset, 16384);
 
+		var left = new Float32Array(16384);
+		var right = new Float32Array(16384);
 		for (var i = 0; i < 16384; i++) {
-			this.buffers[0][i] = this.results[0][i] / 32768;
-			this.buffers[1][i] = this.results[1][i] / 32768;
+			left[i] = this.results[0][i] / 32768;
+			right[i] = this.results[1][i] / 32768;
+		}
+		return { left, right };
+	}
+
+	_pumpBuffers() {
+		if (!this.isVGMPlaying || this.isPlaybackPaused) return;
+
+		// Check if VGM ended
+		if (this.VGMEnded()) {
+			this.stop();
+			const classContext = this;
+			setTimeout(function () { classContext.changeTrack("next"); }, 1000);
+			return;
+		}
+
+		// Generate and send a few buffers
+		for (let i = 0; i < 4; i++) {
+			const buf = this.generateBuffer();
+			this.workletNode.port.postMessage({
+				type: 'buffer',
+				left: buf.left,
+				right: buf.right
+			}, [buf.left.buffer, buf.right.buffer]);
 		}
 	}
 
 	play() {
-                document.getElementById("buttonTogglePlayback").innerHTML="||"; //fixen................
+		document.getElementById("buttonTogglePlayback").innerHTML = "||";
 		this.isPlaybackPaused = false;
 
 		if (!this.isVGMPlaying) {
@@ -462,45 +521,54 @@ Need to handle these divs as well... but first they need to be implemented...
 			this.isVGMPlaying = true;
 		}
 
-		this.node.connect(this.context.destination);
-		const classContext = this;
+		// Reconnect audio graph (stop() disconnects it)
+		try {
+			this.workletNode.connect(this.analyser);
+			this.analyser.connect(this.context.destination);
+		} catch { }
+
+		// Resume audio context if suspended (autoplay policy)
+		if (this.context.state === 'suspended') {
+			this.context.resume();
+		}
+
+		// Tell the worklet to start outputting
+		this.workletNode.port.postMessage({ type: 'start' });
 
 		if (!this.generatingAudio) {
-			// generate buffer in advance to avoid hickups
-			this.generateBuffer();
-
-			this.node.onaudioprocess = function (e) {
-				this.output0 = e.outputBuffer.getChannelData(0);
-				this.output1 = e.outputBuffer.getChannelData(1);
-				if (classContext.VGMEnded()) {
-					classContext.stop();
-					setTimeout(function(){ classContext.changeTrack("next");},1000);
-				}
-				for (var i = 0; i < 16384; i++) {
-					this.output0[i] = classContext.buffers[0][i];
-					this.output1[i] = classContext.buffers[1][i];
-				}
-				classContext.generateBuffer();
-			};
+			// Pump initial buffers
+			this._pumpBuffers();
 			this.generatingAudio = true;
 		}
+
+		// Start spectrum analyser animation
+		this._startSpectrumAnimation();
 	}
 
 	pause() {
 		this.isPlaybackPaused = true;
-		this.buttonTogglePlayback.innerHTML="&#9654;"
-		this.node.disconnect(this.context.destination);
+		this.buttonTogglePlayback.innerHTML = "&#9654;"
+		// Tell worklet to stop outputting (keeps buffers)
+		this.workletNode.port.postMessage({ type: 'stop' });
+		this._stopSpectrumAnimation();
 	}
 
 	stop() {
-                this.buttonTogglePlayback.innerHTML="&#9654;";
+		this.buttonTogglePlayback.innerHTML = "&#9654;";
 
+		if (this.workletNode) {
+			this.workletNode.port.postMessage({ type: 'stop' });
+		}
+
+		// Don't close AudioContext — just disconnect and reset state
+		// This avoids expensive re-initialization of worklet module
 		try {
-			this.node.disconnect(this.context.destination);
-			this.context.close();
-		} catch {}
+			if (this.workletNode) {
+				this.workletNode.disconnect();
+				this.analyser.disconnect();
+			}
+		} catch { }
 
-		this.isWebAudioInitialized = false;
 		this.generatingAudio = false;
 
 		this.StopVGM();
@@ -508,9 +576,12 @@ Need to handle these divs as well... but first they need to be implemented...
 		this.isVGMLoaded = false;
 
 		this.isPlaybackPaused = true;
+
+		this._stopSpectrumAnimation();
+		this._clearSpectrum();
 	}
-		
-	load (fileName) {
+
+	load(fileName) {
 		if (this.isVGMLoaded) {
 			this.StopVGMPlayback();
 			this.CloseVGMFile();
@@ -518,5 +589,96 @@ Need to handle these divs as well... but first they need to be implemented...
 		this.OpenVGMFile(fileName);
 		this.isVGMLoaded = true;
 	}
+
+	// ---- Spectrum Analyser ----
+
+	_startSpectrumAnimation() {
+		if (this._spectrumAnimId) return;
+		const draw = () => {
+			this._spectrumAnimId = requestAnimationFrame(draw);
+			this._drawSpectrum();
+		};
+		draw();
+	}
+
+	_stopSpectrumAnimation() {
+		if (this._spectrumAnimId) {
+			cancelAnimationFrame(this._spectrumAnimId);
+			this._spectrumAnimId = null;
+		}
+	}
+
+	_clearSpectrum() {
+		if (!this.spectrumCtx) return;
+		const ctx = this.spectrumCtx;
+		const w = this.spectrumCanvas.width;
+		const h = this.spectrumCanvas.height;
+		ctx.fillStyle = '#000000';
+		ctx.fillRect(0, 0, w, h);
+	}
+
+	_drawSpectrum() {
+		if (!this.analyser || !this.spectrumCtx) return;
+
+		const ctx = this.spectrumCtx;
+		const canvas = this.spectrumCanvas;
+		const w = canvas.width;
+		const h = canvas.height;
+
+		this.analyser.getByteFrequencyData(this.analyserData);
+
+		// Black background
+		ctx.fillStyle = '#000000';
+		ctx.fillRect(0, 0, w, h);
+
+		// Draw horizontal grid lines (old-school look)
+		ctx.strokeStyle = 'rgba(0, 255, 0, 0.1)';
+		ctx.lineWidth = 1;
+		for (let y = 0; y < h; y += 8) {
+			ctx.beginPath();
+			ctx.moveTo(0, y);
+			ctx.lineTo(w, y);
+			ctx.stroke();
+		}
+
+		const binCount = this.analyser.frequencyBinCount; // 128
+		const barCount = 32; // number of bars to display
+		const binsPerBar = Math.floor(binCount / barCount);
+		const barWidth = Math.floor(w / barCount) - 1;
+		const gap = 1;
+
+		for (let i = 0; i < barCount; i++) {
+			// Average the bins for this bar
+			let sum = 0;
+			for (let j = 0; j < binsPerBar; j++) {
+				sum += this.analyserData[i * binsPerBar + j];
+			}
+			const avg = sum / binsPerBar;
+			const barHeight = (avg / 255) * h;
+
+			const x = i * (barWidth + gap);
+			const y = h - barHeight;
+
+			// Green gradient — brighter at top
+			const gradient = ctx.createLinearGradient(x, h, x, y);
+			gradient.addColorStop(0, '#004400');
+			gradient.addColorStop(0.5, '#00cc00');
+			gradient.addColorStop(1, '#00ff66');
+			ctx.fillStyle = gradient;
+			ctx.fillRect(x, y, barWidth, barHeight);
+
+			// Peak highlight line
+			if (barHeight > 2) {
+				ctx.fillStyle = '#aaffaa';
+				ctx.fillRect(x, y, barWidth, 2);
+			}
+		}
+
+		// Scanline overlay effect
+		ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+		for (let y = 0; y < h; y += 2) {
+			ctx.fillRect(0, y, w, 1);
+		}
+	}
 }
-var vgmplay_js=new VGMPlay_js();
+var vgmplay_js = new VGMPlay_js();

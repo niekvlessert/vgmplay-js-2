@@ -442,7 +442,7 @@ class VGMPlay_js {
 
 			// Load AudioWorklet processor
 			try {
-				await this.context.audioWorklet.addModule(this.baseURL + 'vgmplay-audio-processor.js');
+				await this.context.audioWorklet.addModule(this.baseURL + 'vgmplay-audio-processor.js?v=' + Date.now());
 				this.workletNode = new AudioWorkletNode(this.context, 'vgmplay-processor', {
 					outputChannelCount: [2]
 				});
@@ -613,7 +613,12 @@ class VGMPlay_js {
 		}
 
 		// Tell worklet to stop outputting (keeps buffers)
-		this.workletNode.port.postMessage({ type: 'stop' });
+		this.workletNode.port.postMessage({ type: 'pause' });
+
+		if (this.context && this.context.state === 'running') {
+			this.context.suspend();
+		}
+
 		this._stopSpectrumAnimation();
 	}
 

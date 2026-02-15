@@ -18,6 +18,8 @@ class VGMPlayProcessor extends AudioWorkletProcessor {
         this.queue.push({ left: msg.left, right: msg.right });
       } else if (msg.type === 'start') {
         this.playing = true;
+      } else if (msg.type === 'pause') {
+        this.playing = false;
       } else if (msg.type === 'stop') {
         this.playing = false;
         this.queue = [];

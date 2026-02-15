@@ -436,17 +436,24 @@ class VGMPlay_js {
 
 			this.splitter = this.context.createChannelSplitter(2);
 
+			// Create Master Gain for fade out
+			this.masterGain = this.context.createGain();
+			this.masterGain.connect(this.destination);
+
 			// Load AudioWorklet processor
 			try {
 				await this.context.audioWorklet.addModule(this.baseURL + 'vgmplay-audio-processor.js');
 				this.workletNode = new AudioWorkletNode(this.context, 'vgmplay-processor', {
 					outputChannelCount: [2]
 				});
-				// Route: worklet -> splitter -> analysers
-				this.workletNode.connect(this.splitter);
+
+				// Route: worklet -> masterGain -> destination
+				// Route: masterGain -> splitter -> analysers (so visualizer fades too)
+				this.workletNode.connect(this.masterGain);
+
+				this.masterGain.connect(this.splitter);
 				this.splitter.connect(this.analyserLeft, 0);
 				this.splitter.connect(this.analyserRight, 1);
-				this.workletNode.connect(this.context.destination);
 
 				// Handle data requests from the worklet
 				this.workletNode.port.onmessage = (e) => {
@@ -565,10 +572,16 @@ class VGMPlay_js {
 
 		// Reconnect audio graph (stop() disconnects it)
 		try {
-			this.workletNode.connect(this.splitter);
+			this.workletNode.connect(this.masterGain);
+			this.masterGain.connect(this.splitter);
 			this.splitter.connect(this.analyserLeft, 0);
 			this.splitter.connect(this.analyserRight, 1);
-			this.workletNode.connect(this.context.destination);
+			this.masterGain.connect(this.destination);
+
+			// Reset fade state carefully
+			this.isFadingOut = false;
+			this.masterGain.gain.cancelScheduledValues(this.context.currentTime);
+			this.masterGain.gain.setValueAtTime(1.0, this.context.currentTime);
 		} catch { }
 
 		// Resume audio context if suspended (autoplay policy)
@@ -619,6 +632,7 @@ class VGMPlay_js {
 				this.analyserLeft.disconnect();
 				this.analyserRight.disconnect();
 				this.splitter.disconnect();
+				// Ideally disconnect masterGain too, but it's fine.
 			}
 		} catch { }
 
@@ -632,6 +646,14 @@ class VGMPlay_js {
 		this.visualSamplePosition = 0;
 		this.startSample = 0;
 		this.emulatorFinished = false;
+
+		this.isFadingOut = false;
+		if (this.masterGain) {
+			try {
+				this.masterGain.gain.cancelScheduledValues(0);
+				this.masterGain.gain.value = 1.0;
+			} catch (e) { }
+		}
 
 		this._stopSpectrumAnimation();
 		this._clearSpectrum();
@@ -798,6 +820,23 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 		this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
 	}
 
+	// Fade out logic
+	const FADE_DURATION = 2.0; // seconds
+	const fadeStartSample = this.totalSampleCount - (FADE_DURATION * this.sampleRate);
+
+	if (this.isVGMPlaying && !this.isPlaybackPaused && !this.isFadingOut && currentSample >= fadeStartSample && this.totalSampleCount > (FADE_DURATION * this.sampleRate)) {
+		this.isFadingOut = true;
+		const now = this.context.currentTime;
+		const remaining = (this.totalSampleCount - currentSample) / this.sampleRate;
+
+		// Fallback if remaining is tiny
+		const duration = remaining > 0 ? remaining : 0.1;
+
+		this.masterGain.gain.cancelScheduledValues(now);
+		this.masterGain.gain.setValueAtTime(1.0, now);
+		this.masterGain.gain.linearRampToValueAtTime(0, now + duration);
+	}
+
 	// Check for end of track (based on time, not valid buffer data)
 	// We allow a tiny margin or just strictly >=
 	if (this.isVGMPlaying && !this.isPlaybackPaused && currentSample >= this.totalSampleCount) {
@@ -836,6 +875,14 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 	this.visualSamplePosition = targetSample;
 	this.startSample = targetSample;
 	this.emulatorFinished = false; // Reset finished flag on seek
+
+	// Reset fade on seek
+	this.isFadingOut = false;
+	if (this.masterGain && this.context) {
+		this.masterGain.gain.cancelScheduledValues(this.context.currentTime);
+		this.masterGain.gain.setValueAtTime(1.0, this.context.currentTime);
+	}
+
 	if (this.context && !this.isPlaybackPaused) {
 		this.playbackStartTime = this.context.currentTime;
 	}

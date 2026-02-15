@@ -25,6 +25,11 @@ class VGMPlay_js {
 		this.pos3 = 0;
 		this.pos4 = 0;
 
+		// Playback tracking
+		this.playbackStartTime = 0;
+		this.startSample = 0;
+		this.visualSamplePosition = 0;
+
 		// Determine base URL for loading processor and other assets
 		this.baseURL = 'https://niekvlessert.github.io/vgmplay-js-2/';
 		try {
@@ -167,8 +172,18 @@ class VGMPlay_js {
 
 	showPlayer() {
 		this.playerWindow.className = "vgmplayPlayerWindow";
-		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> <a style=\"color:white\" href='javascript:vgmplay_js.toggleDisplayZipFileListWindow()'>Z</a>";
+		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> <a style=\"color:white; text-decoration:none;\" href='javascript:vgmplay_js.toggleDisplayZipFileListWindow()'>Z</a> <span id=\"vgmplayTime\" style=\"color:white; font-family:monospace; margin-left:5px;\">0:00/0:00</span>";
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
+		this.vgmplayTime = document.getElementById('vgmplayTime');
+
+		// Create progress bar
+		this.progressContainer = document.createElement('div');
+		this.progressContainer.className = 'vgmplayProgressBar';
+		this.progressContainer.addEventListener('click', (e) => this._onProgressClick(e));
+		this.progressFill = document.createElement('div');
+		this.progressFill.className = 'vgmplayProgressFill';
+		this.progressContainer.appendChild(this.progressFill);
+		this.playerWindow.appendChild(this.progressContainer);
 
 		// Create spectrum analyser canvas
 		this.spectrumCanvas = document.createElement('canvas');
@@ -178,6 +193,8 @@ class VGMPlay_js {
 		this.spectrumCanvas.height = 64;
 		this.playerWindow.appendChild(this.spectrumCanvas);
 		this.spectrumCtx = this.spectrumCanvas.getContext('2d');
+
+		this.samplesGenerated = 0;
 	}
 
 	toggleDisplayZipFileListWindow() {
@@ -404,11 +421,18 @@ class VGMPlay_js {
 			this.destination = this.destination || this.context.destination;
 			this.sampleRate = this.context.sampleRate;
 
-			// Set up AnalyserNode for spectrum display
-			this.analyser = this.context.createAnalyser();
-			this.analyser.fftSize = 256;
-			this.analyser.smoothingTimeConstant = 0.7;
-			this.analyserData = new Uint8Array(this.analyser.frequencyBinCount);
+			// Set up AnalyserNodes for dual channel spectrum display
+			this.analyserLeft = this.context.createAnalyser();
+			this.analyserLeft.fftSize = 256;
+			this.analyserLeft.smoothingTimeConstant = 0.7;
+			this.analyserDataLeft = new Uint8Array(this.analyserLeft.frequencyBinCount);
+
+			this.analyserRight = this.context.createAnalyser();
+			this.analyserRight.fftSize = 256;
+			this.analyserRight.smoothingTimeConstant = 0.7;
+			this.analyserDataRight = new Uint8Array(this.analyserRight.frequencyBinCount);
+
+			this.splitter = this.context.createChannelSplitter(2);
 
 			// Load AudioWorklet processor
 			try {
@@ -416,9 +440,11 @@ class VGMPlay_js {
 				this.workletNode = new AudioWorkletNode(this.context, 'vgmplay-processor', {
 					outputChannelCount: [2]
 				});
-				// Route: worklet -> analyser -> destination
-				this.workletNode.connect(this.analyser);
-				this.analyser.connect(this.context.destination);
+				// Route: worklet -> splitter -> analysers
+				this.workletNode.connect(this.splitter);
+				this.splitter.connect(this.analyserLeft, 0);
+				this.splitter.connect(this.analyserRight, 1);
+				this.workletNode.connect(this.context.destination);
 
 				// Handle data requests from the worklet
 				this.workletNode.port.onmessage = (e) => {
@@ -487,6 +513,7 @@ class VGMPlay_js {
 			left[i] = this.results[0][i] / 32768;
 			right[i] = this.results[1][i] / 32768;
 		}
+		this.samplesGenerated += 16384;
 		return { left, right };
 	}
 
@@ -514,7 +541,21 @@ class VGMPlay_js {
 
 	play() {
 		document.getElementById("buttonTogglePlayback").innerHTML = "||";
+		this.samplesGenerated = 0;
 		this.isPlaybackPaused = false;
+
+		// Reset tracking if not resuming
+		if (!this.isVGMPlaying) {
+			this.startSample = 0;
+			this.visualSamplePosition = 0;
+		} else {
+			// Resuming: set start sample to where we left off
+			this.startSample = this.visualSamplePosition;
+		}
+
+		if (this.context) {
+			this.playbackStartTime = this.context.currentTime;
+		}
 
 		if (!this.isVGMPlaying) {
 			this.PlayVGM();
@@ -523,8 +564,10 @@ class VGMPlay_js {
 
 		// Reconnect audio graph (stop() disconnects it)
 		try {
-			this.workletNode.connect(this.analyser);
-			this.analyser.connect(this.context.destination);
+			this.workletNode.connect(this.splitter);
+			this.splitter.connect(this.analyserLeft, 0);
+			this.splitter.connect(this.analyserRight, 1);
+			this.workletNode.connect(this.context.destination);
 		} catch { }
 
 		// Resume audio context if suspended (autoplay policy)
@@ -548,6 +591,13 @@ class VGMPlay_js {
 	pause() {
 		this.isPlaybackPaused = true;
 		this.buttonTogglePlayback.innerHTML = "&#9654;"
+
+		// Update visual position one last time to save state
+		if (this.context) {
+			const elapsed = this.context.currentTime - this.playbackStartTime;
+			this.visualSamplePosition = this.startSample + (elapsed * this.sampleRate);
+		}
+
 		// Tell worklet to stop outputting (keeps buffers)
 		this.workletNode.port.postMessage({ type: 'stop' });
 		this._stopSpectrumAnimation();
@@ -565,7 +615,9 @@ class VGMPlay_js {
 		try {
 			if (this.workletNode) {
 				this.workletNode.disconnect();
-				this.analyser.disconnect();
+				this.analyserLeft.disconnect();
+				this.analyserRight.disconnect();
+				this.splitter.disconnect();
 			}
 		} catch { }
 
@@ -576,9 +628,12 @@ class VGMPlay_js {
 		this.isVGMLoaded = false;
 
 		this.isPlaybackPaused = true;
+		this.visualSamplePosition = 0;
+		this.startSample = 0;
 
 		this._stopSpectrumAnimation();
 		this._clearSpectrum();
+		this._resetProgressBar();
 	}
 
 	load(fileName) {
@@ -597,6 +652,7 @@ class VGMPlay_js {
 		const draw = () => {
 			this._spectrumAnimId = requestAnimationFrame(draw);
 			this._drawSpectrum();
+			this._updateProgressBar();
 		};
 		draw();
 	}
@@ -618,14 +674,15 @@ class VGMPlay_js {
 	}
 
 	_drawSpectrum() {
-		if (!this.analyser || !this.spectrumCtx) return;
+		if (!this.analyserLeft || !this.analyserRight || !this.spectrumCtx) return;
 
 		const ctx = this.spectrumCtx;
 		const canvas = this.spectrumCanvas;
 		const w = canvas.width;
 		const h = canvas.height;
 
-		this.analyser.getByteFrequencyData(this.analyserData);
+		this.analyserLeft.getByteFrequencyData(this.analyserDataLeft);
+		this.analyserRight.getByteFrequencyData(this.analyserDataRight);
 
 		// Black background
 		ctx.fillStyle = '#000000';
@@ -641,25 +698,31 @@ class VGMPlay_js {
 			ctx.stroke();
 		}
 
-		const binCount = this.analyser.frequencyBinCount; // 128
-		const barCount = 32; // number of bars to display
+		// Vertical divider
+		ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
+		ctx.beginPath();
+		ctx.moveTo(w / 2, 0);
+		ctx.lineTo(w / 2, h);
+		ctx.stroke();
+
+		const binCount = this.analyserLeft.frequencyBinCount; // 128
+		const barCount = 16; // bars per channel
 		const binsPerBar = Math.floor(binCount / barCount);
-		const barWidth = Math.floor(w / barCount) - 1;
+		const totalWidthPerChannel = w / 2;
+		const barWidth = Math.floor(totalWidthPerChannel / barCount) - 1;
 		const gap = 1;
 
+		// Draw Left Channel
 		for (let i = 0; i < barCount; i++) {
-			// Average the bins for this bar
 			let sum = 0;
 			for (let j = 0; j < binsPerBar; j++) {
-				sum += this.analyserData[i * binsPerBar + j];
+				sum += this.analyserDataLeft[i * binsPerBar + j];
 			}
 			const avg = sum / binsPerBar;
 			const barHeight = (avg / 255) * h;
-
 			const x = i * (barWidth + gap);
 			const y = h - barHeight;
 
-			// Green gradient — brighter at top
 			const gradient = ctx.createLinearGradient(x, h, x, y);
 			gradient.addColorStop(0, '#004400');
 			gradient.addColorStop(0.5, '#00cc00');
@@ -667,7 +730,30 @@ class VGMPlay_js {
 			ctx.fillStyle = gradient;
 			ctx.fillRect(x, y, barWidth, barHeight);
 
-			// Peak highlight line
+			if (barHeight > 2) {
+				ctx.fillStyle = '#aaffaa';
+				ctx.fillRect(x, y, barWidth, 2);
+			}
+		}
+
+		// Draw Right Channel
+		for (let i = 0; i < barCount; i++) {
+			let sum = 0;
+			for (let j = 0; j < binsPerBar; j++) {
+				sum += this.analyserDataRight[i * binsPerBar + j];
+			}
+			const avg = sum / binsPerBar;
+			const barHeight = (avg / 255) * h;
+			const x = (w / 2) + i * (barWidth + gap);
+			const y = h - barHeight;
+
+			const gradient = ctx.createLinearGradient(x, h, x, y);
+			gradient.addColorStop(0, '#004400');
+			gradient.addColorStop(0.5, '#00cc00');
+			gradient.addColorStop(1, '#00ff66');
+			ctx.fillStyle = gradient;
+			ctx.fillRect(x, y, barWidth, barHeight);
+
 			if (barHeight > 2) {
 				ctx.fillStyle = '#aaffaa';
 				ctx.fillRect(x, y, barWidth, 2);
@@ -681,4 +767,73 @@ class VGMPlay_js {
 		}
 	}
 }
+// ---- Progress bar & seek ----
+VGMPlay_js.prototype._updateProgressBar = function () {
+	if (!this.progressFill || !this.totalSampleCount) return;
+
+	let currentSample;
+	if (this.isPlaybackPaused) {
+		currentSample = this.visualSamplePosition;
+	} else if (this.context) {
+		const elapsed = this.context.currentTime - this.playbackStartTime;
+		currentSample = this.startSample + (elapsed * this.sampleRate);
+	} else {
+		currentSample = 0;
+	}
+
+	// Clamp to legitimate range
+	if (currentSample < 0) currentSample = 0;
+	if (currentSample > this.totalSampleCount) currentSample = this.totalSampleCount;
+
+	this.visualSamplePosition = currentSample;
+
+	var progress = Math.min(currentSample / this.totalSampleCount, 1);
+	this.progressFill.style.width = (progress * 100) + '%';
+
+	if (this.vgmplayTime) {
+		var elapsedSec = Math.floor(currentSample / this.sampleRate);
+		var totalSec = Math.floor(this.totalSampleCount / this.sampleRate);
+		this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
+	}
+};
+
+VGMPlay_js.prototype._formatTime = function (seconds) {
+	if (isNaN(seconds) || seconds < 0) return "0:00";
+	var m = Math.floor(seconds / 60);
+	var s = Math.floor(seconds % 60);
+	return m + ":" + (s < 10 ? "0" : "") + s;
+};
+
+VGMPlay_js.prototype._resetProgressBar = function () {
+	if (this.progressFill) this.progressFill.style.width = '0%';
+	if (this.vgmplayTime) this.vgmplayTime.innerText = '0:00/0:00';
+};
+
+VGMPlay_js.prototype._onProgressClick = function (e) {
+	if (!this.isVGMPlaying || !this.totalSampleCount) return;
+	var rect = this.progressContainer.getBoundingClientRect();
+	var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+	var targetSample = Math.floor(ratio * this.totalSampleCount);
+
+	// Seek in the VGM engine
+	var seekSecond = Math.floor(targetSample / this.sampleRate);
+	var seekMS = Math.round((targetSample / this.sampleRate - seekSecond) * 1000);
+	this.SeekVGM(seekSecond, seekMS);
+
+	// Update trackers
+	this.samplesGenerated = targetSample; // Keep generation somewhat in sync (optional but good practice)
+	this.visualSamplePosition = targetSample;
+	this.startSample = targetSample;
+	if (this.context && !this.isPlaybackPaused) {
+		this.playbackStartTime = this.context.currentTime;
+	}
+
+	// Clear worklet buffer and re-pump
+	if (this.workletNode) {
+		this.workletNode.port.postMessage({ type: 'stop' });
+		this.workletNode.port.postMessage({ type: 'start' });
+		this._pumpBuffers();
+	}
+};
+
 var vgmplay_js = new VGMPlay_js();

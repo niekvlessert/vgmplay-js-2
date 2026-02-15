@@ -17,7 +17,7 @@
   padding: 5px;
   color: white;
   /*overflow:scroll;*/
-  overflow: hidden; 
+  overflow: hidden;
 }
 
 .vgmplayTitleWindow {
@@ -32,9 +32,9 @@
   padding: 5px;
   color: white;
   /*overflow:scroll;*/
-  overflow: hidden; 
-  text-align:center;
-  margin:auto;
+  overflow: hidden;
+  text-align: center;
+  margin: auto;
   z-index: 10;
 }
 
@@ -46,21 +46,42 @@
   padding: 5px;
   color: white;
   /*overflow:scroll;*/
-  overflow: hidden; 
-  text-align:center;
-  margin:auto
+  overflow: hidden;
+  text-align: center;
+  margin: auto
 }
 
 .vgmplaySpectrum {
   display: block;
   width: 256px;
-  height: 64px;
+  height: 80px;
   margin: 6px auto 2px auto;
   border-radius: 4px;
   border: 1px solid #333;
   background: #000;
   box-shadow: 0 0 8px rgba(0, 255, 0, 0.2), inset 0 0 4px rgba(0, 255, 0, 0.05);
   image-rendering: pixelated;
+}
+
+.vgmplayProgressBar {
+  width: 256px;
+  height: 8px;
+  margin: 6px auto 0 auto;
+  background: #111;
+  border-radius: 4px;
+  border: 1px solid #333;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.vgmplayProgressFill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(to right, #004400, #00cc00);
+  border-radius: 4px 0 0 4px;
+  transition: width 0.1s linear;
+  box-shadow: 0 0 4px rgba(0, 255, 0, 0.3);
 }
 
 .vgmplayZipFileListWindow {
@@ -73,27 +94,25 @@
   height: 1000px;
   padding: 5px;
   color: white;
-  overflow-y:scroll;
+  overflow-y: scroll;
   overflow-x: hidden;
-  text-align:center;
-  margin:auto;
-}
-.zipFileListWindow::-webkit-scrollbar-track
-{
-	-webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.6);
-	background-color: #CCCCCC;
+  text-align: center;
+  margin: auto;
 }
 
-.zipFileListWindow::-webkit-scrollbar
-{
-	width: 10px;
-	background-color: #F5F5F5;
+.zipFileListWindow::-webkit-scrollbar-track {
+  -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+  background-color: #CCCCCC;
 }
 
-.zipFileListWindow::-webkit-scrollbar-thumb
-{
-	background-color: #FFF;
-	background-image: -webkit-linear-gradient(90deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, transparent 100%, rgba(0, 0, 0, 1) 75%, transparent)
+.zipFileListWindow::-webkit-scrollbar {
+  width: 10px;
+  background-color: #F5F5F5;
+}
+
+.zipFileListWindow::-webkit-scrollbar-thumb {
+  background-color: #FFF;
+  background-image: -webkit-linear-gradient(90deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, transparent 100%, rgba(0, 0, 0, 1) 75%, transparent)
 }
 
 .container {
@@ -101,20 +120,21 @@
   width: 640px;
   text-align: center;
 }
+
 .container .progress {
   margin: 0 auto;
   width: 400px;
 }
 
 .timer {
-	float:left;
-	margin-left: 65px; 
-	padding: 4px;
-	background: rgba(0, 0, 0, 0.25);
-	border-radius: 6px;
-	-webkit-box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
-	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
-	height: 16px;
+  float: left;
+  margin-left: 65px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  -webkit-box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
+  height: 16px;
 }
 
 .progress {
@@ -126,68 +146,81 @@
 }
 
 #dnd-panel {
-        position:relative;
-        margin:0 auto;
-        width:230px;
-        height:26px;
-        line-height:26px;
-        border-radius:4px;
-        border:1px solid #ccc;
-        background-color:#1f1f24;
-        text-align:center;
-        transition:transform 0.25s;
+  position: relative;
+  margin: 0 auto;
+  width: 230px;
+  height: 26px;
+  line-height: 26px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background-color: #1f1f24;
+  text-align: center;
+  transition: transform 0.25s;
 }
 
 @-webkit-keyframes moving-gradient {
-    0% { background-position: left bottom; }
-    100% { background-position: right bottom; }
+  0% {
+    background-position: left bottom;
+  }
+
+  100% {
+    background-position: right bottom;
+  }
 }
 
 .bar {
-    width: 0px;
-    height: 16px;
-    
-    background: -webkit-linear-gradient(
-        left,
-        #01CD33 30%,
-        #66E564 80%,
-        #01CD33 100%
-    ) repeat;
-    
-    -webkit-background-size: 50% 100%;
-    -webkit-animation-name: moving-gradient;
-    -webkit-animation-duration: 1s;
-    -webkit-animation-iteration-count: infinite;
-    -webkit-animation-timing-function: linear;
+  width: 0px;
+  height: 16px;
+
+  background: -webkit-linear-gradient(left,
+      #01CD33 30%,
+      #66E564 80%,
+      #01CD33 100%) repeat;
+
+  -webkit-background-size: 50% 100%;
+  -webkit-animation-name: moving-gradient;
+  -webkit-animation-duration: 1s;
+  -webkit-animation-iteration-count: infinite;
+  -webkit-animation-timing-function: linear;
 }
 
-.half { width: 200px; overflow-x: hidden; }
-.half.full { width: 400px; }
-.half .bar { width: 0%; }
-.half.full .bar { -webkit-animation-duration: 2s; }
+.half {
+  width: 200px;
+  overflow-x: hidden;
+}
+
+.half.full {
+  width: 400px;
+}
+
+.half .bar {
+  width: 0%;
+}
+
+.half.full .bar {
+  -webkit-animation-duration: 2s;
+}
 
 .sexy {
-    border: 1px solid #adadad;
-    -webkit-border-radius: 2px;
+  border: 1px solid #adadad;
+  -webkit-border-radius: 2px;
 }
 
 .sexy .gradient-overlay {
-    position: absolute;
-    width: 400px;
-    height: 16px;
-    
-    background-image: -webkit-linear-gradient(
-        top,
-        rgba(255, 255, 255, .8) 0%,
-        rgba(255, 255, 255, .4) 25%,
-        rgba(255, 255, 255, 0) 25%,
-        rgba(255, 255, 255, .2) 100%
-    );
+  position: absolute;
+  width: 400px;
+  height: 16px;
+
+  background-image: -webkit-linear-gradient(top,
+      rgba(255, 255, 255, .8) 0%,
+      rgba(255, 255, 255, .4) 25%,
+      rgba(255, 255, 255, 0) 25%,
+      rgba(255, 255, 255, .2) 100%);
 }
 
 .sexy .border-overlay {
-    position: absolute;
-    width: 398px;
-    height: 28px;
-    border: 1px solid rgba(255, 255, 255, .15);
+  position: absolute;
+  width: 398px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, .15);
 }

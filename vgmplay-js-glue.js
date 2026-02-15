@@ -28,7 +28,9 @@ class VGMPlay_js {
 		// Playback tracking
 		this.playbackStartTime = 0;
 		this.startSample = 0;
+		this.startSample = 0;
 		this.visualSamplePosition = 0;
+		this.emulatorFinished = false;
 
 		// Determine base URL for loading processor and other assets
 		this.baseURL = 'https://niekvlessert.github.io/vgmplay-js-2/';
@@ -522,9 +524,7 @@ class VGMPlay_js {
 
 		// Check if VGM ended
 		if (this.VGMEnded()) {
-			this.stop();
-			const classContext = this;
-			setTimeout(function () { classContext.changeTrack("next"); }, 1000);
+			this.emulatorFinished = true;
 			return;
 		}
 
@@ -548,6 +548,7 @@ class VGMPlay_js {
 		if (!this.isVGMPlaying) {
 			this.startSample = 0;
 			this.visualSamplePosition = 0;
+			this.emulatorFinished = false;
 		} else {
 			// Resuming: set start sample to where we left off
 			this.startSample = this.visualSamplePosition;
@@ -630,6 +631,7 @@ class VGMPlay_js {
 		this.isPlaybackPaused = true;
 		this.visualSamplePosition = 0;
 		this.startSample = 0;
+		this.emulatorFinished = false;
 
 		this._stopSpectrumAnimation();
 		this._clearSpectrum();
@@ -795,6 +797,15 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 		var totalSec = Math.floor(this.totalSampleCount / this.sampleRate);
 		this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
 	}
+
+	// Check for end of track (based on time, not valid buffer data)
+	// We allow a tiny margin or just strictly >=
+	if (this.isVGMPlaying && !this.isPlaybackPaused && currentSample >= this.totalSampleCount) {
+		this.stop();
+		const classContext = this;
+		// Small delay to let the user "see" the end
+		setTimeout(function () { classContext.changeTrack("next"); }, 100);
+	}
 };
 
 VGMPlay_js.prototype._formatTime = function (seconds) {
@@ -824,6 +835,7 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 	this.samplesGenerated = targetSample; // Keep generation somewhat in sync (optional but good practice)
 	this.visualSamplePosition = targetSample;
 	this.startSample = targetSample;
+	this.emulatorFinished = false; // Reset finished flag on seek
 	if (this.context && !this.isPlaybackPaused) {
 		this.playbackStartTime = this.context.currentTime;
 	}

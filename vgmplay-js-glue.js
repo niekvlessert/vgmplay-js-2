@@ -126,6 +126,7 @@ class VGMPlay_js {
 				this.showZipFileListWindow = true;
 				this.zipFileListWindow.className = "vgmplayZipFileListWindow";
 			}
+			this.setupDropZone();
 		}
 
 		this.currentFileKey = "";
@@ -197,6 +198,50 @@ class VGMPlay_js {
 		this.spectrumCtx = this.spectrumCanvas.getContext('2d');
 
 		this.samplesGenerated = 0;
+	}
+
+	setupDropZone() {
+		this.uploader = document.createElement('div');
+		this.uploader.id = "vgmplayUploader";
+		this.uploader.className = "vgmplayUploader";
+		this.uploader.innerHTML = "Drop VGM .zip files here";
+		this.vgmplayContainer.appendChild(this.uploader);
+
+		['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+			this.uploader.addEventListener(eventName, (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+			}, false);
+		});
+
+		['dragenter', 'dragover'].forEach(eventName => {
+			this.uploader.addEventListener(eventName, () => {
+				this.uploader.classList.add('highlight');
+			}, false);
+		});
+
+		['dragleave', 'drop'].forEach(eventName => {
+			this.uploader.addEventListener(eventName, () => {
+				this.uploader.classList.remove('highlight');
+			}, false);
+		});
+
+		this.uploader.addEventListener('drop', (e) => {
+			const dt = e.dataTransfer;
+			const files = dt.files;
+			this.handleFiles(files);
+		}, false);
+	}
+
+	async handleFiles(files) {
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i];
+			if (file.name.toLowerCase().endsWith('.zip')) {
+				const arrayBuffer = await file.arrayBuffer();
+				const byteArray = new Uint8Array(arrayBuffer);
+				this.processZipBuffer(byteArray);
+			}
+		}
 	}
 
 	toggleDisplayZipFileListWindow() {
@@ -303,30 +348,36 @@ class VGMPlay_js {
 		const classContext = this;
 		xhr.onreadystatechange = function () {
 			if (xhr.readyState == XMLHttpRequest.DONE) {
-				var m3uFile;
-				var txtFile;
-				var pngFile;
 				var arrayBuffer = xhr.response;
 				var byteArray = new Uint8Array(arrayBuffer);
-				classContext.mz = new Minizip(byteArray);
-				var fileList = classContext.mz.list();
-				classContext.amountOfGamesLoaded++;
-				for (var key in fileList) {
-					var fileArray = classContext.mz.extract(fileList[key].filepath);
-					var path = escape(fileList[key].filepath);
-					fileList[key].filepath = path;
-					try { FS.createDataFile("/", path, fileArray, true, true); } catch (e) { }
-					if (path.includes("m3u")) m3uFile = FS.readFile(path, { encoding: "utf8" });
-					if (path.includes("txt")) txtFile = FS.readFile(path, { encoding: "utf8" });
-					if (path.includes("png")) pngFile = new Blob([FS.readFile(path)], { type: "image/png" });
-				}
-				var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile };
-				classContext.games.push(game);
-				classContext.checkEverythingReady().then(() => classContext.showVGMFromZip(game));
+				classContext.processZipBuffer(byteArray);
 			}
 		}
 		xhr.open('GET', url, true);
 		xhr.send(null);
+	}
+
+	processZipBuffer(byteArray) {
+		var m3uFile;
+		var txtFile;
+		var pngFile;
+		this.mz = new Minizip(byteArray);
+		var fileList = this.mz.list();
+		this.amountOfGamesLoaded++;
+		for (var key in fileList) {
+			var fileArray = this.mz.extract(fileList[key].filepath);
+			var path = escape(fileList[key].filepath);
+			fileList[key].filepath = path;
+			try {
+				FS.createDataFile("/", path, fileArray, true, true);
+			} catch (e) { }
+			if (path.includes("m3u")) m3uFile = FS.readFile(path, { encoding: "utf8" });
+			if (path.includes("txt")) txtFile = FS.readFile(path, { encoding: "utf8" });
+			if (path.includes("png")) pngFile = new Blob([FS.readFile(path)], { type: "image/png" });
+		}
+		var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile };
+		this.games.push(game);
+		this.checkEverythingReady().then(() => this.showVGMFromZip(game));
 	}
 
 	showVGMFromZip(game) {

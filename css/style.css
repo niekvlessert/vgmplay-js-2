@@ -158,6 +158,16 @@
   transition: transform 0.25s;
 }
 
+@keyframes moving-gradient {
+  0% {
+    background-position: left bottom;
+  }
+
+  100% {
+    background-position: right bottom;
+  }
+}
+
 @-webkit-keyframes moving-gradient {
   0% {
     background-position: left bottom;
@@ -176,12 +186,21 @@
       #01CD33 30%,
       #66E564 80%,
       #01CD33 100%) repeat;
+  background: linear-gradient(to right,
+      #01CD33 30%,
+      #66E564 80%,
+      #01CD33 100%) repeat;
 
   -webkit-background-size: 50% 100%;
+  background-size: 50% 100%;
   -webkit-animation-name: moving-gradient;
+  animation-name: moving-gradient;
   -webkit-animation-duration: 1s;
+  animation-duration: 1s;
   -webkit-animation-iteration-count: infinite;
+  animation-iteration-count: infinite;
   -webkit-animation-timing-function: linear;
+  animation-timing-function: linear;
 }
 
 .half {
@@ -199,11 +218,13 @@
 
 .half.full .bar {
   -webkit-animation-duration: 2s;
+  animation-duration: 2s;
 }
 
 .sexy {
   border: 1px solid #adadad;
   -webkit-border-radius: 2px;
+  border-radius: 2px;
 }
 
 .sexy .gradient-overlay {
@@ -223,4 +244,27 @@
   width: 398px;
   height: 28px;
   border: 1px solid rgba(255, 255, 255, .15);
+}
+
+.vgmplayUploader {
+  border: 1px solid white;
+  border-radius: 10px;
+  background: #2a2a2a;
+  width: 266px;
+  /* Content width, matches list window */
+  margin: 5px auto;
+  /* Centered like the list window */
+  padding: 2px 5px;
+  /* Thinner top/bottom to look less 'huge' */
+  font-size: 10px;
+  text-align: center;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.vgmplayUploader.highlight {
+  border-color: #00cc00;
+  background: #1a3a1a;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
 }

@@ -42,7 +42,7 @@ Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatch
 </html>
 ```
 
-A Chrome Extension is also included. It can be loaded using chrome://extensions and 'load unpacked'. When on a site containing vgm zip files it can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (mostly) unharmed by the styling of the site and playback can commence!
+A Chrome Extension is also included. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. When on a site containing vgm zip files it can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
 
 Underneath an older screenshot, but you'd better try the latest version on the right, it's hosted on github as well.
 

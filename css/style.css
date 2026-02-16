@@ -122,10 +122,35 @@
   height: 1000px;
   padding: 5px;
   color: white;
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x: hidden;
   text-align: center;
   margin: auto;
+}
+
+.vgmplayContainer .vgmplayTrack {
+  display: block !important;
+  cursor: pointer !important;
+  padding: 1px 6px !important;
+  margin: 0 !important;
+  text-decoration: none !important;
+  color: #eeeeee !important;
+  background: transparent !important;
+  border-left: 3px solid transparent !important;
+  transition: all 0.1s ease !important;
+}
+
+.vgmplayContainer .vgmplayTrack:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.vgmplayContainer .vgmplayTrack.activeTrack {
+  background: rgba(0, 255, 102, 0.2) !important;
+  color: #00ff66 !important;
+  font-weight: bold !important;
+  border-left: 3px solid #00ff66 !important;
+  padding-left: 5px !important;
 }
 
 .vgmplayContainer .zipFileListWindow::-webkit-scrollbar-track {
@@ -322,12 +347,4 @@
   border-width: 5px;
   border-style: solid;
   border-color: #00ff66 transparent transparent transparent;
-}
-
-.vgmplayContainer .activeTrack {
-  background: rgba(0, 255, 102, 0.2) !important;
-  color: #00ff66 !important;
-  font-weight: bold;
-  border-left: 3px solid #00ff66;
-  padding-left: 5px;
 }

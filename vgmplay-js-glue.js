@@ -142,6 +142,11 @@ class VGMPlay_js {
 				this.vgmplayContainer.appendChild(this.zipFileListWindow);
 				this.showZipFileListWindow = true;
 				this.zipFileListWindow.className = "vgmplayZipFileListWindow";
+
+				this.loader = document.createElement('div');
+				this.loader.className = 'vgmplayLoader';
+				this.loader.innerHTML = 'Loading track data';
+				this.zipFileListWindow.appendChild(this.loader);
 			}
 			this.setupDropZone();
 		}
@@ -389,7 +394,12 @@ class VGMPlay_js {
 	}
 
 	_processQueue() {
-		if (this.isProcessingQueue || this.zipQueue.length === 0) return;
+		if (this.isProcessingQueue || this.zipQueue.length === 0) {
+			if (this.loader && this.zipQueue.length === 0) this.loader.style.display = 'none';
+			return;
+		}
+
+		if (this.loader) this.loader.style.display = 'block';
 
 		this.isProcessingQueue = true;
 		const job = this.zipQueue.shift();
@@ -522,8 +532,7 @@ class VGMPlay_js {
 					this.CloseVGMFile();
 
 					const a = document.createElement("a");
-					a.style.display = "block";
-					a.style.cursor = "pointer";
+					a.className = "vgmplayTrack";
 					a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, key);
 					files[key].linkElement = a; // Store reference for highlighting
 
@@ -549,12 +558,9 @@ class VGMPlay_js {
 
 	_updateHighlight() {
 		// Remove highlight from all elements
-		this.games.forEach(game => {
-			game.files.forEach(file => {
-				if (file.linkElement) {
-					file.linkElement.classList.remove('activeTrack');
-				}
-			});
+		const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
+		tracks.forEach(track => {
+			track.classList.remove('activeTrack');
 		});
 
 		// Apply highlight to the active one
@@ -562,6 +568,8 @@ class VGMPlay_js {
 			const activeLink = this.activeGame.files[this.currentFileKey].linkElement;
 			if (activeLink) {
 				activeLink.classList.add('activeTrack');
+				// Scroll into view if hidden
+				activeLink.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 			}
 		}
 	}
@@ -1207,7 +1215,9 @@ VGMPlay_js.prototype._generateReverbImpulse = function () {
 };
 
 VGMPlay_js.prototype._setupTooltips = function () {
-	const targets = this.playerWindow.querySelectorAll('button, a');
+	const buttons = this.playerWindow.querySelectorAll('button');
+	const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
+	const targets = [...buttons, ...tracks];
 	const descriptions = {
 		'|&lt;': 'Previous Track',
 		'|<': 'Previous Track',

@@ -1,11 +1,25 @@
 .vgmplayContainer {
-  font: 13px/20px 'Lucida Grande', Tahoma, Verdana, sans-serif;
-  color: #ffffff;
+  all: initial;
+  /* Reset everything */
+  display: block;
+  font: 13px/20px 'Lucida Grande', Tahoma, Verdana, sans-serif !important;
+  color: #ffffff !important;
   position: absolute;
-  z-index: 9;
+  z-index: 2147483647;
+  box-sizing: border-box !important;
+  text-align: left !important;
 }
 
-.vgmplayDebugWindow {
+.vgmplayContainer * {
+  box-sizing: border-box !important;
+  font-family: 'Lucida Grande', Tahoma, Verdana, sans-serif !important;
+  color: inherit;
+  text-align: inherit;
+  line-height: inherit;
+  text-decoration: none;
+}
+
+.vgmplayContainer .vgmplayDebugWindow {
   position: fixed;
   z-index: 10;
   bottom: 5%;
@@ -20,7 +34,7 @@
   overflow: hidden;
 }
 
-.vgmplayTitleWindow {
+.vgmplayContainer .vgmplayTitleWindow {
   border: 1px solid white;
   background: #2a2a2a 0 0 repeat;
   border-radius: 10px 0px 0px 10px;
@@ -38,7 +52,7 @@
   z-index: 10;
 }
 
-.vgmplayPlayerWindow {
+.vgmplayContainer .vgmplayPlayerWindow {
   border: 1px solid white;
   background: #2a2a2a 0 0 repeat;
   border-radius: 10px;
@@ -50,7 +64,7 @@
   margin: auto;
 }
 
-.vgmplayPlayerWindow button {
+.vgmplayContainer .vgmplayPlayerWindow button {
   background: #444;
   color: white;
   border: 1px solid #666;
@@ -59,13 +73,13 @@
   min-width: 25px;
 }
 
-.vgmplayPlayerWindow button.active {
+.vgmplayContainer .vgmplayPlayerWindow button.active {
   background: #00ff66 !important;
   color: black !important;
   border-color: #00ff66 !important;
 }
 
-.vgmplaySpectrum {
+.vgmplayContainer .vgmplaySpectrum {
   display: block;
   width: 256px;
   height: 80px;
@@ -77,7 +91,7 @@
   image-rendering: pixelated;
 }
 
-.vgmplayProgressBar {
+.vgmplayContainer .vgmplayProgressBar {
   width: 256px;
   height: 8px;
   margin: 6px auto 0 auto;
@@ -89,7 +103,7 @@
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.vgmplayProgressFill {
+.vgmplayContainer .vgmplayProgressFill {
   width: 0%;
   height: 100%;
   background: linear-gradient(to right, #004400, #00cc00);
@@ -98,7 +112,7 @@
   box-shadow: 0 0 4px rgba(0, 255, 0, 0.3);
 }
 
-.vgmplayZipFileListWindow {
+.vgmplayContainer .vgmplayZipFileListWindow {
   border: 1px solid white;
   background: #2a2a2a 0 0 repeat;
   border-radius: 10px 0px 0px 10px;
@@ -114,33 +128,34 @@
   margin: auto;
 }
 
-.zipFileListWindow::-webkit-scrollbar-track {
+.vgmplayContainer .zipFileListWindow::-webkit-scrollbar-track {
   -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
   background-color: #CCCCCC;
 }
 
-.zipFileListWindow::-webkit-scrollbar {
+.vgmplayContainer .zipFileListWindow::-webkit-scrollbar {
   width: 10px;
   background-color: #F5F5F5;
 }
 
-.zipFileListWindow::-webkit-scrollbar-thumb {
+.vgmplayContainer .zipFileListWindow::-webkit-scrollbar-thumb {
   background-color: #FFF;
   background-image: -webkit-linear-gradient(90deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, transparent 100%, rgba(0, 0, 0, 1) 75%, transparent)
 }
 
-.container {
+/* Scoped and renamed legacy UI classes to avoid conflicts */
+.vgmplayContainer .vgmplay-legacy-container {
   margin: 80px auto;
   width: 640px;
   text-align: center;
 }
 
-.container .progress {
+.vgmplayContainer .vgmplay-legacy-container .vgmplay-legacy-progress {
   margin: 0 auto;
   width: 400px;
 }
 
-.timer {
+.vgmplayContainer .vgmplay-legacy-timer {
   float: left;
   margin-left: 65px;
   padding: 4px;
@@ -151,7 +166,7 @@
   height: 16px;
 }
 
-.progress {
+.vgmplayContainer .vgmplay-legacy-progress {
   padding: 4px;
   background: rgba(0, 0, 0, 0.25);
   border-radius: 6px;
@@ -159,7 +174,7 @@
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
 }
 
-#dnd-panel {
+.vgmplayContainer #dnd-panel {
   position: relative;
   margin: 0 auto;
   width: 230px;
@@ -172,7 +187,7 @@
   transition: transform 0.25s;
 }
 
-@keyframes moving-gradient {
+@keyframes vgmplay-moving-gradient {
   0% {
     background-position: left bottom;
   }
@@ -182,7 +197,7 @@
   }
 }
 
-@-webkit-keyframes moving-gradient {
+@-webkit-keyframes vgmplay-moving-gradient {
   0% {
     background-position: left bottom;
   }
@@ -192,7 +207,7 @@
   }
 }
 
-.bar {
+.vgmplayContainer .vgmplay-legacy-bar {
   width: 0px;
   height: 16px;
 
@@ -207,8 +222,8 @@
 
   -webkit-background-size: 50% 100%;
   background-size: 50% 100%;
-  -webkit-animation-name: moving-gradient;
-  animation-name: moving-gradient;
+  -webkit-animation-name: vgmplay-moving-gradient;
+  animation-name: vgmplay-moving-gradient;
   -webkit-animation-duration: 1s;
   animation-duration: 1s;
   -webkit-animation-iteration-count: infinite;
@@ -217,31 +232,31 @@
   animation-timing-function: linear;
 }
 
-.half {
+.vgmplayContainer .vgmplay-legacy-half {
   width: 200px;
   overflow-x: hidden;
 }
 
-.half.full {
+.vgmplayContainer .vgmplay-legacy-half.full {
   width: 400px;
 }
 
-.half .bar {
+.vgmplayContainer .vgmplay-legacy-half .vgmplay-legacy-bar {
   width: 0%;
 }
 
-.half.full .bar {
+.vgmplayContainer .vgmplay-legacy-half.full .vgmplay-legacy-bar {
   -webkit-animation-duration: 2s;
   animation-duration: 2s;
 }
 
-.sexy {
+.vgmplayContainer .vgmplay-legacy-sexy {
   border: 1px solid #adadad;
   -webkit-border-radius: 2px;
   border-radius: 2px;
 }
 
-.sexy .gradient-overlay {
+.vgmplayContainer .vgmplay-legacy-sexy .vgmplay-legacy-gradient-overlay {
   position: absolute;
   width: 400px;
   height: 16px;
@@ -253,14 +268,14 @@
       rgba(255, 255, 255, .2) 100%);
 }
 
-.sexy .border-overlay {
+.vgmplayContainer .vgmplay-legacy-sexy .vgmplay-legacy-border-overlay {
   position: absolute;
   width: 398px;
   height: 28px;
   border: 1px solid rgba(255, 255, 255, .15);
 }
 
-.vgmplayUploader {
+.vgmplayContainer .vgmplayUploader {
   border: 1px solid white;
   border-radius: 10px;
   background: #2a2a2a;
@@ -277,33 +292,34 @@
   transition: all 0.3s ease;
 }
 
-.vgmplayUploader.highlight {
+.vgmplayContainer .vgmplayUploader.highlight {
   border-color: #00cc00;
   background: #1a3a1a;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
 }
-.vgmplayTooltip {
-    position: absolute;
-    background: rgba(0, 0, 0, 0.9);
-    color: #00ff66;
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid #00ff66;
-    font-size: 11px;
-    white-space: nowrap;
-    pointer-events: none;
-    z-index: 1000;
-    transform: translateX(-50%);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+
+.vgmplayContainer .vgmplayTooltip {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.9);
+  color: #00ff66;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #00ff66;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1000;
+  transform: translateX(-50%);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
-.vgmplayTooltip::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    margin-left: -5px;
-    border-width: 5px;
-    border-style: solid;
-    border-color: #00ff66 transparent transparent transparent;
+.vgmplayContainer .vgmplayTooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #00ff66 transparent transparent transparent;
 }

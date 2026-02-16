@@ -21,6 +21,7 @@ class VGMPlay_js {
 		this.reverbEnabled = false;
 		this.games = [];
 		this.activeGame = "";
+		this.amountOfGamesLoaded = 0;
 		this.sampleRate = "";
 		this.trackLengthHumanReadeable = false;
 
@@ -34,6 +35,10 @@ class VGMPlay_js {
 		this.startSample = 0;
 		this.visualSamplePosition = 0;
 		this.emulatorFinished = false;
+
+		// Bind dragging methods
+		this.elementDrag = this.elementDrag.bind(this);
+		this.stopDrag = this.stopDrag.bind(this);
 
 		// Determine base URL
 		this.baseURL = options.baseURL || 'https://niekvlessert.github.io/vgmplay-js-2/';
@@ -115,12 +120,12 @@ class VGMPlay_js {
 				this.titleWindow.id = "vgmplayTitleWindow";
 				this.vgmplayContainer.appendChild(this.titleWindow);
 				this.titleWindow.className = "vgmplayTitleWindow";
-				this.titleWindow.addEventListener("mousedown", () => {
+				this.titleWindow.addEventListener("mousedown", (e) => {
+					e.preventDefault();
+					this.pos3 = e.clientX;
+					this.pos4 = e.clientY;
 					window.addEventListener('mousemove', this.elementDrag);
-				});
-
-				window.addEventListener('mouseup', () => {
-					window.removeEventListener('mousemove', this.elementDrag);
+					window.addEventListener('mouseup', this.stopDrag);
 				});
 			}
 			if (this.displayPlayer) {
@@ -173,7 +178,6 @@ class VGMPlay_js {
 	}
 
 	elementDrag(e) {
-		e = e || window.event;
 		e.preventDefault();
 		this.pos1 = this.pos3 - e.clientX;
 		this.pos2 = this.pos4 - e.clientY;
@@ -181,6 +185,11 @@ class VGMPlay_js {
 		this.pos4 = e.clientY;
 		this.vgmplayContainer.style.top = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
 		this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
+	}
+
+	stopDrag() {
+		window.removeEventListener('mousemove', this.elementDrag);
+		window.removeEventListener('mouseup', this.stopDrag);
 	}
 
 	showPlayer() {
@@ -386,6 +395,19 @@ class VGMPlay_js {
 		xhr.send(null);
 	}
 
+	_makedirs(path) {
+		const parts = path.split('/').filter(p => p.length > 0);
+		let current = '';
+		for (const part of parts) {
+			current += '/' + part;
+			try {
+				FS.mkdir(current);
+			} catch (e) {
+				// Already exists or other error
+			}
+		}
+	}
+
 	processZipBuffer(byteArray) {
 		var m3uFile;
 		var txtFile;
@@ -393,18 +415,34 @@ class VGMPlay_js {
 		this.mz = new Minizip(byteArray);
 		var fileList = this.mz.list();
 		this.amountOfGamesLoaded++;
+		const gamePath = "/game_" + this.amountOfGamesLoaded;
+
+		this._makedirs(gamePath);
+
 		for (var key in fileList) {
 			var fileArray = this.mz.extract(fileList[key].filepath);
-			var path = escape(fileList[key].filepath);
-			fileList[key].filepath = path;
+			var fileName = escape(fileList[key].filepath);
+			var fullPath = gamePath + "/" + fileName;
+
+			// If fileName contains slashes (escaped or not), we need to ensure parents exist
+			const lastSlash = fullPath.lastIndexOf('/');
+			if (lastSlash > gamePath.length) {
+				this._makedirs(fullPath.substring(0, lastSlash));
+			}
+
+			fileList[key].filepath = fullPath; // Store full path
 			try {
-				FS.createDataFile("/", path, fileArray, true, true);
-			} catch (e) { }
-			if (path.includes("m3u")) m3uFile = FS.readFile(path, { encoding: "utf8" });
-			if (path.includes("txt")) txtFile = FS.readFile(path, { encoding: "utf8" });
-			if (path.includes("png")) pngFile = new Blob([FS.readFile(path)], { type: "image/png" });
+				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+				FS.createDataFile(parent, name, fileArray, true, true);
+			} catch (e) {
+				console.error("Error creating file in FS:", e);
+			}
+			if (fileName.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+			if (fileName.includes("txt")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
+			if (fileName.includes("png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 		}
-		var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile };
+		var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
 		this.games.push(game);
 		this.checkEverythingReady().then(() => this.showVGMFromZip(game));
 	}
@@ -432,14 +470,15 @@ class VGMPlay_js {
 				this.zipFileListWindow.innerHTML += "<br/>";
 			}
 			for (let key = 0; key < files.length; key++) {
-				const fileName = files[key].filepath;
+				const fullPath = files[key].filepath;
+				const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 				if (fileName.includes("vgm") || fileName.includes("vgz")) {
-					this.OpenVGMFile(fileName);
+					this.OpenVGMFile(fullPath);
 					this.PlayVGM();
 					const totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
 					const trackLengthSeconds = Math.round(totalSampleCount / this.sampleRate);
 					const trackLengthHumanReadeable = new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-					this.zipFileListWindow.innerHTML += "<a onclick=\"vgmplay_js.playFileFromFS(this, '" + fileName + "', " + gameIndex + ", " + key + ")\">" + unescape(fileName) + "<span style=\"float:right;\">" + trackLengthHumanReadeable + "</a><br/>";
+					this.zipFileListWindow.innerHTML += "<a onclick=\"vgmplay_js.playFileFromFS(this, '" + fullPath + "', " + gameIndex + ", " + key + ")\">" + unescape(fileName) + "<span style=\"float:right;\">" + trackLengthHumanReadeable + "</a><br/>";
 					this.StopVGM();
 					this.CloseVGMFile();
 				} else { files.splice(key, 1); key--; }

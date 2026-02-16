@@ -19,6 +19,7 @@ class VGMPlay_js {
 		this.showZipFileListWindow = true;
 		this.bassBoostEnabled = false;
 		this.reverbEnabled = false;
+		this.isRandomEnabled = false;
 		this.games = [];
 		this.activeGame = "";
 		this.amountOfGamesLoaded = 0;
@@ -207,7 +208,8 @@ class VGMPlay_js {
 			<button onclick="vgmplay_js.changeTrack('next')">&gt;|</button>
 			<button onclick="vgmplay_js.stop()">&#9632;</button>
 			<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
-			<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">R</button>
+			<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
+			<button id="btnRandom" onclick="vgmplay_js.toggleRandom()">R</button>
 			<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
 			<span id="vgmplayTime" style="color:white; font-family:monospace; margin-left:5px;">0:00/0:00</span>
 		`;
@@ -215,6 +217,7 @@ class VGMPlay_js {
 		this.vgmplayTime = document.getElementById('vgmplayTime');
 		this.btnBass = document.getElementById('btnBass');
 		this.btnReverb = document.getElementById('btnReverb');
+		this.btnRandom = document.getElementById('btnRandom');
 		this.btnLibrary = document.getElementById('btnLibrary');
 
 		// Create progress bar
@@ -568,8 +571,6 @@ class VGMPlay_js {
 			const activeLink = this.activeGame.files[this.currentFileKey].linkElement;
 			if (activeLink) {
 				activeLink.classList.add('activeTrack');
-				// Scroll into view if hidden
-				activeLink.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 			}
 		}
 	}
@@ -590,6 +591,11 @@ class VGMPlay_js {
 
 	async changeTrack(action) {
 		if (this.games.length === 0) return;
+
+		if (this.isRandomEnabled && action === "next") {
+			this.playRandom();
+			return;
+		}
 
 		let gameIndex = this.activeGame ? this.games.indexOf(this.activeGame) : -1;
 
@@ -1127,7 +1133,10 @@ VGMPlay_js.prototype._checkTrackEnd = function () {
 	if (!this.isPlaybackPaused && currentSample >= this.totalSampleCount) {
 		this.stop();
 		// Small delay to let the user "see" the end
-		setTimeout(() => { this.changeTrack("next"); }, 100);
+		setTimeout(() => {
+			if (this.isRandomEnabled) this.playRandom();
+			else this.changeTrack("next");
+		}, 100);
 	}
 };
 
@@ -1200,6 +1209,21 @@ VGMPlay_js.prototype.toggleReverb = function () {
 	}
 };
 
+VGMPlay_js.prototype.toggleRandom = function () {
+	this.isRandomEnabled = !this.isRandomEnabled;
+	if (this.btnRandom) {
+		this.btnRandom.classList.toggle('active', this.isRandomEnabled);
+	}
+};
+
+VGMPlay_js.prototype.playRandom = function () {
+	if (this.games.length === 0) return;
+	const gameIndex = Math.floor(Math.random() * this.games.length);
+	const game = this.games[gameIndex];
+	const fileIndex = Math.floor(Math.random() * game.files.length);
+	this.playFileFromFS(false, game.files[fileIndex].filepath, gameIndex + 1, fileIndex);
+};
+
 VGMPlay_js.prototype._generateReverbImpulse = function () {
 	const length = this.sampleRate * 2.5;
 	const impulse = this.context.createBuffer(2, length, this.sampleRate);
@@ -1231,7 +1255,8 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'■': 'Stop',
 		'\u25A0': 'Stop',
 		'B': 'Bass Boost',
-		'R': 'Reverb',
+		'V': 'Reverb',
+		'R': 'Shuffle',
 		'Z': 'Toggle Library'
 	};
 

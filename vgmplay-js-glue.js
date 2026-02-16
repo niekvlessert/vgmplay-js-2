@@ -600,6 +600,9 @@ class VGMPlay_js {
 	_pumpBuffers() {
 		if (!this.isVGMPlaying || this.isPlaybackPaused) return;
 
+		// Check for end of track (crucial for background advancement)
+		this._checkTrackEnd();
+
 		// Check if VGM ended
 		if (this.VGMEnded()) {
 			this.emulatorFinished = true;
@@ -871,6 +874,22 @@ class VGMPlay_js {
 VGMPlay_js.prototype._updateProgressBar = function () {
 	if (!this.progressFill || !this.totalSampleCount) return;
 
+	this._checkTrackEnd();
+
+	const currentSample = this.visualSamplePosition;
+	const progress = Math.min(currentSample / this.totalSampleCount, 1);
+	this.progressFill.style.width = (progress * 100) + '%';
+
+	if (this.vgmplayTime) {
+		const elapsedSec = Math.floor(currentSample / this.sampleRate);
+		const totalSec = Math.floor(this.totalSampleCount / this.sampleRate);
+		this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
+	}
+};
+
+VGMPlay_js.prototype._checkTrackEnd = function () {
+	if (!this.isVGMPlaying || !this.totalSampleCount) return;
+
 	let currentSample;
 	if (this.isPlaybackPaused) {
 		currentSample = this.visualSamplePosition;
@@ -887,25 +906,14 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 
 	this.visualSamplePosition = currentSample;
 
-	var progress = Math.min(currentSample / this.totalSampleCount, 1);
-	this.progressFill.style.width = (progress * 100) + '%';
-
-	if (this.vgmplayTime) {
-		var elapsedSec = Math.floor(currentSample / this.sampleRate);
-		var totalSec = Math.floor(this.totalSampleCount / this.sampleRate);
-		this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
-	}
-
 	// Fade out logic
 	const FADE_DURATION = 2.0; // seconds
 	const fadeStartSample = this.totalSampleCount - (FADE_DURATION * this.sampleRate);
 
-	if (this.isVGMPlaying && !this.isPlaybackPaused && !this.isFadingOut && currentSample >= fadeStartSample && this.totalSampleCount > (FADE_DURATION * this.sampleRate)) {
+	if (!this.isPlaybackPaused && !this.isFadingOut && currentSample >= fadeStartSample && this.totalSampleCount > (FADE_DURATION * this.sampleRate)) {
 		this.isFadingOut = true;
 		const now = this.context.currentTime;
 		const remaining = (this.totalSampleCount - currentSample) / this.sampleRate;
-
-		// Fallback if remaining is tiny
 		const duration = remaining > 0 ? remaining : 0.1;
 
 		this.masterGain.gain.cancelScheduledValues(now);
@@ -913,13 +921,11 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 		this.masterGain.gain.linearRampToValueAtTime(0, now + duration);
 	}
 
-	// Check for end of track (based on time, not valid buffer data)
-	// We allow a tiny margin or just strictly >=
-	if (this.isVGMPlaying && !this.isPlaybackPaused && currentSample >= this.totalSampleCount) {
+	// Check for end of track
+	if (!this.isPlaybackPaused && currentSample >= this.totalSampleCount) {
 		this.stop();
-		const classContext = this;
 		// Small delay to let the user "see" the end
-		setTimeout(function () { classContext.changeTrack("next"); }, 100);
+		setTimeout(() => { this.changeTrack("next"); }, 100);
 	}
 };
 

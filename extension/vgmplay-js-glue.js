@@ -22,6 +22,8 @@ class VGMPlay_js {
 		this.games = [];
 		this.activeGame = "";
 		this.amountOfGamesLoaded = 0;
+		this.zipQueue = [];
+		this.isProcessingQueue = false;
 		this.sampleRate = "";
 		this.trackLengthHumanReadeable = false;
 
@@ -277,9 +279,10 @@ class VGMPlay_js {
 			if (file.name.toLowerCase().endsWith('.zip')) {
 				const arrayBuffer = await file.arrayBuffer();
 				const byteArray = new Uint8Array(arrayBuffer);
-				this.processZipBuffer(byteArray);
+				this.zipQueue.push({ type: 'file', data: byteArray });
 			}
 		}
+		this._processQueue();
 	}
 
 	toggleDisplayZipFileListWindow() {
@@ -376,23 +379,49 @@ class VGMPlay_js {
 	}
 
 	loadZIPWithVGMFromURL(url) {
-		var xhr = new XMLHttpRequest();
-		xhr.responseType = "arraybuffer";
 		if (this.zipURLLoaded.includes(url)) {
 			return;
 		}
 		this.zipURLLoaded.push(url);
+		this.zipQueue.push({ type: 'url', data: url });
+		this._processQueue();
+	}
+
+	_processQueue() {
+		if (this.isProcessingQueue || this.zipQueue.length === 0) return;
+
+		this.isProcessingQueue = true;
+		const job = this.zipQueue.shift();
+
+		const next = () => {
+			this.isProcessingQueue = false;
+			// Yield to UI before next job
+			setTimeout(() => this._processQueue(), 100);
+		};
 
 		const classContext = this;
-		xhr.onreadystatechange = function () {
-			if (xhr.readyState == XMLHttpRequest.DONE) {
-				var arrayBuffer = xhr.response;
-				var byteArray = new Uint8Array(arrayBuffer);
-				classContext.processZipBuffer(byteArray);
+		this.checkEverythingReady().then(() => {
+			if (job.type === 'url') {
+				var xhr = new XMLHttpRequest();
+				xhr.responseType = "arraybuffer";
+				xhr.onreadystatechange = function () {
+					if (xhr.readyState == XMLHttpRequest.DONE) {
+						if (xhr.status === 200) {
+							var arrayBuffer = xhr.response;
+							var byteArray = new Uint8Array(arrayBuffer);
+							classContext.processZipBuffer(byteArray).then(next);
+						} else {
+							console.error("Failed to load zip from URL:", job.data);
+							next();
+						}
+					}
+				}
+				xhr.open('GET', job.data, true);
+				xhr.send(null);
+			} else if (job.type === 'file') {
+				classContext.processZipBuffer(job.data).then(next);
 			}
-		}
-		xhr.open('GET', url, true);
-		xhr.send(null);
+		});
 	}
 
 	_makedirs(path) {
@@ -401,50 +430,57 @@ class VGMPlay_js {
 		for (const part of parts) {
 			current += '/' + part;
 			try {
-				FS.mkdir(current);
+				if (!FS.analyzePath(current).exists) {
+					FS.mkdir(current);
+				}
 			} catch (e) {
-				// Already exists or other error
+				// Fallback if analyzePath fails or mkdir refuses
 			}
 		}
 	}
 
 	processZipBuffer(byteArray) {
-		var m3uFile;
-		var txtFile;
-		var pngFile;
-		this.mz = new Minizip(byteArray);
-		var fileList = this.mz.list();
-		this.amountOfGamesLoaded++;
-		const gamePath = "/game_" + this.amountOfGamesLoaded;
+		return new Promise((resolve) => {
+			var m3uFile;
+			var txtFile;
+			var pngFile;
+			this.mz = new Minizip(byteArray);
+			var fileList = this.mz.list();
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
 
-		this._makedirs(gamePath);
+			this._makedirs(gamePath);
 
-		for (var key in fileList) {
-			var fileArray = this.mz.extract(fileList[key].filepath);
-			var fileName = escape(fileList[key].filepath);
-			var fullPath = gamePath + "/" + fileName;
+			for (var key in fileList) {
+				var fileArray = this.mz.extract(fileList[key].filepath);
+				var fileName = escape(fileList[key].filepath);
+				var fullPath = gamePath + "/" + fileName;
 
-			// If fileName contains slashes (escaped or not), we need to ensure parents exist
-			const lastSlash = fullPath.lastIndexOf('/');
-			if (lastSlash > gamePath.length) {
-				this._makedirs(fullPath.substring(0, lastSlash));
+				// If fileName contains slashes (escaped or not), we need to ensure parents exist
+				const lastSlash = fullPath.lastIndexOf('/');
+				if (lastSlash > gamePath.length) {
+					this._makedirs(fullPath.substring(0, lastSlash));
+				}
+
+				fileList[key].filepath = fullPath; // Store full path
+				try {
+					const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+					const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+					FS.createDataFile(parent, name, fileArray, true, true);
+				} catch (e) {
+					console.error("Error creating file in FS:", e);
+				}
+				if (fileName.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+				if (fileName.includes("txt")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
+				if (fileName.includes("png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 			}
-
-			fileList[key].filepath = fullPath; // Store full path
-			try {
-				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
-				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
-				FS.createDataFile(parent, name, fileArray, true, true);
-			} catch (e) {
-				console.error("Error creating file in FS:", e);
-			}
-			if (fileName.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
-			if (fileName.includes("txt")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
-			if (fileName.includes("png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-		}
-		var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
-		this.games.push(game);
-		this.checkEverythingReady().then(() => this.showVGMFromZip(game));
+			var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
+			this.games.push(game);
+			this.checkEverythingReady().then(() => {
+				this.showVGMFromZip(game);
+				resolve();
+			});
+		});
 	}
 
 	addHarvestedTracks(urls) {
@@ -460,15 +496,18 @@ class VGMPlay_js {
 		const gameIndex = this.games.indexOf(game) + 1;
 
 		if (this.zipFileListWindow) {
+			const fragment = document.createDocumentFragment();
+
 			if (game.png) {
 				const url = URL.createObjectURL(game.png);
 				const img = new Image();
 				img.src = url;
 				img.style.width = '256px';
 				img.style.height = '212px';
-				this.zipFileListWindow.appendChild(img);
-				this.zipFileListWindow.innerHTML += "<br/>";
+				fragment.appendChild(img);
+				fragment.appendChild(document.createElement("br"));
 			}
+
 			for (let key = 0; key < files.length; key++) {
 				const fullPath = files[key].filepath;
 				const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
@@ -478,11 +517,30 @@ class VGMPlay_js {
 					const totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
 					const trackLengthSeconds = Math.round(totalSampleCount / this.sampleRate);
 					const trackLengthHumanReadeable = new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-					this.zipFileListWindow.innerHTML += "<a onclick=\"vgmplay_js.playFileFromFS(this, '" + fullPath + "', " + gameIndex + ", " + key + ")\">" + unescape(fileName) + "<span style=\"float:right;\">" + trackLengthHumanReadeable + "</a><br/>";
 					this.StopVGM();
 					this.CloseVGMFile();
-				} else { files.splice(key, 1); key--; }
+
+					const a = document.createElement("a");
+					a.style.display = "block";
+					a.style.cursor = "pointer";
+					a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, key);
+
+					const nameSpan = document.createElement("span");
+					nameSpan.textContent = unescape(fileName);
+					a.appendChild(nameSpan);
+
+					const timeSpan = document.createElement("span");
+					timeSpan.style.float = "right";
+					timeSpan.textContent = trackLengthHumanReadeable;
+					a.appendChild(timeSpan);
+
+					fragment.appendChild(a);
+				} else {
+					files.splice(key, 1);
+					key--;
+				}
 			}
+			this.zipFileListWindow.appendChild(fragment);
 		}
 	}
 
@@ -548,6 +606,18 @@ class VGMPlay_js {
 	}
 
 	async _doInit() {
+		// Wait for Emscripten to be fully loaded and FS to be ready
+		await new Promise(resolve => {
+			const check = () => {
+				if (typeof Module !== 'undefined' && Module.calledRun && typeof FS !== 'undefined') {
+					resolve();
+				} else {
+					setTimeout(check, 100);
+				}
+			};
+			check();
+		});
+
 		if (!this.isWebAudioInitialized) {
 			window.AudioContext = window.AudioContext || window.webkitAudioContext;
 			this.context = new AudioContext();

@@ -544,19 +544,6 @@ class VGMPlay_js {
 			}
 			this.zipFileListWindow.appendChild(fragment);
 		}
-	}
-
-	async playFileFromFS(href_object, file, game, key) {
-		if (game) this.activeGame = this.games[game - 1];
-		if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
-		await this.checkEverythingReady();
-		this.load(file);
-		this.currentFileKey = key;
-		this.play();
-		this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
-		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
-		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-		this.getVGMTag();
 		this._updateHighlight();
 	}
 
@@ -577,6 +564,20 @@ class VGMPlay_js {
 				activeLink.classList.add('activeTrack');
 			}
 		}
+	}
+
+	async playFileFromFS(href_object, file, game, key) {
+		if (game) this.activeGame = this.games[game - 1];
+		if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
+		await this.checkEverythingReady();
+		this.load(file);
+		this.currentFileKey = key;
+		this.play();
+		this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
+		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
+		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
+		this.getVGMTag();
+		this._updateHighlight();
 	}
 
 	async changeTrack(action) {
@@ -1212,11 +1213,13 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'|<': 'Previous Track',
 		'&#9654;': 'Play/Pause',
 		'▶': 'Play/Pause',
+		'\u25B6': 'Play/Pause',
 		'||': 'Play/Pause',
 		'&gt;|': 'Next Track',
 		'>|': 'Next Track',
 		'&#9632;': 'Stop',
 		'■': 'Stop',
+		'\u25A0': 'Stop',
 		'B': 'Bass Boost',
 		'R': 'Reverb',
 		'Z': 'Toggle Library'

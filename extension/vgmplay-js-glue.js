@@ -203,13 +203,14 @@ class VGMPlay_js {
 			<button onclick="vgmplay_js.stop()">&#9632;</button>
 			<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
 			<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">R</button>
-			<a style="color:white; text-decoration:none;" href='javascript:vgmplay_js.toggleDisplayZipFileListWindow()'>Z</a>
+			<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
 			<span id="vgmplayTime" style="color:white; font-family:monospace; margin-left:5px;">0:00/0:00</span>
 		`;
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
 		this.vgmplayTime = document.getElementById('vgmplayTime');
 		this.btnBass = document.getElementById('btnBass');
 		this.btnReverb = document.getElementById('btnReverb');
+		this.btnLibrary = document.getElementById('btnLibrary');
 
 		// Create progress bar
 		this.progressContainer = document.createElement('div');
@@ -1179,10 +1180,14 @@ VGMPlay_js.prototype._setupTooltips = function () {
 	const targets = this.playerWindow.querySelectorAll('button, a');
 	const descriptions = {
 		'|&lt;': 'Previous Track',
-		'&#9654;': 'Play / Pause',
-		'||': 'Play / Pause',
+		'|<': 'Previous Track',
+		'&#9654;': 'Play/Pause',
+		'▶': 'Play/Pause',
+		'||': 'Play/Pause',
 		'&gt;|': 'Next Track',
-		'&#9632;': 'Stop Playback',
+		'>|': 'Next Track',
+		'&#9632;': 'Stop',
+		'■': 'Stop',
 		'B': 'Bass Boost',
 		'R': 'Reverb',
 		'Z': 'Toggle Library'

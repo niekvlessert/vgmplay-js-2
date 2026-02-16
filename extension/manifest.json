@@ -1,0 +1,43 @@
+{
+    "manifest_version": 3,
+    "name": "VGM Player Harvester",
+    "version": "1.0",
+    "description": "Scans pages for VGM music and plays it in an injected retro player.",
+    "permissions": [
+        "activeTab",
+        "scripting"
+    ],
+    "action": {
+        "default_title": "Inject VGM Player"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "content_harvester.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "vgmplay-js-glue.js",
+                "vgmplay-audio-processor.js",
+                "vgmplay-js.js",
+                "vgmplay-js.data",
+                "minizip-asm.min.js",
+                "css/style.css",
+                "dist/*"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
+}

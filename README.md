@@ -1,16 +1,16 @@
 # vgmplay-js-2
 VGMRips VGMPlay transpiled to Javascript, can be used as player and library
 
-This is a new version, based on vgmplay-js. Objectives:
+This is a newer version, based on vgmplay-js. Objectives:
 
 - Make it work on current Emscripten version and browser versions.
 - Minimize the amount of HTML code required to use it.
 - Make it usuable as a library as well as a player.
-- Offer playback through both Scriptprocessor and Audioworklet.
+- Playback through Audioworklet 
 
-Audioworklet support is not ready yet, as well as some player features.
+Works on current Brave and Chrome now (feb 2026). Compilation works at least with Emcc 1.39.3.
 
-Works on Chrome 79, Firefox 71, compilation works at least with Emcc 1.39.3.
+Lately a lot of additions using vibe coding.
 
 Building, for testing it's adviced to check the files out in a directory of the webserver:
 ```
@@ -42,6 +42,8 @@ Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatch
 </html>
 ```
 
-This will generate something like this:
+A Chrome Extension is also included. It can be loaded using chrome://extensions and 'load unpacked'. When on a site containing vgm zip files it can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (mostly) unharmed by the styling of the site and playback can commence!
+
+Underneath an older screenshot, but you'd better try the latest version on the right, it's hosted on github as well.
 
 ![Screenshot](http://vlessert.nl/vgmplay-js.png)

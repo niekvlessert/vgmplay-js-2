@@ -1,0 +1,270 @@
+.vgmplayContainer {
+  font: 13px/20px 'Lucida Grande', Tahoma, Verdana, sans-serif;
+  color: #ffffff;
+  position: absolute;
+  z-index: 9;
+}
+
+.vgmplayDebugWindow {
+  position: fixed;
+  z-index: 10;
+  bottom: 5%;
+  right: 5%;
+  border: 1px solid white;
+  border-radius: 10px;
+  width: 20%;
+  height: 40%;
+  padding: 5px;
+  color: white;
+  /*overflow:scroll;*/
+  overflow: hidden;
+}
+
+.vgmplayTitleWindow {
+  border: 1px solid white;
+  background: #2a2a2a 0 0 repeat;
+  border-radius: 10px 0px 0px 10px;
+  font-size: 10px;
+  line-height: 1.1;
+  border-radius: 10px;
+  width: 266px;
+  height: 100px;
+  padding: 5px;
+  color: white;
+  /*overflow:scroll;*/
+  overflow: hidden;
+  text-align: center;
+  margin: auto;
+  z-index: 10;
+}
+
+.vgmplayPlayerWindow {
+  border: 1px solid white;
+  background: #2a2a2a 0 0 repeat;
+  border-radius: 10px;
+  width: 266px;
+  padding: 5px;
+  color: white;
+  /*overflow:scroll;*/
+  overflow: hidden;
+  text-align: center;
+  margin: auto
+}
+
+.vgmplaySpectrum {
+  display: block;
+  width: 256px;
+  height: 80px;
+  margin: 6px auto 2px auto;
+  border-radius: 4px;
+  border: 1px solid #333;
+  background: #000;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.2), inset 0 0 4px rgba(0, 255, 0, 0.05);
+  image-rendering: pixelated;
+}
+
+.vgmplayProgressBar {
+  width: 256px;
+  height: 8px;
+  margin: 6px auto 0 auto;
+  background: #111;
+  border-radius: 4px;
+  border: 1px solid #333;
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.vgmplayProgressFill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(to right, #004400, #00cc00);
+  border-radius: 4px 0 0 4px;
+  transition: width 0.1s linear;
+  box-shadow: 0 0 4px rgba(0, 255, 0, 0.3);
+}
+
+.vgmplayZipFileListWindow {
+  border: 1px solid white;
+  background: #2a2a2a 0 0 repeat;
+  border-radius: 10px 0px 0px 10px;
+  font-size: 10px;
+  line-height: 1.1;
+  width: 266px;
+  height: 1000px;
+  padding: 5px;
+  color: white;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  text-align: center;
+  margin: auto;
+}
+
+.zipFileListWindow::-webkit-scrollbar-track {
+  -webkit-box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.6);
+  background-color: #CCCCCC;
+}
+
+.zipFileListWindow::-webkit-scrollbar {
+  width: 10px;
+  background-color: #F5F5F5;
+}
+
+.zipFileListWindow::-webkit-scrollbar-thumb {
+  background-color: #FFF;
+  background-image: -webkit-linear-gradient(90deg, rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 1) 25%, transparent 100%, rgba(0, 0, 0, 1) 75%, transparent)
+}
+
+.container {
+  margin: 80px auto;
+  width: 640px;
+  text-align: center;
+}
+
+.container .progress {
+  margin: 0 auto;
+  width: 400px;
+}
+
+.timer {
+  float: left;
+  margin-left: 65px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  -webkit-box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
+  height: 16px;
+}
+
+.progress {
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  -webkit-box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25), 0 1px rgba(255, 255, 255, 0.08);
+}
+
+#dnd-panel {
+  position: relative;
+  margin: 0 auto;
+  width: 230px;
+  height: 26px;
+  line-height: 26px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background-color: #1f1f24;
+  text-align: center;
+  transition: transform 0.25s;
+}
+
+@keyframes moving-gradient {
+  0% {
+    background-position: left bottom;
+  }
+
+  100% {
+    background-position: right bottom;
+  }
+}
+
+@-webkit-keyframes moving-gradient {
+  0% {
+    background-position: left bottom;
+  }
+
+  100% {
+    background-position: right bottom;
+  }
+}
+
+.bar {
+  width: 0px;
+  height: 16px;
+
+  background: -webkit-linear-gradient(left,
+      #01CD33 30%,
+      #66E564 80%,
+      #01CD33 100%) repeat;
+  background: linear-gradient(to right,
+      #01CD33 30%,
+      #66E564 80%,
+      #01CD33 100%) repeat;
+
+  -webkit-background-size: 50% 100%;
+  background-size: 50% 100%;
+  -webkit-animation-name: moving-gradient;
+  animation-name: moving-gradient;
+  -webkit-animation-duration: 1s;
+  animation-duration: 1s;
+  -webkit-animation-iteration-count: infinite;
+  animation-iteration-count: infinite;
+  -webkit-animation-timing-function: linear;
+  animation-timing-function: linear;
+}
+
+.half {
+  width: 200px;
+  overflow-x: hidden;
+}
+
+.half.full {
+  width: 400px;
+}
+
+.half .bar {
+  width: 0%;
+}
+
+.half.full .bar {
+  -webkit-animation-duration: 2s;
+  animation-duration: 2s;
+}
+
+.sexy {
+  border: 1px solid #adadad;
+  -webkit-border-radius: 2px;
+  border-radius: 2px;
+}
+
+.sexy .gradient-overlay {
+  position: absolute;
+  width: 400px;
+  height: 16px;
+
+  background-image: -webkit-linear-gradient(top,
+      rgba(255, 255, 255, .8) 0%,
+      rgba(255, 255, 255, .4) 25%,
+      rgba(255, 255, 255, 0) 25%,
+      rgba(255, 255, 255, .2) 100%);
+}
+
+.sexy .border-overlay {
+  position: absolute;
+  width: 398px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, .15);
+}
+
+.vgmplayUploader {
+  border: 1px solid white;
+  border-radius: 10px;
+  background: #2a2a2a;
+  width: 266px;
+  /* Content width, matches list window */
+  margin: 5px auto;
+  /* Centered like the list window */
+  padding: 2px 5px;
+  /* Thinner top/bottom to look less 'huge' */
+  font-size: 10px;
+  text-align: center;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.vgmplayUploader.highlight {
+  border-color: #00cc00;
+  background: #1a3a1a;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+}

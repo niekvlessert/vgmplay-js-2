@@ -323,3 +323,11 @@
   border-style: solid;
   border-color: #00ff66 transparent transparent transparent;
 }
+
+.vgmplayContainer .activeTrack {
+  background: rgba(0, 255, 102, 0.2) !important;
+  color: #00ff66 !important;
+  font-weight: bold;
+  border-left: 3px solid #00ff66;
+  padding-left: 5px;
+}

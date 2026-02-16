@@ -525,6 +525,7 @@ class VGMPlay_js {
 					a.style.display = "block";
 					a.style.cursor = "pointer";
 					a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, key);
+					files[key].linkElement = a; // Store reference for highlighting
 
 					const nameSpan = document.createElement("span");
 					nameSpan.textContent = unescape(fileName);
@@ -556,32 +557,60 @@ class VGMPlay_js {
 		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
 		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 		this.getVGMTag();
+		this._updateHighlight();
+	}
+
+	_updateHighlight() {
+		// Remove highlight from all elements
+		this.games.forEach(game => {
+			game.files.forEach(file => {
+				if (file.linkElement) {
+					file.linkElement.classList.remove('activeTrack');
+				}
+			});
+		});
+
+		// Apply highlight to the active one
+		if (this.activeGame && this.activeGame.files[this.currentFileKey]) {
+			const activeLink = this.activeGame.files[this.currentFileKey].linkElement;
+			if (activeLink) {
+				activeLink.classList.add('activeTrack');
+			}
+		}
 	}
 
 	async changeTrack(action) {
-		if (typeof this.activeGame.files === 'undefined') {
-			if (this.games.length === 0) return;
-			this.activeGame = this.games[0]; // Default to first game loaded if none selected
-			this.currentFileKey = 0;
+		if (this.games.length === 0) return;
 
-			if (action === "next") {
-				this.currentFileKey = 0;
-			} else {
-				this.currentFileKey = this.activeGame.files.length - 1;
-			}
-			await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);
+		let gameIndex = this.activeGame ? this.games.indexOf(this.activeGame) : -1;
+
+		if (gameIndex === -1) {
+			gameIndex = 0;
+			this.activeGame = this.games[gameIndex];
+			this.currentFileKey = (action === "next") ? 0 : this.activeGame.files.length - 1;
 		} else {
 			if (action === "next") {
-				if (this.currentFileKey + 1 === this.activeGame.files.length) this.currentFileKey = 0; else this.currentFileKey++;
-				this.stop();
-				await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);
-			}
-			if (action === "previous") {
-				if (this.currentFileKey === 0) this.currentFileKey = this.activeGame.files.length - 1; else this.currentFileKey--;
-				this.stop();
-				await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, false, this.currentFileKey);
+				if (this.currentFileKey + 1 >= this.activeGame.files.length) {
+					// Move to first track of next game
+					gameIndex = (gameIndex + 1) % this.games.length;
+					this.activeGame = this.games[gameIndex];
+					this.currentFileKey = 0;
+				} else {
+					this.currentFileKey++;
+				}
+			} else { // previous
+				if (this.currentFileKey <= 0) {
+					// Move to last track of previous game
+					gameIndex = (gameIndex - 1 + this.games.length) % this.games.length;
+					this.activeGame = this.games[gameIndex];
+					this.currentFileKey = this.activeGame.files.length - 1;
+				} else {
+					this.currentFileKey--;
+				}
 			}
 		}
+
+		await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, gameIndex + 1, this.currentFileKey);
 	}
 
 	async togglePlayback() {

@@ -45,10 +45,24 @@
   width: 266px;
   padding: 5px;
   color: white;
-  /*overflow:scroll;*/
   overflow: hidden;
   text-align: center;
-  margin: auto
+  margin: auto;
+}
+
+.vgmplayPlayerWindow button {
+  background: #444;
+  color: white;
+  border: 1px solid #666;
+  border-radius: 3px;
+  cursor: pointer;
+  min-width: 25px;
+}
+
+.vgmplayPlayerWindow button.active {
+  background: #00ff66 !important;
+  color: black !important;
+  border-color: #00ff66 !important;
 }
 
 .vgmplaySpectrum {
@@ -267,4 +281,29 @@
   border-color: #00cc00;
   background: #1a3a1a;
   box-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+}
+.vgmplayTooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: #00ff66;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #00ff66;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1000;
+    transform: translateX(-50%);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.vgmplayTooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #00ff66 transparent transparent transparent;
 }

@@ -17,6 +17,8 @@ class VGMPlay_js {
 		this.displayPlayer = true;
 		this.displayZipFileList = true;
 		this.showZipFileListWindow = true;
+		this.bassBoostEnabled = false;
+		this.reverbEnabled = false;
 		this.games = [];
 		this.activeGame = "";
 		this.sampleRate = "";
@@ -183,9 +185,20 @@ class VGMPlay_js {
 
 	showPlayer() {
 		this.playerWindow.className = "vgmplayPlayerWindow";
-		this.playerWindow.innerHTML = "<button onclick=\"vgmplay_js.changeTrack('previous')\">|&lt;</button> <button id=\"buttonTogglePlayback\" onclick=\"vgmplay_js.togglePlayback()\">&#9654;</button> <button onclick=\"vgmplay_js.changeTrack('next')\">&gt;|</button> <button onclick=\"vgmplay_js.stop()\">&#9632;</button> <a style=\"color:white; text-decoration:none;\" href='javascript:vgmplay_js.toggleDisplayZipFileListWindow()'>Z</a> <span id=\"vgmplayTime\" style=\"color:white; font-family:monospace; margin-left:5px;\">0:00/0:00</span>";
+		this.playerWindow.innerHTML = `
+			<button onclick="vgmplay_js.changeTrack('previous')">|&lt;</button>
+			<button id="buttonTogglePlayback" onclick="vgmplay_js.togglePlayback()">&#9654;</button>
+			<button onclick="vgmplay_js.changeTrack('next')">&gt;|</button>
+			<button onclick="vgmplay_js.stop()">&#9632;</button>
+			<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
+			<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">R</button>
+			<a style="color:white; text-decoration:none;" href='javascript:vgmplay_js.toggleDisplayZipFileListWindow()'>Z</a>
+			<span id="vgmplayTime" style="color:white; font-family:monospace; margin-left:5px;">0:00/0:00</span>
+		`;
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
 		this.vgmplayTime = document.getElementById('vgmplayTime');
+		this.btnBass = document.getElementById('btnBass');
+		this.btnReverb = document.getElementById('btnReverb');
 
 		// Create progress bar
 		this.progressContainer = document.createElement('div');
@@ -195,6 +208,14 @@ class VGMPlay_js {
 		this.progressFill.className = 'vgmplayProgressFill';
 		this.progressContainer.appendChild(this.progressFill);
 		this.playerWindow.appendChild(this.progressContainer);
+
+		// Create tooltip element
+		this.tooltip = document.createElement('div');
+		this.tooltip.className = 'vgmplayTooltip';
+		this.tooltip.style.display = 'none';
+		this.vgmplayContainer.appendChild(this.tooltip);
+
+		this._setupTooltips();
 
 		// Create spectrum analyser canvas
 		this.spectrumCanvas = document.createElement('canvas');
@@ -520,7 +541,33 @@ class VGMPlay_js {
 
 				// Route: worklet -> masterGain -> destination
 				// Route: masterGain -> splitter -> analysers (so visualizer fades too)
-				this.workletNode.connect(this.masterGain);
+				// Create audio enhancement nodes
+				this.bassBoost = this.context.createBiquadFilter();
+				this.bassBoost.type = "lowshelf";
+				this.bassBoost.frequency.value = 200;
+				this.bassBoost.gain.value = this.bassBoostEnabled ? 12 : 0;
+
+				this.compressor = this.context.createDynamicsCompressor();
+				this.compressor.threshold.setValueAtTime(-24, this.context.currentTime);
+				this.compressor.knee.setValueAtTime(30, this.context.currentTime);
+				this.compressor.ratio.setValueAtTime(12, this.context.currentTime);
+				this.compressor.attack.setValueAtTime(0.003, this.context.currentTime);
+				this.compressor.release.setValueAtTime(0.25, this.context.currentTime);
+
+				this.reverb = this.context.createConvolver();
+				this._generateReverbImpulse();
+				this.reverbGain = this.context.createGain();
+				this.reverbGain.gain.value = this.reverbEnabled ? 0.35 : 0;
+
+				// Route: worklet -> bassBoost -> compressor -> masterGain -> destination
+				this.workletNode.connect(this.bassBoost);
+				this.bassBoost.connect(this.compressor);
+				this.compressor.connect(this.masterGain);
+
+				// Route: worklet -> reverb -> reverbGain -> masterGain
+				this.workletNode.connect(this.reverb);
+				this.reverb.connect(this.reverbGain);
+				this.reverbGain.connect(this.masterGain);
 
 				this.masterGain.connect(this.splitter);
 				this.splitter.connect(this.analyserLeft, 0);
@@ -646,7 +693,14 @@ class VGMPlay_js {
 
 		// Reconnect audio graph (stop() disconnects it)
 		try {
-			this.workletNode.connect(this.masterGain);
+			this.workletNode.connect(this.bassBoost);
+			this.bassBoost.connect(this.compressor);
+			this.compressor.connect(this.masterGain);
+
+			this.workletNode.connect(this.reverb);
+			this.reverb.connect(this.reverbGain);
+			this.reverbGain.connect(this.masterGain);
+
 			this.masterGain.connect(this.splitter);
 			this.splitter.connect(this.analyserLeft, 0);
 			this.splitter.connect(this.analyserRight, 1);
@@ -975,6 +1029,88 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 		this.workletNode.port.postMessage({ type: 'start' });
 		this._pumpBuffers();
 	}
+};
+
+
+VGMPlay_js.prototype.toggleBassBoost = function () {
+	this.bassBoostEnabled = !this.bassBoostEnabled;
+	if (this.bassBoost) {
+		this.bassBoost.gain.setTargetAtTime(this.bassBoostEnabled ? 12 : 0, this.context.currentTime, 0.05);
+	}
+	if (this.btnBass) {
+		this.btnBass.classList.toggle('active', this.bassBoostEnabled);
+	}
+};
+
+VGMPlay_js.prototype.toggleReverb = function () {
+	this.reverbEnabled = !this.reverbEnabled;
+	if (this.reverbGain) {
+		this.reverbGain.gain.setTargetAtTime(this.reverbEnabled ? 0.35 : 0, this.context.currentTime, 0.05);
+	}
+	if (this.btnReverb) {
+		this.btnReverb.classList.toggle('active', this.reverbEnabled);
+	}
+};
+
+VGMPlay_js.prototype._generateReverbImpulse = function () {
+	const length = this.sampleRate * 2.5;
+	const impulse = this.context.createBuffer(2, length, this.sampleRate);
+	const left = impulse.getChannelData(0);
+	const right = impulse.getChannelData(1);
+
+	for (let i = 0; i < length; i++) {
+		const decay = Math.pow(1 - i / length, 4.0);
+		left[i] = (Math.random() * 2 - 1) * decay;
+		right[i] = (Math.random() * 2 - 1) * decay;
+	}
+	this.reverb.buffer = impulse;
+};
+
+VGMPlay_js.prototype._setupTooltips = function () {
+	const targets = this.playerWindow.querySelectorAll('button, a');
+	const descriptions = {
+		'|&lt;': 'Previous Track',
+		'&#9654;': 'Play / Pause',
+		'||': 'Play / Pause',
+		'&gt;|': 'Next Track',
+		'&#9632;': 'Stop Playback',
+		'B': 'Bass Boost',
+		'R': 'Reverb',
+		'Z': 'Toggle Library'
+	};
+
+	let tooltipTimeout;
+
+	targets.forEach(target => {
+		const text = target.innerHTML.trim();
+		const desc = descriptions[text] || target.innerText;
+		if (!desc) return;
+
+		const hideTooltip = () => {
+			clearTimeout(tooltipTimeout);
+			this.tooltip.style.display = 'none';
+		};
+
+		const startTimer = () => {
+			clearTimeout(tooltipTimeout);
+			this.tooltip.style.display = 'none';
+
+			tooltipTimeout = setTimeout(() => {
+				this.tooltip.innerHTML = desc;
+				this.tooltip.style.display = 'block';
+				// Position above target
+				const rect = target.getBoundingClientRect();
+				const containerRect = this.vgmplayContainer.getBoundingClientRect();
+				this.tooltip.style.left = (rect.left - containerRect.left + rect.width / 2) + 'px';
+				this.tooltip.style.top = (rect.top - containerRect.top - 30) + 'px';
+			}, 2000);
+		};
+
+		target.addEventListener('mouseenter', startTimer);
+		target.addEventListener('mousemove', startTimer); // Reset timer if moving
+		target.addEventListener('mouseleave', hideTooltip);
+		target.addEventListener('click', hideTooltip);
+	});
 };
 
 if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id)) {

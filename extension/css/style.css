@@ -42,13 +42,13 @@
   line-height: 1.1;
   border-radius: 10px;
   width: 266px;
-  height: 100px;
+  min-height: 100px;
+  height: auto;
   padding: 5px;
   color: white;
-  /*overflow:scroll;*/
-  overflow: hidden;
+  overflow: visible;
   text-align: center;
-  margin: auto;
+  margin: auto auto 0px auto;
   z-index: 10;
 }
 

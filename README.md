@@ -8,7 +8,7 @@ This is a newer version, based on vgmplay-js. Objectives:
 - Make it usuable as a library as well as a player.
 - Playback through Audioworklet 
 
-Works on current Brave and Chrome now (feb 2026). Compilation works at least with Emcc 1.39.3.
+Works on current Brave and Chrome now (feb 2026). Compilation works with Emscripten 5.0.1
 
 Lately a lot of additions using vibe coding.
 
@@ -16,8 +16,7 @@ Building, for testing it's adviced to check the files out in a directory of the 
 ```
 cd /var/www/html/
 git clone --recursive https://github.com/niekvlessert/vgmplay-js-2.git
-cd vgmplay-js
-cp ~/yrw801.rom files #for ymf278B support
+cd vgmplay-js-2
 mkdir build
 cd build
 emcmake cmake ..

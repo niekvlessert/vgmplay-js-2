@@ -358,6 +358,12 @@ class VGMPlay_js {
 							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
+					case 10:
+						var chips = this.GetChipInfoString();
+						if (chips && chips.length > 0) {
+							this.titleWindow.innerHTML += "Chips: " + chips + "<br/>";
+						}
+						break;
 				}
 
 			}
@@ -586,6 +592,7 @@ class VGMPlay_js {
 		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
 		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 		this.getVGMTag();
+		console.log("ChipInfoString: " + this.GetChipInfoString());
 		this._updateHighlight();
 	}
 
@@ -756,18 +763,11 @@ class VGMPlay_js {
 			this.SetLoopCount = Module.cwrap('SetLoopCount', 'number', ['number']);
 			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM', 'number', ['number']);
 			this.ShowTitle = Module.cwrap('ShowTitle', 'string');
+			this.GetChipInfoString = Module.cwrap('GetChipInfoString', 'string');
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
 			this.dataPtrs[1] = Module._malloc(16384 * 2);
-
-			this.dataHeaps = [];
-			this.dataHeaps[0] = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[0], 16384);
-			this.dataHeaps[1] = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[1], 16384);
-
-			this.buffers = [];
-			this.buffers[0] = [];
-			this.buffers[1] = [];
 
 			this.results = [];
 
@@ -783,16 +783,17 @@ class VGMPlay_js {
 	}
 
 	generateBuffer() {
-		this.FillBuffer(this.dataHeaps[0].byteOffset, this.dataHeaps[1].byteOffset);
+		// Always create fresh views from Module.HEAPU8.buffer in case it was reallocated (detached)
+		this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1]);
 
-		this.results[0] = new Int16Array(this.dataHeaps[0].buffer, this.dataHeaps[0].byteOffset, 16384);
-		this.results[1] = new Int16Array(this.dataHeaps[1].buffer, this.dataHeaps[1].byteOffset, 16384);
+		const leftHeap = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[0], 16384);
+		const rightHeap = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[1], 16384);
 
 		var left = new Float32Array(16384);
 		var right = new Float32Array(16384);
 		for (var i = 0; i < 16384; i++) {
-			left[i] = this.results[0][i] / 32768;
-			right[i] = this.results[1][i] / 32768;
+			left[i] = leftHeap[i] / 32768;
+			right[i] = rightHeap[i] / 32768;
 		}
 		this.samplesGenerated += 16384;
 		return { left, right };

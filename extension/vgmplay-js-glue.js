@@ -358,6 +358,12 @@ class VGMPlay_js {
 							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
+					case 10:
+						var chips = this.GetChipInfoString();
+						if (chips && chips.length > 0) {
+							this.titleWindow.innerHTML += "Chips: " + chips + "<br/>";
+						}
+						break;
 				}
 
 			}
@@ -756,6 +762,7 @@ class VGMPlay_js {
 			this.SetLoopCount = Module.cwrap('SetLoopCount', 'number', ['number']);
 			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM', 'number', ['number']);
 			this.ShowTitle = Module.cwrap('ShowTitle', 'string');
+			this.GetChipInfoString = Module.cwrap('GetChipInfoString', 'string');
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);

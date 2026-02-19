@@ -32,13 +32,12 @@ target_include_directories(vgmplay-js PRIVATE
 
 # Exported functions
 set(VGMPLAY_EXPORTS 
-    "'_VGMPlay_Init'"
-    "'_VGMPlay_Init2'"
     "'_OpenVGMFile'"
     "'_CloseVGMFile'"
     "'_PlayVGM'"
     "'_StopVGM'"
     "'_SetSampleRate'"
+    "'_Seek'"
     "'_SetLoopCount'"
     "'_VGMEnded'"
     "'_GetTrackLength'"

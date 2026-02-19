@@ -59,10 +59,6 @@ static void cleanup() {
 
 extern "C" {
 
-/* keep JS happy */
-void VGMPlay_Init(void) {}
-void VGMPlay_Init2(void) {}
-
 /* store rate globally; apply to player if one exists */
 void SetSampleRate(unsigned int rate) {
   gSampleRate = rate;
@@ -74,6 +70,12 @@ void SetLoopCount(unsigned int loops) {
   /* libvgm VGMPlayer doesn't expose a simple loop-count setter;
      the higher-level PlayerA does, but we use VGMPlayer directly.
      Ignoring for now – libvgm defaults to looping. */
+}
+
+void Seek(unsigned int sec, unsigned int ms) {
+  if (!player)
+    return;
+  player->Seek(sec, ms);
 }
 
 int OpenVGMFile(const char *path) {
@@ -147,43 +149,56 @@ int GetLoopPoint(void) {
   return (int)player->Tick2Sample(player->GetLoopTicks());
 }
 
-/* render 16384 stereo samples, split into left/right int16 arrays */
 void FillBuffer2(short *left, short *right) {
   enum { N = 16384 };
-  static WAVE_32BS buf[N]; /* static – too large for stack */
+  static WAVE_32BS buf[N];
 
-  if (!player) {
-    memset(left, 0, N * 2);
-    memset(right, 0, N * 2);
-    return;
-  }
-  /* zero buffer before rendering! libvgm resamplers accumulate with += */
   memset(buf, 0, sizeof(buf));
+  player->Render(N, buf);
 
-  UINT32 got = player->Render(N, buf);
-
-  /* silence remainder */
-  for (UINT32 i = got; i < N; i++) {
-    buf[i].L = 0;
-    buf[i].R = 0;
-  }
-
-  /* convert 24-bit internal → 16-bit output (>> 8) with clamp */
   for (int i = 0; i < N; i++) {
-    INT32 l = buf[i].L >> 8;
-    INT32 r = buf[i].R >> 8;
-    if (l > 32767)
-      l = 32767;
-    if (l < -32768)
-      l = -32768;
-    if (r > 32767)
-      r = 32767;
-    if (r < -32768)
-      r = -32768;
-    left[i] = (short)l;
-    right[i] = (short)r;
+    left[i] = (short)(buf[i].L >> 8);
+    right[i] = (short)(buf[i].R >> 8);
   }
 }
+
+/* render 16384 stereo samples, split into left/right int16 arrays */
+// void FillBuffer3(short *left, short *right) {
+// enum { N = 16384 };
+// static WAVE_32BS buf[N]; /* static – too large for stack */
+
+/*if (!player) {
+  memset(left, 0, N * 2);
+  memset(right, 0, N * 2);
+  return;
+}*/
+/* zero buffer before rendering! libvgm resamplers accumulate with += */
+// memset(buf, 0, sizeof(buf));
+
+// UINT32 got = player->Render(N, buf);
+
+/* silence remainder */
+/*for (UINT32 i = got; i < N; i++) {
+  buf[i].L = 0;
+  buf[i].R = 0;
+}*/
+
+// convert 24-bit internal → 16-bit output (>> 8) with clamp */
+/*for (int i = 0; i < N; i++) {
+  INT32 l = buf[i].L >> 8;
+  INT32 r = buf[i].R >> 8;
+  if (l > 32767)
+    l = 32767;
+  if (l < -32768)
+    l = -32768;
+  if (r > 32767)
+    r = 32767;
+  if (r < -32768)
+    r = -32768;
+  left[i] = (short)l;
+  right[i] = (short)r;
+}
+}*/
 
 /* format: "TrkE|||TrkJ|||GmE|||GmJ|||SysE|||SysJ|||AutE|||AutJ|||Cre|||Notes"
  */
@@ -191,32 +206,24 @@ char *ShowTitle(void) {
   if (!player)
     return nullptr;
   const char *const *t = player->GetTags();
+  /*while (*t) {
+    fprintf(stderr, "%s: %s\n", t[0], t[1]);
+    t += 2;
+  }
+  */
   if (!t)
     return nullptr;
 
   std::string s;
-  auto add = [&](int i) {
-    if (t[i])
-      s += t[i];
+  while (*t) {
+    s += *t;
     s += "|||";
-  };
-  add(0);
-  add(1); /* track */
-  add(2);
-  add(3); /* game  */
-  add(4);
-  add(5); /* system */
-  add(6);
-  add(7); /* artist */
-  /* skip 8 = date */
-  if (t[9])
-    s += t[9];
-  s += "|||"; /* creator */
-  if (t[10])
-    s += t[10]; /* notes   */
+    ++t;
+  }
 
   free(titleBuf);
   titleBuf = strdup(s.c_str());
+  // printf("%s\n", titleBuf);
   return titleBuf;
 }
 
@@ -226,7 +233,7 @@ const char *GetChipInfoString(void) {
 
   std::vector<PLR_DEV_INFO> devs;
   if (player->GetSongDeviceInfo(devs)) {
-    printf("glue: GetSongDeviceInfo failed\n");
+    // printf("glue: GetSongDeviceInfo failed\n");
     return "";
   }
 
@@ -249,7 +256,7 @@ const char *GetChipInfoString(void) {
 
 int main(int, char **) {
   EM_ASM({
-    if (typeof vgmplay_js !== 'undefined' && vgmplay_js.loadWhenReady)
+    if (typeof vgmplay_js != = 'undefined' && vgmplay_js.loadWhenReady)
       vgmplay_js.loadWhenReady();
   });
   return 0;

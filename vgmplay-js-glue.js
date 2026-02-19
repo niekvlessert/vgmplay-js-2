@@ -311,50 +311,47 @@ class VGMPlay_js {
 			this.titleWindow.innerHTML = "";
 			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
 				switch (this.i) {
-					case 0:
-						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML += "Title: ";
-						if (this.VGMTag[0]) this.titleWindow.innerHTML += this.VGMTag[0];
-						if (this.VGMTag[0] && this.VGMTag[1]) this.titleWindow.innerHTML += ", ";
+					case 1:
+						if (this.VGMTag[1] || this.VGMTag[3]) this.titleWindow.innerHTML += "Title: ";
 						if (this.VGMTag[1]) this.titleWindow.innerHTML += this.VGMTag[1];
-						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML += "<br/>";
-						this.titleWindow.innerHTML += "Length: " + this.trackLengthHumanReadeable + "<br/>";
-						this.i++;
+						//if (this.VGMTag[1] && this.VGMTag[3]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[3]) this.titleWindow.innerHTML += " (" + this.VGMTag[3] + ")";
+						if (this.VGMTag[1] || this.VGMTag[3]) this.titleWindow.innerHTML += "<br/>";
+						//this.titleWindow.innerHTML += "Length: " + this.trackLengthHumanReadeable + "<br/>";
 						break;
-					case 2:
-						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML += "Game: ";
-						if (this.VGMTag[2]) this.titleWindow.innerHTML += this.VGMTag[2];
-						if (this.VGMTag[2] && this.VGMTag[3]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[3]) this.titleWindow.innerHTML += this.VGMTag[3];
-						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML += "<br/>";
-						this.i++;
-						break;
-					case 4:
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "System: ";
-						if (this.VGMTag[4]) this.titleWindow.innerHTML += this.VGMTag[4];
-						if (this.VGMTag[4] && this.VGMTag[5]) this.titleWindow.innerHTML += ", ";
+					case 5:
+						if (this.VGMTag[5] || this.VGMTag[7]) this.titleWindow.innerHTML += "Game: ";
 						if (this.VGMTag[5]) this.titleWindow.innerHTML += this.VGMTag[5];
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "<br/>";
-						this.i++;
-						break;
-					case 6:
-						if (this.VGMTag[6] || this.VGMTag[7]) this.titleWindow.innerHTML += "Author: ";
-						if (this.VGMTag[6]) this.titleWindow.innerHTML += this.VGMTag[6];
-						if (this.VGMTag[6] && this.VGMTag[7]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[7]) this.titleWindow.innerHTML += this.VGMTag[7];
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "<br/>";
-						this.i++;
+						//if (this.VGMTag[5] && this.VGMTag[7]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[7]) this.titleWindow.innerHTML += " (" + this.VGMTag[7] + ")";
+						if (this.VGMTag[17]) this.titleWindow.innerHTML += ", " + this.VGMTag[17];
+						if (this.VGMTag[5] || this.VGMTag[7]) this.titleWindow.innerHTML += "<br/>";
 						break;
 					case 8:
-						if (this.VGMTag[8]) {
-							this.titleWindow.innerHTML += "Creator: ";
-							this.titleWindow.innerHTML += this.VGMTag[8];
+						if (this.VGMTag[9] || this.VGMTag[11]) this.titleWindow.innerHTML += "System: ";
+						if (this.VGMTag[9]) this.titleWindow.innerHTML += this.VGMTag[9];
+						else //if (this.VGMTag[9] && this.VGMTag[11]) this.titleWindow.innerHTML += ", ";
+							if (this.VGMTag[11]) this.titleWindow.innerHTML += this.VGMTag[11];
+						if (this.VGMTag[9] || this.VGMTag[11]) this.titleWindow.innerHTML += "<br/>";
+						break;
+					case 13:
+						if (this.VGMTag[13] || this.VGMTag[15]) this.titleWindow.innerHTML += "Author: ";
+						if (this.VGMTag[13]) this.titleWindow.innerHTML += this.VGMTag[13];
+						//if (this.VGMTag[13] && this.VGMTag[15]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[15]) this.titleWindow.innerHTML += " (" + this.VGMTag[15] + ")";
+						if (this.VGMTag[13] || this.VGMTag[13]) this.titleWindow.innerHTML += "<br/>";
+						break;
+					case 19:
+						if (this.VGMTag[19]) {
+							this.titleWindow.innerHTML += "VGM Creator: ";
+							this.titleWindow.innerHTML += this.VGMTag[19];
 							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
-					case 9:
-						if (this.VGMTag[9].length > 1) {
-							this.titleWindow.innerHTML += "Notes: ";
-							this.titleWindow.innerHTML += this.VGMTag[9];
+					case 20:
+						if (this.VGMTag[21].length > 1) {
+							this.titleWindow.innerHTML += "Comments: ";
+							this.titleWindow.innerHTML += this.VGMTag[21];
 							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
@@ -592,7 +589,7 @@ class VGMPlay_js {
 		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
 		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 		this.getVGMTag();
-		console.log("ChipInfoString: " + this.GetChipInfoString());
+		//console.log("ChipInfoString: " + this.GetChipInfoString());
 		this._updateHighlight();
 	}
 
@@ -748,8 +745,6 @@ class VGMPlay_js {
 			this.isWebAudioInitialized = true;
 		}
 		if (!this.functionsWrapped) {
-			this.VGMPlay_Init = Module.cwrap('VGMPlay_Init');
-			this.VGMPlay_Init2 = Module.cwrap('VGMPlay_Init2');
 			this.FillBuffer = Module.cwrap('FillBuffer2', 'number', ['number', 'number']);
 			this.OpenVGMFile = Module.cwrap('OpenVGMFile', 'number', ['string']);
 			this.CloseVGMFile = Module.cwrap('CloseVGMFile');
@@ -758,7 +753,7 @@ class VGMPlay_js {
 			this.VGMEnded = Module.cwrap('VGMEnded');
 			this.GetTrackLength = Module.cwrap('GetTrackLength');
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
-			this.SeekVGM = Module.cwrap('SeekVGM', 'number', ['number', 'number']);
+			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);
 			this.SetSampleRate = Module.cwrap('SetSampleRate', 'number', ['number']);
 			this.SetLoopCount = Module.cwrap('SetLoopCount', 'number', ['number']);
 			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM', 'number', ['number']);
@@ -771,9 +766,7 @@ class VGMPlay_js {
 
 			this.results = [];
 
-			this.VGMPlay_Init();
 			this.SetSampleRate(this.sampleRate);
-			this.VGMPlay_Init2();
 
 			this.functionsWrapped = true;
 		}

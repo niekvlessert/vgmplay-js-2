@@ -268,9 +268,6 @@ const char *GetChipInfoString(void) {
 } /* extern "C" */
 
 int main(int, char **) {
-  EM_ASM({
-    if (typeof vgmplay_js !== 'undefined' && vgmplay_js.loadWhenReady)
-      vgmplay_js.loadWhenReady();
-  });
+  // Initialization moved to JS to avoid CSP issues with EM_ASM
   return 0;
 }

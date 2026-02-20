@@ -62,6 +62,11 @@ class VGMPlay_js {
 				if (path.endsWith(".data")) return base + path;
 				return prefix + path;
 			};
+			window.Module.onRuntimeInitialized = function () {
+				if (window.vgmplay_js && window.vgmplay_js.loadWhenReady) {
+					window.vgmplay_js.loadWhenReady();
+				}
+			};
 		}
 
 		// Load core scripts
@@ -584,7 +589,6 @@ class VGMPlay_js {
 		await this.checkEverythingReady();
 		this.load(file);
 		this.currentFileKey = key;
-		console.log("Playing VGM file: " + file);
 		this.play();
 		this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
 		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
@@ -592,7 +596,6 @@ class VGMPlay_js {
 		this.getVGMTag();
 		//console.log("ChipInfoString: " + this.GetChipInfoString());
 		this._updateHighlight();
-		console.log("VGM file playing: " + file);
 	}
 
 	async changeTrack(action) {
@@ -855,10 +858,12 @@ class VGMPlay_js {
 			this.splitter.connect(this.analyserRight, 1);
 			this.masterGain.connect(this.destination);
 
-			// Reset fade state carefully
+			// Reset fade state carefully with a short fade-in to avoid clicks
+			const now = this.context.currentTime;
 			this.isFadingOut = false;
-			this.masterGain.gain.cancelScheduledValues(this.context.currentTime);
-			this.masterGain.gain.setValueAtTime(1.0, this.context.currentTime);
+			this.masterGain.gain.cancelScheduledValues(now);
+			this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+			this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
 		} catch { }
 
 		// Resume audio context if suspended (autoplay policy)
@@ -932,8 +937,12 @@ class VGMPlay_js {
 		this.isFadingOut = false;
 		if (this.masterGain) {
 			try {
-				this.masterGain.gain.cancelScheduledValues(0);
-				this.masterGain.gain.value = 1.0;
+				// Avoid immediate jump to 1.0 which causes clicks
+				const now = this.context.currentTime;
+				this.masterGain.gain.cancelScheduledValues(now);
+				this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+				this.masterGain.gain.linearRampToValueAtTime(0, now + 0.01);
+				// We don't reset to 1.0 here; play() will handle the fade-in.
 			} catch (e) { }
 		}
 
@@ -943,14 +952,11 @@ class VGMPlay_js {
 	}
 
 	load(fileName) {
-		console.log("Loading VGM file: " + fileName);
 		if (this.isVGMLoaded) {
 			this.StopVGMPlayback();
 			this.CloseVGMFile();
 		}
-		console.log("Opening VGM file: " + fileName);
 		this.OpenVGMFile(fileName);
-		console.log("VGM file opened: " + fileName);
 		this.isVGMLoaded = true;
 	}
 
@@ -1154,8 +1160,10 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 	// Reset fade on seek
 	this.isFadingOut = false;
 	if (this.masterGain && this.context) {
-		this.masterGain.gain.cancelScheduledValues(this.context.currentTime);
-		this.masterGain.gain.setValueAtTime(1.0, this.context.currentTime);
+		const now = this.context.currentTime;
+		this.masterGain.gain.cancelScheduledValues(now);
+		this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+		this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
 	}
 
 	if (this.context && !this.isPlaybackPaused) {

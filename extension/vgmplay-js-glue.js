@@ -62,6 +62,11 @@ class VGMPlay_js {
 				if (path.endsWith(".data")) return base + path;
 				return prefix + path;
 			};
+			window.Module.onRuntimeInitialized = function () {
+				if (window.vgmplay_js && window.vgmplay_js.loadWhenReady) {
+					window.vgmplay_js.loadWhenReady();
+				}
+			};
 		}
 
 		// Load core scripts
@@ -311,50 +316,47 @@ class VGMPlay_js {
 			this.titleWindow.innerHTML = "";
 			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
 				switch (this.i) {
-					case 0:
-						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML += "Title: ";
-						if (this.VGMTag[0]) this.titleWindow.innerHTML += this.VGMTag[0];
-						if (this.VGMTag[0] && this.VGMTag[1]) this.titleWindow.innerHTML += ", ";
+					case 1:
+						if (this.VGMTag[1] || this.VGMTag[3]) this.titleWindow.innerHTML += "Title: ";
 						if (this.VGMTag[1]) this.titleWindow.innerHTML += this.VGMTag[1];
-						if (this.VGMTag[0] || this.VGMTag[1]) this.titleWindow.innerHTML += "<br/>";
-						this.titleWindow.innerHTML += "Length: " + this.trackLengthHumanReadeable + "<br/>";
-						this.i++;
+						//if (this.VGMTag[1] && this.VGMTag[3]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[3]) this.titleWindow.innerHTML += " (" + this.VGMTag[3] + ")";
+						if (this.VGMTag[1] || this.VGMTag[3]) this.titleWindow.innerHTML += "<br/>";
+						//this.titleWindow.innerHTML += "Length: " + this.trackLengthHumanReadeable + "<br/>";
 						break;
-					case 2:
-						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML += "Game: ";
-						if (this.VGMTag[2]) this.titleWindow.innerHTML += this.VGMTag[2];
-						if (this.VGMTag[2] && this.VGMTag[3]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[3]) this.titleWindow.innerHTML += this.VGMTag[3];
-						if (this.VGMTag[2] || this.VGMTag[3]) this.titleWindow.innerHTML += "<br/>";
-						this.i++;
-						break;
-					case 4:
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "System: ";
-						if (this.VGMTag[4]) this.titleWindow.innerHTML += this.VGMTag[4];
-						if (this.VGMTag[4] && this.VGMTag[5]) this.titleWindow.innerHTML += ", ";
+					case 5:
+						if (this.VGMTag[5] || this.VGMTag[7]) this.titleWindow.innerHTML += "Game: ";
 						if (this.VGMTag[5]) this.titleWindow.innerHTML += this.VGMTag[5];
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "<br/>";
-						this.i++;
-						break;
-					case 6:
-						if (this.VGMTag[6] || this.VGMTag[7]) this.titleWindow.innerHTML += "Author: ";
-						if (this.VGMTag[6]) this.titleWindow.innerHTML += this.VGMTag[6];
-						if (this.VGMTag[6] && this.VGMTag[7]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[7]) this.titleWindow.innerHTML += this.VGMTag[7];
-						if (this.VGMTag[4] || this.VGMTag[5]) this.titleWindow.innerHTML += "<br/>";
-						this.i++;
+						//if (this.VGMTag[5] && this.VGMTag[7]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[7]) this.titleWindow.innerHTML += " (" + this.VGMTag[7] + ")";
+						if (this.VGMTag[17]) this.titleWindow.innerHTML += ", " + this.VGMTag[17];
+						if (this.VGMTag[5] || this.VGMTag[7]) this.titleWindow.innerHTML += "<br/>";
 						break;
 					case 8:
-						if (this.VGMTag[8]) {
-							this.titleWindow.innerHTML += "Creator: ";
-							this.titleWindow.innerHTML += this.VGMTag[8];
+						if (this.VGMTag[9] || this.VGMTag[11]) this.titleWindow.innerHTML += "System: ";
+						if (this.VGMTag[9]) this.titleWindow.innerHTML += this.VGMTag[9];
+						else //if (this.VGMTag[9] && this.VGMTag[11]) this.titleWindow.innerHTML += ", ";
+							if (this.VGMTag[11]) this.titleWindow.innerHTML += this.VGMTag[11];
+						if (this.VGMTag[9] || this.VGMTag[11]) this.titleWindow.innerHTML += "<br/>";
+						break;
+					case 13:
+						if (this.VGMTag[13] || this.VGMTag[15]) this.titleWindow.innerHTML += "Author: ";
+						if (this.VGMTag[13]) this.titleWindow.innerHTML += this.VGMTag[13];
+						//if (this.VGMTag[13] && this.VGMTag[15]) this.titleWindow.innerHTML += ", ";
+						if (this.VGMTag[15]) this.titleWindow.innerHTML += " (" + this.VGMTag[15] + ")";
+						if (this.VGMTag[13] || this.VGMTag[13]) this.titleWindow.innerHTML += "<br/>";
+						break;
+					case 19:
+						if (this.VGMTag[19]) {
+							this.titleWindow.innerHTML += "VGM Creator: ";
+							this.titleWindow.innerHTML += this.VGMTag[19];
 							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
-					case 9:
-						if (this.VGMTag[9].length > 1) {
-							this.titleWindow.innerHTML += "Notes: ";
-							this.titleWindow.innerHTML += this.VGMTag[9];
+					case 20:
+						if (this.VGMTag[21].length > 1) {
+							this.titleWindow.innerHTML += "Comments: ";
+							this.titleWindow.innerHTML += this.VGMTag[21];
 							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
@@ -592,6 +594,7 @@ class VGMPlay_js {
 		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
 		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 		this.getVGMTag();
+		//console.log("ChipInfoString: " + this.GetChipInfoString());
 		this._updateHighlight();
 	}
 
@@ -747,9 +750,7 @@ class VGMPlay_js {
 			this.isWebAudioInitialized = true;
 		}
 		if (!this.functionsWrapped) {
-			this.VGMPlay_Init = Module.cwrap('VGMPlay_Init');
-			this.VGMPlay_Init2 = Module.cwrap('VGMPlay_Init2');
-			this.FillBuffer = Module.cwrap('FillBuffer2', 'number', ['number', 'number']);
+			this.FillBuffer = Module.cwrap('FillBuffer2', 'void', ['number', 'number', 'number']);
 			this.OpenVGMFile = Module.cwrap('OpenVGMFile', 'number', ['string']);
 			this.CloseVGMFile = Module.cwrap('CloseVGMFile');
 			this.PlayVGM = Module.cwrap('PlayVGM');
@@ -757,7 +758,7 @@ class VGMPlay_js {
 			this.VGMEnded = Module.cwrap('VGMEnded');
 			this.GetTrackLength = Module.cwrap('GetTrackLength');
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
-			this.SeekVGM = Module.cwrap('SeekVGM', 'number', ['number', 'number']);
+			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);
 			this.SetSampleRate = Module.cwrap('SetSampleRate', 'number', ['number']);
 			this.SetLoopCount = Module.cwrap('SetLoopCount', 'number', ['number']);
 			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM', 'number', ['number']);
@@ -768,19 +769,9 @@ class VGMPlay_js {
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
 			this.dataPtrs[1] = Module._malloc(16384 * 2);
 
-			this.dataHeaps = [];
-			this.dataHeaps[0] = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[0], 16384);
-			this.dataHeaps[1] = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[1], 16384);
-
-			this.buffers = [];
-			this.buffers[0] = [];
-			this.buffers[1] = [];
-
 			this.results = [];
 
-			this.VGMPlay_Init();
 			this.SetSampleRate(this.sampleRate);
-			this.VGMPlay_Init2();
 
 			this.functionsWrapped = true;
 		}
@@ -790,18 +781,18 @@ class VGMPlay_js {
 	}
 
 	generateBuffer() {
-		this.FillBuffer(this.dataHeaps[0].byteOffset, this.dataHeaps[1].byteOffset);
+		const N = 4096; // Smaller batch size to reduce main-thread blocking
+		// Always create fresh views from Module.HEAPU8.buffer in case it was reallocated (detached)
+		this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
 
-		this.results[0] = new Int16Array(this.dataHeaps[0].buffer, this.dataHeaps[0].byteOffset, 16384);
-		this.results[1] = new Int16Array(this.dataHeaps[1].buffer, this.dataHeaps[1].byteOffset, 16384);
+		const leftHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[0], N);
+		const rightHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[1], N);
 
-		var left = new Float32Array(16384);
-		var right = new Float32Array(16384);
-		for (var i = 0; i < 16384; i++) {
-			left[i] = this.results[0][i] / 32768;
-			right[i] = this.results[1][i] / 32768;
-		}
-		this.samplesGenerated += 16384;
+		// Clone the data to buffers that can be transferred to the worklet
+		const left = new Float32Array(leftHeap);
+		const right = new Float32Array(rightHeap);
+
+		this.samplesGenerated += N;
 		return { left, right };
 	}
 
@@ -867,10 +858,12 @@ class VGMPlay_js {
 			this.splitter.connect(this.analyserRight, 1);
 			this.masterGain.connect(this.destination);
 
-			// Reset fade state carefully
+			// Reset fade state carefully with a short fade-in to avoid clicks
+			const now = this.context.currentTime;
 			this.isFadingOut = false;
-			this.masterGain.gain.cancelScheduledValues(this.context.currentTime);
-			this.masterGain.gain.setValueAtTime(1.0, this.context.currentTime);
+			this.masterGain.gain.cancelScheduledValues(now);
+			this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+			this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
 		} catch { }
 
 		// Resume audio context if suspended (autoplay policy)
@@ -944,8 +937,12 @@ class VGMPlay_js {
 		this.isFadingOut = false;
 		if (this.masterGain) {
 			try {
-				this.masterGain.gain.cancelScheduledValues(0);
-				this.masterGain.gain.value = 1.0;
+				// Avoid immediate jump to 1.0 which causes clicks
+				const now = this.context.currentTime;
+				this.masterGain.gain.cancelScheduledValues(now);
+				this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+				this.masterGain.gain.linearRampToValueAtTime(0, now + 0.01);
+				// We don't reset to 1.0 here; play() will handle the fade-in.
 			} catch (e) { }
 		}
 
@@ -1002,19 +999,21 @@ class VGMPlay_js {
 		this.analyserLeft.getByteFrequencyData(this.analyserDataLeft);
 		this.analyserRight.getByteFrequencyData(this.analyserDataRight);
 
-		// Black background
+		// Optimized background: single fill
 		ctx.fillStyle = '#000000';
 		ctx.fillRect(0, 0, w, h);
 
-		// Draw horizontal grid lines (old-school look)
-		ctx.strokeStyle = 'rgba(0, 255, 0, 0.1)';
+		// Cached grid and divider (simple lines are fast)
 		ctx.lineWidth = 1;
+
+		// Horizontal grid lines
+		ctx.strokeStyle = 'rgba(0, 255, 0, 0.1)';
+		ctx.beginPath();
 		for (let y = 0; y < h; y += 8) {
-			ctx.beginPath();
 			ctx.moveTo(0, y);
 			ctx.lineTo(w, y);
-			ctx.stroke();
 		}
+		ctx.stroke();
 
 		// Vertical divider
 		ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
@@ -1030,58 +1029,40 @@ class VGMPlay_js {
 		const barWidth = Math.floor(totalWidthPerChannel / barCount) - 1;
 		const gap = 1;
 
-		// Draw Left Channel
-		for (let i = 0; i < barCount; i++) {
-			let sum = 0;
-			for (let j = 0; j < binsPerBar; j++) {
-				sum += this.analyserDataLeft[i * binsPerBar + j];
+		// Draw Channels
+		const drawChannel = (data, xOffset) => {
+			for (let i = 0; i < barCount; i++) {
+				let sum = 0;
+				const startBin = i * binsPerBar;
+				for (let j = 0; j < binsPerBar; j++) {
+					sum += data[startBin + j];
+				}
+				const avg = sum / binsPerBar;
+				const barHeight = (avg / 255) * h;
+				const x = xOffset + i * (barWidth + gap);
+				const y = h - barHeight;
+
+				const gradient = ctx.createLinearGradient(x, h, x, y);
+				gradient.addColorStop(0, '#004400');
+				gradient.addColorStop(0.5, '#00cc00');
+				gradient.addColorStop(1, '#00ff66');
+				ctx.fillStyle = gradient;
+				ctx.fillRect(x, y, barWidth, barHeight);
+
+				if (barHeight > 2) {
+					ctx.fillStyle = '#aaffaa';
+					ctx.fillRect(x, y, barWidth, 2);
+				}
 			}
-			const avg = sum / binsPerBar;
-			const barHeight = (avg / 255) * h;
-			const x = i * (barWidth + gap);
-			const y = h - barHeight;
+		};
 
-			const gradient = ctx.createLinearGradient(x, h, x, y);
-			gradient.addColorStop(0, '#004400');
-			gradient.addColorStop(0.5, '#00cc00');
-			gradient.addColorStop(1, '#00ff66');
-			ctx.fillStyle = gradient;
-			ctx.fillRect(x, y, barWidth, barHeight);
+		drawChannel(this.analyserDataLeft, 0);
+		drawChannel(this.analyserDataRight, w / 2);
 
-			if (barHeight > 2) {
-				ctx.fillStyle = '#aaffaa';
-				ctx.fillRect(x, y, barWidth, 2);
-			}
-		}
-
-		// Draw Right Channel
-		for (let i = 0; i < barCount; i++) {
-			let sum = 0;
-			for (let j = 0; j < binsPerBar; j++) {
-				sum += this.analyserDataRight[i * binsPerBar + j];
-			}
-			const avg = sum / binsPerBar;
-			const barHeight = (avg / 255) * h;
-			const x = (w / 2) + i * (barWidth + gap);
-			const y = h - barHeight;
-
-			const gradient = ctx.createLinearGradient(x, h, x, y);
-			gradient.addColorStop(0, '#004400');
-			gradient.addColorStop(0.5, '#00cc00');
-			gradient.addColorStop(1, '#00ff66');
-			ctx.fillStyle = gradient;
-			ctx.fillRect(x, y, barWidth, barHeight);
-
-			if (barHeight > 2) {
-				ctx.fillStyle = '#aaffaa';
-				ctx.fillRect(x, y, barWidth, 2);
-			}
-		}
-
-		// Scanline overlay effect
+		// Scanline overlay effect - optimized: fewer rectangles
 		ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-		for (let y = 0; y < h; y += 2) {
-			ctx.fillRect(0, y, w, 1);
+		for (let y = 0; y < h; y += 4) {
+			ctx.fillRect(0, y, w, 2);
 		}
 	}
 }
@@ -1179,8 +1160,10 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 	// Reset fade on seek
 	this.isFadingOut = false;
 	if (this.masterGain && this.context) {
-		this.masterGain.gain.cancelScheduledValues(this.context.currentTime);
-		this.masterGain.gain.setValueAtTime(1.0, this.context.currentTime);
+		const now = this.context.currentTime;
+		this.masterGain.gain.cancelScheduledValues(now);
+		this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+		this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
 	}
 
 	if (this.context && !this.isPlaybackPaused) {

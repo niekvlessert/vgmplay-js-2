@@ -30,6 +30,7 @@
                 "vgmplay-js-glue.js",
                 "vgmplay-audio-processor.js",
                 "vgmplay-js.js",
+                "vgmplay-js.wasm",
                 "vgmplay-js.data",
                 "minizip-asm.min.js",
                 "css/style.css",

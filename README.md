@@ -12,20 +12,19 @@ Works on current Brave and Chrome now (feb 2026). Compilation works with Emscrip
 
 Lately a lot of additions using vibe coding.
 
-Building, for testing it's adviced to check the files out in a directory of the webserver:
+Buildin: make sure you have cmake and Emscripten installed.
 ```
 cd /var/www/html/
 git clone --recursive https://github.com/niekvlessert/vgmplay-js-2.git
 cd vgmplay-js-2
+./prepare_for_usage.sh
 mkdir build
 cd build
 emcmake cmake ..
 make
 ```
 
-Then visit:
-
-```https://<your webserver ip>/vgmplay-js-2/```
+Then put it on your webserver or run a server with Python 3 or something. On localhost non-SSL javascript usage is working fine (at least during my tests).
 
 By default a player is shown and the html file will be scanned for .zip files. If available they're unpacked into the Emscripten filesystem, then a player will be displayer. You can also build your own player and use it as a library, you can use variables before including the glue file to choose the behaviour. Documentation for that will be created later. 
 
@@ -41,7 +40,7 @@ Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatch
 </html>
 ```
 
-A Chrome Extension is also included. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. When on a site containing vgm zip files it can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
+A Chrome Extension is also included. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
 
 Underneath an older screenshot, but you'd better try the latest version on the right, it's hosted on github as well.
 

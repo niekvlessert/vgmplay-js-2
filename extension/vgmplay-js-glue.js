@@ -360,14 +360,15 @@ class VGMPlay_js {
 							this.titleWindow.innerHTML += "<br/>";
 						}
 						break;
-					case 10:
-						var chips = this.GetChipInfoString();
-						if (chips && chips.length > 0) {
-							this.titleWindow.innerHTML += "Chips: " + chips + "<br/>";
-						}
-						break;
 				}
 
+			}
+
+			// Display chips as the last entry of the top frame
+			const chips = this.GetChipInfoString();
+			console.log(chips);
+			if (chips && chips.length > 0) {
+				this.titleWindow.innerHTML += "Chips: " + chips + "<br/>";
 			}
 		}
 	}

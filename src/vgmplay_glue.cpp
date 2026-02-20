@@ -245,8 +245,8 @@ const char *GetChipInfoString(void) {
     return "";
 
   std::vector<PLR_DEV_INFO> devs;
-  if (player->GetSongDeviceInfo(devs)) {
-    // printf("glue: GetSongDeviceInfo failed\n");
+  if (player->GetSongDeviceInfo(devs) > 0x01) {
+    printf("glue: GetSongDeviceInfo failed\n");
     return "";
   }
 

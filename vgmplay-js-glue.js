@@ -301,10 +301,10 @@ class VGMPlay_js {
 
 	toggleDisplayZipFileListWindow() {
 		if (this.showZipFileListWindow) {
-			this.vgmplayContainer.removeChild(this.zipFileListWindow);
+			this.zipFileListWindow.style.display = 'none';
 			this.showZipFileListWindow = false;
 		} else {
-			this.vgmplayContainer.appendChild(this.zipFileListWindow);
+			this.zipFileListWindow.style.display = 'block';
 			this.showZipFileListWindow = true;
 		}
 	}

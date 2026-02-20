@@ -39,6 +39,8 @@ FILES_TO_COPY=(
     "vgmplay-js.js"
     "vgmplay-js.wasm"
     "vgmplay-js-glue.js"
+    "minizip-asm.min.js"
+    "vgmplay-audio-processor.js"
 )
 
 # Optional files

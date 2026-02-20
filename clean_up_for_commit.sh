@@ -34,6 +34,8 @@ FILES_TO_REMOVE=(
     "vgmplay-js.wasm"
     "vgmplay-js.data"
     "vgmplay-js-glue.js"
+    "minizip-asm.min.js"
+    "vgmplay-audio-processor.js"
 )
 
 for file in "${FILES_TO_REMOVE[@]}"; do

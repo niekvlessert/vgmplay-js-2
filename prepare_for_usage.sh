@@ -14,13 +14,19 @@ echo "--- Preparing VGM Player ---"
 
 # 1. Apply the patch to libvgm
 if [ -f "$PATCH_FILE" ]; then
-    echo "Applying patch to $LIBVGM_DIR..."
-    git -C "$LIBVGM_DIR" apply --check "$PATCH_FILE"
+    echo "Checking if patch is already applied to $LIBVGM_DIR..."
+    git -C "$LIBVGM_DIR" apply --reverse --check "$PATCH_FILE" &>/dev/null
     if [ $? -eq 0 ]; then
-        git -C "$LIBVGM_DIR" apply "$PATCH_FILE"
-        echo "Patch applied successfully."
+        echo "Patch is already applied. Skipping."
     else
-        echo "Error: Patch verification failed. It might already be applied or conflicts exist."
+        echo "Applying patch..."
+        git -C "$LIBVGM_DIR" apply --check "$PATCH_FILE"
+        if [ $? -eq 0 ]; then
+            git -C "$LIBVGM_DIR" apply "$PATCH_FILE"
+            echo "Patch applied successfully."
+        else
+            echo "Error: Patch verification failed. Conflicts might exist."
+        fi
     fi
 else
     echo "Error: Patch file not found at $PATCH_FILE"

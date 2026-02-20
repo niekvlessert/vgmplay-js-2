@@ -33,8 +33,7 @@
                 "vgmplay-js.wasm",
                 "vgmplay-js.data",
                 "minizip-asm.min.js",
-                "css/style.css",
-                "dist/*"
+                "css/style.css"
             ],
             "matches": [
                 "<all_urls>"

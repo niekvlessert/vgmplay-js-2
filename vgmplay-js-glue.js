@@ -364,12 +364,36 @@ class VGMPlay_js {
 
 			}
 
-			// Display chips as the last entry of the top frame
-			const chips = this.GetChipInfoString();
-			console.log(chips);
-			if (chips && chips.length > 0) {
-				this.titleWindow.innerHTML += "Chips: " + chips + "<br/>";
+			// Display chips with volume sliders as the last entry of the top frame
+			const chipCount = this.GetDeviceCount ? this.GetDeviceCount() : 0;
+			if (chipCount > 0) {
+				const chipStrip = document.createElement('div');
+				chipStrip.className = "vgmplayChipStrip";
+				for (let i = 0; i < chipCount; i++) {
+					const name = this.GetDeviceName(i);
+					const vol = this.GetDeviceVolume(i);
+
+					const chipControl = document.createElement('div');
+					chipControl.className = "vgmplayChipControl";
+					chipControl.title = name;
+					chipControl.innerHTML = `
+						<div class="vgmplayChipName">${name}</div>
+						<input type="range" min="0" max="512" value="${vol}" 
+							class="vgmplayChipVolume" 
+							oninput="vgmPlayInstance._setChipVolume(${i}, this.value)"
+							onmousedown="event.stopPropagation()"
+							onclick="event.stopPropagation()">
+					`;
+					chipStrip.appendChild(chipControl);
+				}
+				this.titleWindow.appendChild(chipStrip);
 			}
+		}
+	}
+
+	_setChipVolume(id, vol) {
+		if (this.SetDeviceVolume) {
+			this.SetDeviceVolume(id, parseInt(vol));
 		}
 	}
 
@@ -765,6 +789,10 @@ class VGMPlay_js {
 			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM', 'number', ['number']);
 			this.ShowTitle = Module.cwrap('ShowTitle', 'string');
 			this.GetChipInfoString = Module.cwrap('GetChipInfoString', 'string');
+			this.GetDeviceCount = Module.cwrap('GetDeviceCount', 'number');
+			this.GetDeviceName = Module.cwrap('GetDeviceName', 'string', ['number']);
+			this.GetDeviceVolume = Module.cwrap('GetDeviceVolume', 'number', ['number']);
+			this.SetDeviceVolume = Module.cwrap('SetDeviceVolume', 'void', ['number', 'number']);
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);

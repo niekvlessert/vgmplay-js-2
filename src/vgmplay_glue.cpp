@@ -265,6 +265,65 @@ const char *GetChipInfoString(void) {
   return chipBuf;
 }
 
+void SetDeviceVolume(int id, int vol) {
+  if (player)
+    player->SetDeviceVolume(id, vol);
+}
+
+const char *GetDeviceName(int id) {
+  if (!player)
+    return "";
+  std::vector<PLR_DEV_INFO> devs;
+  if (player->GetSongDeviceInfo(devs) <= 0x01) {
+    for (size_t i = 0; i < devs.size(); i++) {
+      if (devs[i].id == (UINT32)id) {
+        const char *name = (devs[i].devDecl && devs[i].devDecl->name)
+                               ? devs[i].devDecl->name(devs[i].devCfg)
+                               : "Unknown";
+        free(chipBuf);
+        chipBuf = strdup(name ? name : "Unknown");
+        return chipBuf;
+      }
+    }
+  }
+  return "";
+}
+
+int GetDeviceVolume(int id) {
+  if (!player)
+    return 0x100;
+  std::vector<PLR_DEV_INFO> devs;
+  if (player->GetSongDeviceInfo(devs) <= 0x01) {
+    for (size_t i = 0; i < devs.size(); i++) {
+      if (devs[i].id == (UINT32)id)
+        return devs[i].volume;
+    }
+  }
+  return 0x100;
+}
+
+int GetDeviceCount() {
+  if (!player)
+    return 0;
+  std::vector<PLR_DEV_INFO> devs;
+  if (player->GetSongDeviceInfo(devs) <= 0x01) {
+    std::vector<UINT32> ids;
+    for (auto &d : devs) {
+      bool found = false;
+      for (auto existing : ids) {
+        if (existing == d.id) {
+          found = true;
+          break;
+        }
+      }
+      if (!found)
+        ids.push_back(d.id);
+    }
+    return (int)ids.size();
+  }
+  return 0;
+}
+
 } /* extern "C" */
 
 int main(int, char **) {

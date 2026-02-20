@@ -1,2 +1,29 @@
 *.pem
 todo
+
+# Generated WASM/JS/Data
+vgmplay-js.js
+vgmplay-js.wasm
+vgmplay-js.data
+
+# Extension Artifacts (Synchronized by prepare_for_usage.sh)
+extension/vgmplay-js.js
+extension/vgmplay-js.wasm
+extension/vgmplay-js.data
+extension/vgmplay-js-glue.js
+extension/minizip-asm.min.js
+extension/vgmplay-audio-processor.js
+extension/css/style.css
+
+ff_extension/vgmplay-js.js
+ff_extension/vgmplay-js.wasm
+ff_extension/vgmplay-js.data
+ff_extension/vgmplay-js-glue.js
+ff_extension/minizip-asm.min.js
+ff_extension/vgmplay-audio-processor.js
+ff_extension/css/style.css
+
+# Build & Dist
+build/
+dist/
+node_modules/

@@ -584,6 +584,7 @@ class VGMPlay_js {
 		await this.checkEverythingReady();
 		this.load(file);
 		this.currentFileKey = key;
+		console.log("Playing VGM file: " + file);
 		this.play();
 		this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
 		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
@@ -591,6 +592,7 @@ class VGMPlay_js {
 		this.getVGMTag();
 		//console.log("ChipInfoString: " + this.GetChipInfoString());
 		this._updateHighlight();
+		console.log("VGM file playing: " + file);
 	}
 
 	async changeTrack(action) {
@@ -745,7 +747,7 @@ class VGMPlay_js {
 			this.isWebAudioInitialized = true;
 		}
 		if (!this.functionsWrapped) {
-			this.FillBuffer = Module.cwrap('FillBuffer2', 'number', ['number', 'number']);
+			this.FillBuffer = Module.cwrap('FillBuffer2', 'void', ['number', 'number', 'number']);
 			this.OpenVGMFile = Module.cwrap('OpenVGMFile', 'number', ['string']);
 			this.CloseVGMFile = Module.cwrap('CloseVGMFile');
 			this.PlayVGM = Module.cwrap('PlayVGM');
@@ -776,19 +778,18 @@ class VGMPlay_js {
 	}
 
 	generateBuffer() {
+		const N = 4096; // Smaller batch size to reduce main-thread blocking
 		// Always create fresh views from Module.HEAPU8.buffer in case it was reallocated (detached)
-		this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1]);
+		this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
 
-		const leftHeap = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[0], 16384);
-		const rightHeap = new Int16Array(Module.HEAPU8.buffer, this.dataPtrs[1], 16384);
+		const leftHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[0], N);
+		const rightHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[1], N);
 
-		var left = new Float32Array(16384);
-		var right = new Float32Array(16384);
-		for (var i = 0; i < 16384; i++) {
-			left[i] = leftHeap[i] / 32768;
-			right[i] = rightHeap[i] / 32768;
-		}
-		this.samplesGenerated += 16384;
+		// Clone the data to buffers that can be transferred to the worklet
+		const left = new Float32Array(leftHeap);
+		const right = new Float32Array(rightHeap);
+
+		this.samplesGenerated += N;
 		return { left, right };
 	}
 
@@ -942,11 +943,14 @@ class VGMPlay_js {
 	}
 
 	load(fileName) {
+		console.log("Loading VGM file: " + fileName);
 		if (this.isVGMLoaded) {
 			this.StopVGMPlayback();
 			this.CloseVGMFile();
 		}
+		console.log("Opening VGM file: " + fileName);
 		this.OpenVGMFile(fileName);
+		console.log("VGM file opened: " + fileName);
 		this.isVGMLoaded = true;
 	}
 
@@ -989,19 +993,21 @@ class VGMPlay_js {
 		this.analyserLeft.getByteFrequencyData(this.analyserDataLeft);
 		this.analyserRight.getByteFrequencyData(this.analyserDataRight);
 
-		// Black background
+		// Optimized background: single fill
 		ctx.fillStyle = '#000000';
 		ctx.fillRect(0, 0, w, h);
 
-		// Draw horizontal grid lines (old-school look)
-		ctx.strokeStyle = 'rgba(0, 255, 0, 0.1)';
+		// Cached grid and divider (simple lines are fast)
 		ctx.lineWidth = 1;
+
+		// Horizontal grid lines
+		ctx.strokeStyle = 'rgba(0, 255, 0, 0.1)';
+		ctx.beginPath();
 		for (let y = 0; y < h; y += 8) {
-			ctx.beginPath();
 			ctx.moveTo(0, y);
 			ctx.lineTo(w, y);
-			ctx.stroke();
 		}
+		ctx.stroke();
 
 		// Vertical divider
 		ctx.strokeStyle = 'rgba(0, 255, 0, 0.2)';
@@ -1017,58 +1023,40 @@ class VGMPlay_js {
 		const barWidth = Math.floor(totalWidthPerChannel / barCount) - 1;
 		const gap = 1;
 
-		// Draw Left Channel
-		for (let i = 0; i < barCount; i++) {
-			let sum = 0;
-			for (let j = 0; j < binsPerBar; j++) {
-				sum += this.analyserDataLeft[i * binsPerBar + j];
+		// Draw Channels
+		const drawChannel = (data, xOffset) => {
+			for (let i = 0; i < barCount; i++) {
+				let sum = 0;
+				const startBin = i * binsPerBar;
+				for (let j = 0; j < binsPerBar; j++) {
+					sum += data[startBin + j];
+				}
+				const avg = sum / binsPerBar;
+				const barHeight = (avg / 255) * h;
+				const x = xOffset + i * (barWidth + gap);
+				const y = h - barHeight;
+
+				const gradient = ctx.createLinearGradient(x, h, x, y);
+				gradient.addColorStop(0, '#004400');
+				gradient.addColorStop(0.5, '#00cc00');
+				gradient.addColorStop(1, '#00ff66');
+				ctx.fillStyle = gradient;
+				ctx.fillRect(x, y, barWidth, barHeight);
+
+				if (barHeight > 2) {
+					ctx.fillStyle = '#aaffaa';
+					ctx.fillRect(x, y, barWidth, 2);
+				}
 			}
-			const avg = sum / binsPerBar;
-			const barHeight = (avg / 255) * h;
-			const x = i * (barWidth + gap);
-			const y = h - barHeight;
+		};
 
-			const gradient = ctx.createLinearGradient(x, h, x, y);
-			gradient.addColorStop(0, '#004400');
-			gradient.addColorStop(0.5, '#00cc00');
-			gradient.addColorStop(1, '#00ff66');
-			ctx.fillStyle = gradient;
-			ctx.fillRect(x, y, barWidth, barHeight);
+		drawChannel(this.analyserDataLeft, 0);
+		drawChannel(this.analyserDataRight, w / 2);
 
-			if (barHeight > 2) {
-				ctx.fillStyle = '#aaffaa';
-				ctx.fillRect(x, y, barWidth, 2);
-			}
-		}
-
-		// Draw Right Channel
-		for (let i = 0; i < barCount; i++) {
-			let sum = 0;
-			for (let j = 0; j < binsPerBar; j++) {
-				sum += this.analyserDataRight[i * binsPerBar + j];
-			}
-			const avg = sum / binsPerBar;
-			const barHeight = (avg / 255) * h;
-			const x = (w / 2) + i * (barWidth + gap);
-			const y = h - barHeight;
-
-			const gradient = ctx.createLinearGradient(x, h, x, y);
-			gradient.addColorStop(0, '#004400');
-			gradient.addColorStop(0.5, '#00cc00');
-			gradient.addColorStop(1, '#00ff66');
-			ctx.fillStyle = gradient;
-			ctx.fillRect(x, y, barWidth, barHeight);
-
-			if (barHeight > 2) {
-				ctx.fillStyle = '#aaffaa';
-				ctx.fillRect(x, y, barWidth, 2);
-			}
-		}
-
-		// Scanline overlay effect
+		// Scanline overlay effect - optimized: fewer rectangles
 		ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-		for (let y = 0; y < h; y += 2) {
-			ctx.fillRect(0, y, w, 1);
+		for (let y = 0; y < h; y += 4) {
+			ctx.fillRect(0, y, w, 2);
 		}
 	}
 }

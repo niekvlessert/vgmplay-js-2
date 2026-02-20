@@ -149,16 +149,29 @@ int GetLoopPoint(void) {
   return (int)player->Tick2Sample(player->GetLoopTicks());
 }
 
-void FillBuffer2(short *left, short *right) {
-  enum { N = 16384 };
-  static WAVE_32BS buf[N];
+void FillBuffer2(float *left, float *right, int n) {
+  if (n <= 0)
+    return;
 
-  memset(buf, 0, sizeof(buf));
-  player->Render(N, buf);
+  /* Use a temporary buffer for Rendering (static to avoid stack issues) */
+  enum { MAX_N = 16384 };
+  static WAVE_32BS buf[MAX_N];
+  int count = (n > MAX_N) ? MAX_N : n;
 
-  for (int i = 0; i < N; i++) {
-    left[i] = (short)(buf[i].L >> 8);
-    right[i] = (short)(buf[i].R >> 8);
+  if (!player) {
+    memset(left, 0, n * sizeof(float));
+    memset(right, 0, n * sizeof(float));
+    return;
+  }
+
+  /* zero buffer before rendering! libvgm resamplers accumulate with += */
+  memset(buf, 0, count * sizeof(WAVE_32BS));
+  player->Render(count, buf);
+
+  /* convert 24-bit internal (WAVE_32BS.L/R) -> Float32 output (-1.0 to 1.0) */
+  for (int i = 0; i < count; i++) {
+    left[i] = (float)(buf[i].L / 8388608.0);
+    right[i] = (float)(buf[i].R / 8388608.0);
   }
 }
 
@@ -256,7 +269,7 @@ const char *GetChipInfoString(void) {
 
 int main(int, char **) {
   EM_ASM({
-    if (typeof vgmplay_js != = 'undefined' && vgmplay_js.loadWhenReady)
+    if (typeof vgmplay_js !== 'undefined' && vgmplay_js.loadWhenReady)
       vgmplay_js.loadWhenReady();
   });
   return 0;

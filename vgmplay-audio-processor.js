@@ -80,7 +80,7 @@ class VGMPlayProcessor extends AudioWorkletProcessor {
     }
 
     // Request more data when queue is getting low
-    if (this.queue.length < 3) {
+    if (this.queue.length < 6) {
       this.port.postMessage({ type: 'need-data' });
     }
 

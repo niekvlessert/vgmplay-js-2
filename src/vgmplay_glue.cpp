@@ -149,6 +149,31 @@ int GetLoopPoint(void) {
   return (int)player->Tick2Sample(player->GetLoopTicks());
 }
 
+int GetTrackLengthDirect(const char *path) {
+  DATA_LOADER *locLoader = FileLoader_Init(path);
+  if (!locLoader)
+    return 0;
+  if (DataLoader_Load(locLoader)) {
+    DataLoader_Deinit(locLoader);
+    return 0;
+  }
+
+  VGMPlayer *locPlayer = new VGMPlayer();
+  locPlayer->SetSampleRate(gSampleRate);
+  if (locPlayer->LoadFile(locLoader)) {
+    delete locPlayer;
+    DataLoader_Deinit(locLoader);
+    return 0;
+  }
+
+  int length = (int)locPlayer->Tick2Sample(locPlayer->GetTotalTicks());
+
+  locPlayer->UnloadFile();
+  delete locPlayer;
+  DataLoader_Deinit(locLoader);
+  return length;
+}
+
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;

@@ -1,11 +1,6 @@
 *.pem
 todo
 
-# Generated WASM/JS/Data
-vgmplay-js.js
-vgmplay-js.wasm
-vgmplay-js.data
-
 # Extension Artifacts (Synchronized by prepare_for_usage.sh)
 extension/vgmplay-js.js
 extension/vgmplay-js.wasm

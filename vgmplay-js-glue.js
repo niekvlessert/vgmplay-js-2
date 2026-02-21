@@ -5,6 +5,15 @@ class VGMPlay_js {
 	constructor(options = {}) {
 		window.vgmplay_js = this; // Ensure global access for UI handlers
 		window.vgmPlayInstance = this;
+
+		// --- Android Auto Integration Bridge ---
+		window.vgmPlayerInterface = {
+			nextTrack: () => this.changeTrack('next'),
+			prevTrack: () => this.changeTrack('prev'), // Falls back to prev or next
+			play: () => this.play(),
+			pause: () => this.pause()
+		};
+
 		this.isPlaybackPaused = true;
 		this.isWebAudioInitialized = false;
 		this.functionsWrapped = false;
@@ -621,6 +630,11 @@ class VGMPlay_js {
 		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
 		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 		this.getVGMTag();
+
+		let gameName = (this.VGMTag && this.VGMTag.length >= 8) ? (this.VGMTag[5] || this.VGMTag[7] || "Unknown Game") : "Unknown Game";
+		let trackName = file.substring(file.lastIndexOf('/') + 1);
+		if (window.Android) window.Android.updateMetadata(gameName + " - " + unescape(trackName), this.trackLengthSeconds * 1000);
+
 		//console.log("ChipInfoString: " + this.GetChipInfoString());
 		this._updateHighlight();
 	}
@@ -853,6 +867,7 @@ class VGMPlay_js {
 
 	play() {
 		document.getElementById("buttonTogglePlayback").innerHTML = "||";
+		if (window.Android) window.Android.updatePlaybackState(true);
 		this.samplesGenerated = 0;
 		this.isPlaybackPaused = false;
 
@@ -918,6 +933,7 @@ class VGMPlay_js {
 
 	pause() {
 		this.isPlaybackPaused = true;
+		if (window.Android) window.Android.updatePlaybackState(false);
 		this.buttonTogglePlayback.innerHTML = "&#9654;"
 
 		// Update visual position one last time to save state
@@ -938,6 +954,7 @@ class VGMPlay_js {
 
 	stop() {
 		this.buttonTogglePlayback.innerHTML = "&#9654;";
+		if (window.Android) window.Android.updatePlaybackState(false);
 
 		if (this.workletNode) {
 			this.workletNode.port.postMessage({ type: 'stop' });

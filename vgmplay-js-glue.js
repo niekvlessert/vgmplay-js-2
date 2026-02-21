@@ -554,74 +554,44 @@ class VGMPlay_js {
 				fragment.appendChild(img);
 				fragment.appendChild(document.createElement("br"));
 			}
-			this.zipFileListWindow.appendChild(fragment);
 
-			let key = 0;
-			const CHUNK_SIZE = 10;
+			for (let key = 0; key < files.length; key++) {
+				const fullPath = files[key].filepath;
+				const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+				if (fileName.includes("vgm") || fileName.includes("vgz")) {
+					try {
+						const totalSampleCount = this.GetTrackLengthDirect(fullPath) * this.sampleRate / 44100;
+						if (totalSampleCount > 0) {
+							const trackLengthSeconds = Math.round(totalSampleCount / this.sampleRate);
+							const trackLengthHumanReadeable = new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 
-			const processChunk = () => {
-				const chunkFragment = document.createDocumentFragment();
-				let processedInChunk = 0;
+							const a = document.createElement("a");
+							a.className = "vgmplayTrack";
+							a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, key);
+							files[key].linkElement = a; // Store reference for highlighting
 
-				while (key < files.length && processedInChunk < CHUNK_SIZE) {
-					const fullPath = files[key].filepath;
-					const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+							const nameSpan = document.createElement("span");
+							nameSpan.textContent = unescape(fileName);
+							a.appendChild(nameSpan);
 
-					if (fileName.includes("vgm") || fileName.includes("vgz")) {
-						try {
-							const totalSampleCount = this.GetTrackLengthDirect(fullPath) * this.sampleRate / 44100;
-							if (totalSampleCount > 0) {
-								const trackLengthSeconds = Math.round(totalSampleCount / this.sampleRate);
-								const trackLengthHumanReadeable = new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5);
+							const timeSpan = document.createElement("span");
+							timeSpan.style.float = "right";
+							timeSpan.textContent = trackLengthHumanReadeable;
+							a.appendChild(timeSpan);
 
-								const a = document.createElement("a");
-								a.className = "vgmplayTrack";
-								const currentKey = key; // capture block-scoped for closure
-								a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, currentKey);
-								files[currentKey].linkElement = a; // Store reference for highlighting
-
-								const nameSpan = document.createElement("span");
-								nameSpan.textContent = unescape(fileName);
-								a.appendChild(nameSpan);
-
-								const timeSpan = document.createElement("span");
-								timeSpan.style.float = "right";
-								timeSpan.textContent = trackLengthHumanReadeable;
-								a.appendChild(timeSpan);
-
-								chunkFragment.appendChild(a);
-							}
-						} catch (e) {
-							console.error("Error scanning track:", fullPath, e);
+							fragment.appendChild(a);
 						}
-						key++;
-						processedInChunk++;
-					} else {
-						// Remove non-VGM files
-						files.splice(key, 1);
-						// Do not increment key since elements shifted left
+					} catch (e) {
+						console.error("Error scanning track:", fullPath, e);
 					}
-				}
-
-				if (chunkFragment.childNodes.length > 0) {
-					this.zipFileListWindow.appendChild(chunkFragment);
-				}
-
-				if (key < files.length) {
-					// Schedule next chunk, unblocking the main thread so AudioWorklet gets pumped
-					setTimeout(processChunk, 10);
 				} else {
-					// Done processing all items
-					this._updateHighlight();
+					files.splice(key, 1);
+					key--;
 				}
-			};
-
-			// Start processing
-			processChunk();
-
-		} else {
-			this._updateHighlight();
+			}
+			this.zipFileListWindow.appendChild(fragment);
 		}
+		this._updateHighlight();
 	}
 
 	_updateHighlight() {

@@ -7,7 +7,7 @@
 #    extension (Chrome) and ff_extension (Firefox) directories.
 
 PROJECT_ROOT=$(pwd)
-PATCH_FILE="$PROJECT_ROOT/patches/libvgm_per_chip_volume.patch"
+PATCH_FILE="$PROJECT_ROOT/patches/libvgm_per_chip_volume_clean.patch"
 LIBVGM_DIR="$PROJECT_ROOT/modules/libvgm"
 
 echo "--- Preparing VGM Player ---"

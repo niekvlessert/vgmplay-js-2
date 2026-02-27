@@ -503,10 +503,11 @@ class VGMPlay_js {
 	}
 
 	_makedirs(path) {
-		const parts = path.split('/').filter(p => p.length > 0);
-		let current = '';
-		for (const part of parts) {
-			current += '/' + part;
+		const parts = path.split('/');
+		let current = "";
+		for (const p of parts) {
+			if (!p) continue;
+			current += "/" + p;
 			try {
 				if (!FS.analyzePath(current).exists) {
 					FS.mkdir(current);
@@ -515,6 +516,13 @@ class VGMPlay_js {
 				// Fallback if analyzePath fails or mkdir refuses
 			}
 		}
+	}
+
+	GetVGMTagDirect(path, tagIndex) {
+		if (this.functionsWrapped && this._GetVGMTagDirectNative) {
+			return this._GetVGMTagDirectNative(path, tagIndex) || "";
+		}
+		return "";
 	}
 
 	processZipBuffer(byteArray) {
@@ -656,6 +664,38 @@ class VGMPlay_js {
 				img.style.height = '212px';
 				fragment.appendChild(img);
 				fragment.appendChild(document.createElement("br"));
+			} else {
+				// No logo, add spacer and game name placeholder
+				if (this.games.length > 1 && gameIndex > 1) {
+					const spacer = document.createElement("div");
+					spacer.className = "game-spacer";
+					fragment.appendChild(spacer);
+				}
+
+				const placeholder = document.createElement("div");
+				placeholder.className = "game-name-placeholder";
+
+				// Try to get game name from first track if possible
+				let psfGame = "";
+				for (const f of files) {
+					const l = f.filepath.toLowerCase();
+					if (l.endsWith(".psf") || l.endsWith(".minipsf")) {
+						psfGame = this.GetVGMTagDirect(f.filepath, 2); // Game tag
+						if (psfGame) break;
+					}
+				}
+
+				if (!psfGame && files.length > 0) {
+					// Fallback to path name
+					const path = files[0].filepath;
+					const parts = path.split('/');
+					if (parts.length > 2) {
+						psfGame = parts[1].replace('game_', 'Game ');
+					}
+				}
+
+				placeholder.textContent = psfGame || "Game " + gameIndex;
+				fragment.appendChild(placeholder);
 			}
 
 			for (let key = 0; key < files.length; key++) {
@@ -681,6 +721,7 @@ class VGMPlay_js {
 							files[key].linkElement = a; // Store reference for highlighting
 
 							const nameSpan = document.createElement("span");
+							nameSpan.className = "track-name";
 							nameSpan.textContent = fileName;
 							a.appendChild(nameSpan);
 
@@ -917,6 +958,7 @@ class VGMPlay_js {
 			this.VGMEnded = Module.cwrap('VGMEnded');
 			this.GetTrackLength = Module.cwrap('GetTrackLength');
 			this.GetTrackLengthDirect = Module.cwrap('GetTrackLengthDirect', 'number', ['string']);
+			this._GetVGMTagDirectNative = Module.cwrap('GetVGMTagDirect', 'string', ['string', 'number']);
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
 			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);
 			this.SetSampleRate = Module.cwrap('SetSampleRate', 'number', ['number']);

@@ -9,6 +9,8 @@ extension/vgmplay-js-glue.js
 extension/minizip-asm.min.js
 extension/vgmplay-audio-processor.js
 extension/css/style.css
+extension/7zz.umd.js
+extension/7zz.wasm
 
 ff_extension/vgmplay-js.js
 ff_extension/vgmplay-js.wasm
@@ -17,6 +19,8 @@ ff_extension/vgmplay-js-glue.js
 ff_extension/minizip-asm.min.js
 ff_extension/vgmplay-audio-processor.js
 ff_extension/css/style.css
+ff_extension/7zz.umd.js
+ff_extension/7zz.wasm
 
 # Build & Dist
 build/

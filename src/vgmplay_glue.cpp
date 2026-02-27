@@ -252,6 +252,53 @@ int GetTrackLengthDirect(const char *path) {
   return length;
 }
 
+const char *GetVGMTagDirect(const char *path, int tagIndex) {
+  std::string lowerPath = path;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+
+  if (lowerPath.find(".psflib") != std::string::npos)
+    return "";
+
+  if (lowerPath.find(".psf") != std::string::npos ||
+      lowerPath.find(".minipsf") != std::string::npos) {
+    PSFINFO *info = sexy_getpsfinfo((char *)path);
+    if (!info)
+      return "";
+
+    const char *keys[] = {"title",  "", "game", "",      "platform", "",
+                          "artist", "", "year", "psfby", "comment"};
+    if (tagIndex < 0 || tagIndex >= 11) {
+      sexy_freepsfinfo(info);
+      return "";
+    }
+
+    const char *targetKey = keys[tagIndex];
+    if (!targetKey || !*targetKey) {
+      sexy_freepsfinfo(info);
+      return "";
+    }
+
+    PSFTAG *t = info->tags;
+    while (t) {
+      if (strcasecmp(t->key, targetKey) == 0) {
+        static char tagResult[256];
+        strncpy(tagResult, t->value, 255);
+        tagResult[255] = '\0';
+        sexy_freepsfinfo(info);
+        return tagResult;
+      }
+      t = t->next;
+    }
+    sexy_freepsfinfo(info);
+    return "";
+  }
+
+  // For non-PSF, we'd need to load the file and use VGMPlayer::GetTags.
+  // This is heavier but possible. For now, focus on PSF.
+  return "";
+}
+
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;

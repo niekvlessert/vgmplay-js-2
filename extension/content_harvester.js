@@ -7,7 +7,7 @@ function harvestVGM() {
         .map(link => link.href)
         .filter(href => {
             const lower = href.toLowerCase();
-            return lower.endsWith('.zip') || lower.endsWith('.vgm') || lower.endsWith('.vgz');
+            return lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.vgm') || lower.endsWith('.vgz') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib');
         });
 
     // Unique list

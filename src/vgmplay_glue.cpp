@@ -19,12 +19,40 @@
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
 
+extern "C" {
+#include "../modules/sexypsf/driver.h"
+}
+
 /* ---- globals ---- */
 static VGMPlayer *player = nullptr;
 static DATA_LOADER *loader = nullptr;
 static char *titleBuf = nullptr;
 static char *chipBuf = nullptr;
 static UINT32 gSampleRate = 44100;
+
+/* ---- SexyPSF globals ---- */
+static bool isPSF = false;
+static PSFINFO *psfInfo = nullptr;
+static std::vector<float> psfBufferL;
+static std::vector<float> psfBufferR;
+extern UINT32 sampcount;
+
+extern "C" {
+int stop_sexy_execute = 0; // Declare stop_sexy_execute here
+
+/* ---- SexyPSF callbacks ---- */
+void SPUirq(void) {} // Dummy SPU IRQ for SexyPSF
+void sexyd_update(unsigned char *p, long l) {
+  short *pcm = (short *)p;
+  int samples = l / 4; // 16-bit stereo = 4 bytes per sample
+  for (int i = 0; i < samples; i++) {
+    psfBufferL.push_back(pcm[i * 2] / 32768.0f);
+    psfBufferR.push_back(pcm[i * 2 + 1] / 32768.0f);
+  }
+  if (psfBufferL.size() >= 4096)
+    stop_sexy_execute = 1;
+}
+}
 
 static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
                                         const char *fileName) {
@@ -37,6 +65,16 @@ static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
 }
 
 static void cleanup() {
+  if (isPSF) {
+    if (psfInfo) {
+      sexy_freepsfinfo(psfInfo);
+      psfInfo = nullptr;
+    }
+    sexy_stop();
+    isPSF = false;
+    psfBufferL.clear();
+    psfBufferR.clear();
+  }
   if (player) {
     player->Stop();
     player->UnloadFile();
@@ -81,14 +119,32 @@ void Seek(unsigned int sec, unsigned int ms) {
 int OpenVGMFile(const char *path) {
   cleanup();
 
+  /* Detect PSF by extension */
+  std::string sPath(path);
+  if (sPath.size() > 4 && (sPath.substr(sPath.size() - 4) == ".psf" ||
+                           sPath.substr(sPath.size() - 4) == ".PSF" ||
+                           sPath.substr(sPath.size() - 8) == ".minipsf" ||
+                           sPath.substr(sPath.size() - 8) == ".MINIPSF")) {
+    psfInfo = sexy_load((char *)path);
+    if (!psfInfo) {
+      return 0;
+    }
+    isPSF = true;
+    sampcount = 0;
+    psfBufferL.clear();
+    psfBufferR.clear();
+    if (psfInfo->length == 0) {
+      psfInfo->length = 180000;
+    }
+    return 1;
+  }
+
   /* 1. load file data via FileLoader */
   loader = FileLoader_Init(path);
   if (!loader) {
-    printf("glue: FileLoader_Init failed for '%s'\n", path);
     return 0;
   }
   if (DataLoader_Load(loader)) {
-    printf("glue: DataLoader_Load failed for '%s'\n", path);
     return 0;
   }
 
@@ -107,7 +163,6 @@ int OpenVGMFile(const char *path) {
 
   /* 4. load */
   if (player->LoadFile(loader)) {
-    printf("glue: LoadFile failed for '%s'\n", path);
     return 0;
   }
 
@@ -132,12 +187,18 @@ void StopVGM(void) {
 }
 
 int VGMEnded(void) {
+  if (isPSF) {
+    return (psfInfo && sampcount >= psfInfo->length * 44.1) ? 1 : 0;
+  }
   if (!player)
     return 1;
   return (player->GetState() & PLAYSTATE_END) ? 1 : 0;
 }
 
 int GetTrackLength(void) {
+  if (isPSF) {
+    return psfInfo ? (int)(psfInfo->length * 44.1) : 0;
+  }
   if (!player)
     return 0;
   return (int)player->Tick2Sample(player->GetTotalTicks());
@@ -150,6 +211,23 @@ int GetLoopPoint(void) {
 }
 
 int GetTrackLengthDirect(const char *path) {
+  std::string lowerPath = path;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+  if (lowerPath.find(".psflib") != std::string::npos)
+    return 0;
+  if (lowerPath.find(".psf") != std::string::npos ||
+      lowerPath.find(".minipsf") != std::string::npos) {
+    PSFINFO *info = sexy_getpsfinfo((char *)path);
+    if (!info) {
+      return 0;
+    }
+    int length =
+        (int)((info->length / 1000.0) * 44100); // ms to samples at 44.1kHz
+    sexy_freepsfinfo(info);
+    return length;
+  }
+
   DATA_LOADER *locLoader = FileLoader_Init(path);
   if (!locLoader)
     return 0;
@@ -177,6 +255,38 @@ int GetTrackLengthDirect(const char *path) {
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;
+
+  if (isPSF) {
+    int max_exec = 10000; // Increased limit for slower WASM execution
+    while ((int)psfBufferL.size() < n && max_exec-- > 0) {
+      stop_sexy_execute = 0;
+      sexy_execute();
+      // If SexyPSF didn't add any samples, it might be the end or an error.
+      // Break to avoid infinite loop.
+      if (psfBufferL.size() < n && psfInfo &&
+          sampcount >= psfInfo->length * 44.1) {
+        break;
+      }
+    }
+    if (max_exec <= 0) {
+    }
+    int available = (int)psfBufferL.size();
+    int toCopy = (available < n) ? available : n;
+    for (int i = 0; i < toCopy; i++) {
+      left[i] = psfBufferL[i];
+      right[i] = psfBufferR[i];
+    }
+    // Zero out remaining if any
+    for (int i = toCopy; i < n; i++) {
+      left[i] = 0;
+      right[i] = 0;
+    }
+    if (toCopy > 0) {
+      psfBufferL.erase(psfBufferL.begin(), psfBufferL.begin() + toCopy);
+      psfBufferR.erase(psfBufferR.begin(), psfBufferR.begin() + toCopy);
+    }
+    return;
+  }
 
   /* Use a temporary buffer for Rendering (static to avoid stack issues) */
   enum { MAX_N = 16384 };
@@ -241,14 +351,48 @@ void FillBuffer2(float *left, float *right, int n) {
 /* format: "TrkE|||TrkJ|||GmE|||GmJ|||SysE|||SysJ|||AutE|||AutJ|||Cre|||Notes"
  */
 char *ShowTitle(void) {
+  if (isPSF) {
+    if (!psfInfo)
+      return nullptr;
+
+    // Map PSF tags to the positions expected by getVGMTag() in JS
+    // We need 22 elements (11 key-value pairs)
+    // 0:Title(K), 1:Title(V), 2:GuestTitle(K), 3:GuestTitle(V),
+    // 4:Game(K), 5:Game(V), 6:GuestGame(K), 7:GuestGame(V),
+    // 8:System(K), 9:System(V), 10:GuestSystem(K), 11:GuestSystem(V),
+    // 12:Author(K), 13:Author(V), 14:GuestAuthor(K), 15:GuestAuthor(V),
+    // 16:Date(K), 17:Date(V), 18:Creator(K), 19:Creator(V),
+    // 20:Notes(K), 21:Notes(V)
+
+    const char *keys[] = {"title",  "", "game", "",      "platform", "",
+                          "artist", "", "year", "psfby", "comment"};
+    std::string s;
+    auto getTag = [&](const char *k) -> const char * {
+      if (!k || !*k)
+        return "";
+      PSFTAG *t = psfInfo->tags;
+      while (t) {
+        if (strcasecmp(t->key, k) == 0)
+          return t->value;
+        t = t->next;
+      }
+      return "";
+    };
+
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||"; // Key (not really used by JS except to skip)
+      s += getTag(keys[i]);
+      s += "|||"; // Value
+    }
+
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
   if (!player)
     return nullptr;
   const char *const *t = player->GetTags();
-  /*while (*t) {
-    fprintf(stderr, "%s: %s\n", t[0], t[1]);
-    t += 2;
-  }
-  */
   if (!t)
     return nullptr;
 
@@ -261,7 +405,6 @@ char *ShowTitle(void) {
 
   free(titleBuf);
   titleBuf = strdup(s.c_str());
-  // printf("%s\n", titleBuf);
   return titleBuf;
 }
 
@@ -271,7 +414,6 @@ const char *GetChipInfoString(void) {
 
   std::vector<PLR_DEV_INFO> devs;
   if (player->GetSongDeviceInfo(devs) > 0x01) {
-    printf("glue: GetSongDeviceInfo failed\n");
     return "";
   }
 

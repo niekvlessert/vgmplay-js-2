@@ -15,19 +15,21 @@ set(BUILD_LIBAUDIO OFF CACHE BOOL "Build audio lib" FORCE) # We handle audio out
 set(LIBRARY_TYPE "STATIC" CACHE STRING "Library type" FORCE)
 
 add_subdirectory(modules/libvgm)
+add_subdirectory(modules/sexypsf)
 
 # Main Executable
 add_executable(vgmplay-js src/vgmplay_glue.cpp)
 
-# Link against libvgm components
+# Link against libvgm components and sexypsf
 # Note: vgm-player depends on vgm-emu and vgm-utils
-target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils)
+target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf)
 
 # Include directories (glue code needs headers)
 target_include_directories(vgmplay-js PRIVATE 
     modules/libvgm/player
     modules/libvgm/utils
     modules/libvgm/emu
+    modules/sexypsf
 )
 
 # Exported functions

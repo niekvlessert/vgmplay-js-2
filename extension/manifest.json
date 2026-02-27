@@ -33,6 +33,8 @@
                 "vgmplay-js.wasm",
                 "vgmplay-js.data",
                 "minizip-asm.min.js",
+                "7zz.umd.js",
+                "7zz.wasm",
                 "css/style.css"
             ],
             "matches": [

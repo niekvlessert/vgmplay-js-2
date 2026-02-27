@@ -67,6 +67,8 @@ class VGMPlay_js {
 		if (typeof window !== 'undefined') {
 			window.Module = window.Module || {};
 			const base = this.baseURL;
+			window.Module.print = () => { };
+			window.Module.printErr = () => { };
 			window.Module.locateFile = function (path, prefix) {
 				if (path.endsWith(".data")) return base + path;
 				return prefix + path;
@@ -83,9 +85,12 @@ class VGMPlay_js {
 		script.src = this.baseURL + "vgmplay-js.js";
 		var script3 = document.createElement("script");
 		script3.src = this.baseURL + "minizip-asm.min.js";
+		var script4 = document.createElement("script");
+		script4.src = this.baseURL + "7zz.umd.js";
 
 		document.head.appendChild(script);
 		document.head.appendChild(script3);
+		document.head.appendChild(script4);
 
 		// Handle UI initialization
 		if (!this.useAsLibrary) {
@@ -191,10 +196,13 @@ class VGMPlay_js {
 	}
 
 	loadWhenReady() {
-		this.elms = document.getElementsByTagName("a"),
-			this.len = this.elms.length;
+		this.elms = document.getElementsByTagName("a");
+		this.len = this.elms.length;
 		for (var ii = 0; ii < this.len; ii++) {
-			if (this.elms[ii].href.match(/.zip/g)) this.loadZIPWithVGMFromURL(this.elms[ii].href);
+			const lower = this.elms[ii].href.toLowerCase();
+			if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+				this.loadZIPWithVGMFromURL(this.elms[ii].href);
+			}
 		}
 		this.setKeyBindings();
 	}
@@ -320,7 +328,9 @@ class VGMPlay_js {
 
 	getVGMTag() {
 		if (this.titleWindow) {
-			this.VGMTag = this.ShowTitle().split("|||");
+			const titleStr = this.ShowTitle();
+			if (!titleStr) return;
+			this.VGMTag = titleStr.split("|||");
 			this.tagType = 0;
 			this.titleWindow.innerHTML = "";
 			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
@@ -363,7 +373,7 @@ class VGMPlay_js {
 						}
 						break;
 					case 20:
-						if (this.VGMTag[21].length > 1) {
+						if (this.VGMTag[21] && this.VGMTag[21].length > 1) {
 							this.titleWindow.innerHTML += "Comments: ";
 							this.titleWindow.innerHTML += this.VGMTag[21];
 							this.titleWindow.innerHTML += "<br/>";
@@ -465,9 +475,15 @@ class VGMPlay_js {
 						if (xhr.status === 200) {
 							var arrayBuffer = xhr.response;
 							var byteArray = new Uint8Array(arrayBuffer);
-							classContext.processZipBuffer(byteArray).then(next);
+							if (job.data.toLowerCase().endsWith('.7z')) {
+								classContext.process7zBuffer(byteArray).then(next);
+							} else if (job.data.toLowerCase().endsWith('.psf')) {
+								classContext.processPSFBuffer(byteArray, job.data).then(next);
+							} else {
+								classContext.processZipBuffer(byteArray).then(next);
+							}
 						} else {
-							console.error("Failed to load zip from URL:", job.data);
+							console.error("Failed to load archive from URL:", job.data);
 							next();
 						}
 					}
@@ -475,7 +491,13 @@ class VGMPlay_js {
 				xhr.open('GET', job.data, true);
 				xhr.send(null);
 			} else if (job.type === 'file') {
-				classContext.processZipBuffer(job.data).then(next);
+				if (job.name && job.name.toLowerCase().endsWith('.7z')) {
+					classContext.process7zBuffer(job.data).then(next);
+				} else if (job.name && job.name.toLowerCase().endsWith('.psf')) {
+					classContext.processPSFBuffer(job.data, job.name).then(next);
+				} else {
+					classContext.processZipBuffer(job.data).then(next);
+				}
 			}
 		});
 	}
@@ -509,7 +531,7 @@ class VGMPlay_js {
 
 			for (var key in fileList) {
 				var fileArray = this.mz.extract(fileList[key].filepath);
-				var fileName = escape(fileList[key].filepath);
+				var fileName = fileList[key].filepath;
 				var fullPath = gamePath + "/" + fileName;
 
 				// If fileName contains slashes (escaped or not), we need to ensure parents exist
@@ -539,10 +561,82 @@ class VGMPlay_js {
 		});
 	}
 
+	async process7zBuffer(byteArray) {
+		const sz = await SevenZip({
+			locateFile: (path) => this.baseURL + path,
+			print: () => { },
+			printErr: () => { }
+		});
+
+		// Create a temp file in 7z-wasm's MEMFS
+		const archiveName = "archive.7z";
+		sz.FS.writeFile(archiveName, byteArray);
+
+		// List files (using direct FS access if possible or calling 7zz?)
+		// Actually, sevenzip-wasm usually provides a way to extract.
+		// Looking at use-strict/7z-wasm, we can run commands.
+		sz.callMain(["x", archiveName, "-o/out"]);
+
+		const fileList = [];
+		const gamePath = "/game_" + (++this.amountOfGamesLoaded);
+		this._makedirs(gamePath);
+
+		const recurseFS = (path, relativePath = "") => {
+			const entries = sz.FS.readdir(path);
+			for (const entry of entries) {
+				if (entry === "." || entry === "..") continue;
+				const fullSZPath = path + "/" + entry;
+				const fullRelPath = relativePath ? relativePath + "/" + entry : entry;
+				const stat = sz.FS.stat(fullSZPath);
+				if (sz.FS.isDir(stat.mode)) {
+					recurseFS(fullSZPath, fullRelPath);
+				} else {
+					const data = sz.FS.readFile(fullSZPath);
+					const fsPath = gamePath + "/" + fullRelPath;
+					const lastSlash = fsPath.lastIndexOf('/');
+					if (lastSlash > gamePath.length) {
+						this._makedirs(fsPath.substring(0, lastSlash));
+					}
+					const name = fsPath.substring(fsPath.lastIndexOf('/') + 1);
+					const parent = fsPath.substring(0, fsPath.lastIndexOf('/'));
+					FS.createDataFile(parent, name, data, true, true);
+					fileList.push({ filepath: fsPath });
+				}
+			}
+		};
+
+		recurseFS("/out");
+
+		var game = { files: fileList, path: gamePath };
+		this.games.push(game);
+		await this.checkEverythingReady();
+		this.showVGMFromZip(game);
+	}
+
+	async processPSFBuffer(byteArray, fileName) {
+		this.amountOfGamesLoaded++;
+		const gamePath = "/game_" + this.amountOfGamesLoaded;
+		this._makedirs(gamePath);
+
+		const fsPath = gamePath + "/" + fileName;
+		FS.createDataFile(gamePath, fileName, byteArray, true, true);
+
+		const fileList = [{ filepath: fsPath }];
+		var game = { files: fileList, path: gamePath };
+		this.games.push(game);
+		await this.checkEverythingReady();
+		this.showVGMFromZip(game);
+	}
+
 	addHarvestedTracks(urls) {
 		urls.forEach(url => {
-			if (url.toLowerCase().endsWith('.zip')) {
+			const lower = url.toLowerCase();
+			if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
 				this.loadZIPWithVGMFromURL(url);
+			} else if (lower.endsWith('.vgm') || lower.endsWith('.vgz')) {
+				// Handle direct links? For now just try to load them as single files in queue
+				this.zipQueue.push({ type: 'url', data: url });
+				this._processQueue();
 			}
 		});
 	}
@@ -567,11 +661,18 @@ class VGMPlay_js {
 			for (let key = 0; key < files.length; key++) {
 				const fullPath = files[key].filepath;
 				const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
-				if (fileName.includes("vgm") || fileName.includes("vgz")) {
+				const lower = fileName.toLowerCase();
+				if (lower.endsWith(".vgm") || lower.endsWith(".vgz") || lower.endsWith(".psf") || lower.endsWith(".minipsf")) {
 					try {
-						const totalSampleCount = this.GetTrackLengthDirect(fullPath) * this.sampleRate / 44100;
+						const trackLength = this.GetTrackLengthDirect(fullPath);
+
+						// Use a default sample rate if not initialized yet
+						const currentSampleRate = this.sampleRate || 44100;
+
+						const totalSampleCount = trackLength * currentSampleRate / 44100;
+
 						if (totalSampleCount > 0) {
-							const trackLengthSeconds = Math.round(totalSampleCount / this.sampleRate);
+							const trackLengthSeconds = Math.round(totalSampleCount / currentSampleRate);
 							const trackLengthHumanReadeable = new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 
 							const a = document.createElement("a");
@@ -580,27 +681,23 @@ class VGMPlay_js {
 							files[key].linkElement = a; // Store reference for highlighting
 
 							const nameSpan = document.createElement("span");
-							nameSpan.textContent = unescape(fileName);
+							nameSpan.textContent = fileName;
 							a.appendChild(nameSpan);
 
-							const timeSpan = document.createElement("span");
-							timeSpan.style.float = "right";
-							timeSpan.textContent = trackLengthHumanReadeable;
-							a.appendChild(timeSpan);
+							const lengthSpan = document.createElement("span");
+							lengthSpan.className = "track-length";
+							lengthSpan.textContent = trackLengthHumanReadeable;
+							a.appendChild(lengthSpan);
 
 							fragment.appendChild(a);
 						}
 					} catch (e) {
-						console.error("Error scanning track:", fullPath, e);
+						console.error("[UI] Error getting track length for:", fullPath, e);
 					}
-				} else {
-					files.splice(key, 1);
-					key--;
 				}
 			}
 			this.zipFileListWindow.appendChild(fragment);
 		}
-		this._updateHighlight();
 	}
 
 	_updateHighlight() {
@@ -623,6 +720,11 @@ class VGMPlay_js {
 		if (game) this.activeGame = this.games[game - 1];
 		if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
 		await this.checkEverythingReady();
+
+		if (!this.isPlayable(file)) {
+			return;
+		}
+
 		this.load(file);
 		this.currentFileKey = key;
 		this.play();
@@ -637,6 +739,11 @@ class VGMPlay_js {
 
 		//console.log("ChipInfoString: " + this.GetChipInfoString());
 		this._updateHighlight();
+	}
+
+	isPlayable(path) {
+		const p = path.toLowerCase();
+		return p.endsWith('.vgm') || p.endsWith('.vgz') || p.endsWith('.psf') || p.endsWith('.minipsf');
 	}
 
 	async changeTrack(action) {
@@ -673,6 +780,17 @@ class VGMPlay_js {
 					this.currentFileKey--;
 				}
 			}
+		}
+
+		// Skip non-playable files
+		let attempts = 0;
+		while (!this.isPlayable(this.activeGame.files[this.currentFileKey].filepath) && attempts < this.activeGame.files.length) {
+			if (action === "next") {
+				this.currentFileKey = (this.currentFileKey + 1) % this.activeGame.files.length;
+			} else {
+				this.currentFileKey = (this.currentFileKey - 1 + this.activeGame.files.length) % this.activeGame.files.length;
+			}
+			attempts++;
 		}
 
 		await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, gameIndex + 1, this.currentFileKey);

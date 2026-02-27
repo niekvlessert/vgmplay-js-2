@@ -21,6 +21,7 @@
 
 extern "C" {
 #include "../modules/sexypsf/driver.h"
+void psxShutdown(void);
 }
 
 /* ---- globals ---- */
@@ -71,6 +72,7 @@ static void cleanup() {
       psfInfo = nullptr;
     }
     sexy_stop();
+    psxShutdown(); // Free memory allocated by psxInit()
     isPSF = false;
     psfBufferL.clear();
     psfBufferR.clear();

@@ -45,6 +45,8 @@ class VGMPlay_js {
 		this.windowPos3 = 0;
 		this.windowPos4 = 0;
 		this.zipURLPending = [];
+		this._isLoadingFile = false;
+		this._loadLock = Promise.resolve();
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -1013,28 +1015,35 @@ class VGMPlay_js {
 	}
 
 	async playFileFromFS(href_object, file, game, key) {
-		if (game) this.activeGame = this.games[game - 1];
-		if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
-		await this.checkEverythingReady();
+		return this._withLoadLock(async () => {
+			if (game) this.activeGame = this.games[game - 1];
+			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
+			await this.checkEverythingReady();
 
-		if (!this.isPlayable(file)) {
-			return;
-		}
+			if (!this.isPlayable(file)) {
+				return;
+			}
 
-		this.load(file);
-		this.currentFileKey = key;
-		this.play();
-		this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
-		this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
-		this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-		this.getVGMTag();
+			this._isLoadingFile = true;
+			try {
+				this.load(file);
+				this.currentFileKey = key;
+				this.play();
+				this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
+				this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
+				this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
+				this.getVGMTag();
 
-		let gameName = (this.VGMTag && this.VGMTag.length >= 8) ? (this.VGMTag[5] || this.VGMTag[7] || "Unknown Game") : "Unknown Game";
-		let trackName = file.substring(file.lastIndexOf('/') + 1);
-		if (window.Android) window.Android.updateMetadata(gameName + " - " + unescape(trackName), this.trackLengthSeconds * 1000);
+				let gameName = (this.VGMTag && this.VGMTag.length >= 8) ? (this.VGMTag[5] || this.VGMTag[7] || "Unknown Game") : "Unknown Game";
+				let trackName = file.substring(file.lastIndexOf('/') + 1);
+				if (window.Android) window.Android.updateMetadata(gameName + " - " + unescape(trackName), this.trackLengthSeconds * 1000);
 
-		//console.log("ChipInfoString: " + this.GetChipInfoString());
-		this._updateHighlight();
+				//console.log("ChipInfoString: " + this.GetChipInfoString());
+				this._updateHighlight();
+			} finally {
+				this._isLoadingFile = false;
+			}
+		});
 	}
 
 	isPlayable(path) {
@@ -1258,7 +1267,7 @@ class VGMPlay_js {
 	}
 
 	_pumpBuffers() {
-		if (!this.isVGMPlaying || this.isPlaybackPaused) return;
+		if (this._isLoadingFile || !this.isVGMPlaying || this.isPlaybackPaused) return;
 
 		// Check for end of track (crucial for background advancement)
 		this._checkTrackEnd();
@@ -1278,6 +1287,11 @@ class VGMPlay_js {
 				right: buf.right
 			}, [buf.left.buffer, buf.right.buffer]);
 		}
+	}
+
+	_withLoadLock(fn) {
+		this._loadLock = this._loadLock.then(fn, fn);
+		return this._loadLock;
 	}
 
 	play() {
@@ -1390,6 +1404,9 @@ class VGMPlay_js {
 		this.generatingAudio = false;
 
 		this.StopVGM();
+		if (this.CloseVGMFile) {
+			this.CloseVGMFile();
+		}
 		this.isVGMPlaying = false;
 		this.isVGMLoaded = false;
 
@@ -1416,8 +1433,10 @@ class VGMPlay_js {
 	}
 
 	load(fileName) {
-		if (this.isVGMLoaded) {
-			this.StopVGMPlayback();
+		if (this.isVGMLoaded && this.StopVGM) {
+			this.StopVGM();
+		}
+		if (this.CloseVGMFile) {
 			this.CloseVGMFile();
 		}
 		this.OpenVGMFile(fileName);

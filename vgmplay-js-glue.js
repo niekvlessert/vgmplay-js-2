@@ -41,6 +41,9 @@ class VGMPlay_js {
 		this.pos2 = 0;
 		this.pos3 = 0;
 		this.pos4 = 0;
+		this.trackListTransformX = 0;
+		this.trackListTransformY = 0;
+		this.libraryState = 0; // 0: Attached, 1: Floating, 2: Hidden
 
 		// Playback tracking
 		this.playbackStartTime = 0;
@@ -51,6 +54,7 @@ class VGMPlay_js {
 		// Bind dragging methods
 		this.elementDrag = this.elementDrag.bind(this);
 		this.stopDrag = this.stopDrag.bind(this);
+		this.dragStart = this.dragStart.bind(this);
 
 		// Determine base URL
 		this.baseURL = options.baseURL || 'https://niekvlessert.github.io/vgmplay-js-2/';
@@ -142,24 +146,23 @@ class VGMPlay_js {
 				this.titleWindow.id = "vgmplayTitleWindow";
 				this.vgmplayContainer.appendChild(this.titleWindow);
 				this.titleWindow.className = "vgmplayTitleWindow";
-				this.titleWindow.addEventListener("mousedown", (e) => {
-					e.preventDefault();
-					this.pos3 = e.clientX;
-					this.pos4 = e.clientY;
-					window.addEventListener('mousemove', this.elementDrag);
-					window.addEventListener('mouseup', this.stopDrag);
-				});
+				this.titleWindow.addEventListener("mousedown", this.dragStart);
 			}
 			if (this.displayPlayer) {
 				this.playerWindow = document.createElement('div');
 				this.playerWindow.id = "vgmplayPlayer";
+				this.playerWindow.addEventListener("mousedown", this.dragStart);
 				this.vgmplayContainer.appendChild(this.playerWindow);
 				this.showPlayer();
 			}
 			if (this.displayZipFileList) {
+				this.tracksContainer = document.createElement('div');
+				this.tracksContainer.id = "vgmplayTracksContainer";
+				this.vgmplayContainer.appendChild(this.tracksContainer);
+
 				this.zipFileListWindow = document.createElement('div');
 				this.zipFileListWindow.id = "vgmplayZipFileList";
-				this.vgmplayContainer.appendChild(this.zipFileListWindow);
+				this.tracksContainer.appendChild(this.zipFileListWindow);
 				this.showZipFileListWindow = true;
 				this.zipFileListWindow.className = "vgmplayZipFileListWindow";
 
@@ -193,6 +196,9 @@ class VGMPlay_js {
 		Mousetrap.bind('s', (e) => {
 			stop();
 		});
+		Mousetrap.bind('z', (e) => {
+			this.toggleDisplayZipFileListWindow();
+		});
 	}
 
 	loadWhenReady() {
@@ -207,6 +213,18 @@ class VGMPlay_js {
 		this.setKeyBindings();
 	}
 
+	dragStart(e) {
+		// Don't drag if clicking interactive elements
+		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'A' || e.target.classList.contains('vgmplayProgressBar') || e.target.classList.contains('vgmplayProgressFill') || e.target.classList.contains('vgmplayChipVolume')) {
+			return;
+		}
+		e.preventDefault();
+		this.pos3 = e.clientX;
+		this.pos4 = e.clientY;
+		window.addEventListener('mousemove', this.elementDrag);
+		window.addEventListener('mouseup', this.stopDrag);
+	}
+
 	elementDrag(e) {
 		e.preventDefault();
 		this.pos1 = this.pos3 - e.clientX;
@@ -215,6 +233,12 @@ class VGMPlay_js {
 		this.pos4 = e.clientY;
 		this.vgmplayContainer.style.top = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
 		this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
+
+		if (this.libraryState === 1) {
+			this.trackListTransformX += this.pos1;
+			this.trackListTransformY += this.pos2;
+			if (this.tracksContainer) this.tracksContainer.style.transform = `translate(${this.trackListTransformX}px, ${this.trackListTransformY}px)`;
+		}
 	}
 
 	stopDrag() {
@@ -276,7 +300,11 @@ class VGMPlay_js {
 		this.uploader.id = "vgmplayUploader";
 		this.uploader.className = "vgmplayUploader";
 		this.uploader.innerHTML = "Drop VGM .zip files here";
-		this.vgmplayContainer.appendChild(this.uploader);
+		if (this.tracksContainer) {
+			this.tracksContainer.appendChild(this.uploader);
+		} else {
+			this.vgmplayContainer.appendChild(this.uploader);
+		}
 
 		['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
 			this.uploader.addEventListener(eventName, (e) => {
@@ -317,12 +345,39 @@ class VGMPlay_js {
 	}
 
 	toggleDisplayZipFileListWindow() {
-		if (this.showZipFileListWindow) {
-			this.zipFileListWindow.style.display = 'none';
-			this.showZipFileListWindow = false;
-		} else {
-			this.zipFileListWindow.style.display = 'block';
+		this.libraryState = (this.libraryState + 1) % 3;
+
+		if (this.libraryState === 0) {
+			// Attached
+			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
 			this.showZipFileListWindow = true;
+			this.trackListTransformX = 0;
+			this.trackListTransformY = 0;
+			if (this.tracksContainer) this.tracksContainer.style.transform = `translate(0px, 0px)`;
+
+			if (this.btnLibrary) {
+				this.btnLibrary.classList.remove('active');
+				this.btnLibrary.classList.remove('blue-active');
+			}
+		} else if (this.libraryState === 1) {
+			// Floating
+			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
+			this.showZipFileListWindow = true;
+			// Keep current transform
+
+			if (this.btnLibrary) {
+				this.btnLibrary.classList.add('active');
+				this.btnLibrary.classList.remove('blue-active');
+			}
+		} else if (this.libraryState === 2) {
+			// Hidden
+			if (this.tracksContainer) this.tracksContainer.style.display = 'none';
+			this.showZipFileListWindow = false;
+
+			if (this.btnLibrary) {
+				this.btnLibrary.classList.remove('active');
+				this.btnLibrary.classList.add('blue-active');
+			}
 		}
 	}
 
@@ -1456,7 +1511,7 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'B': 'Bass Boost',
 		'V': 'Reverb',
 		'R': 'Shuffle',
-		'Z': 'Toggle Library'
+		'Z': 'Toggle Float/Library'
 	};
 
 	let tooltipTimeout;

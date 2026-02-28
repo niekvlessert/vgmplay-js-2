@@ -82,6 +82,12 @@
   border-color: #00ff66 !important;
 }
 
+.vgmplayContainer .vgmplayPlayerWindow button.blue-active {
+  background: #0066ff !important;
+  color: white !important;
+  border-color: #0066ff !important;
+}
+
 .vgmplayContainer .vgmplaySpectrum {
   display: block;
   width: 256px;
@@ -351,7 +357,7 @@
   text-align: center;
   color: #fff;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: background 0.2s ease;
 }
 
 .vgmplayContainer .vgmplayUploader.highlight {

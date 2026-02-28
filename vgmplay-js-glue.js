@@ -36,6 +36,15 @@ class VGMPlay_js {
 		this.isProcessingQueue = false;
 		this.sampleRate = "";
 		this.trackLengthHumanReadeable = false;
+		this.largeDownloadLimitBytes = 7.5 * 1024 * 1024;
+		this.skippedDownloads = [];
+		this.skippedWindowVisible = false;
+		this.windowDragTarget = null;
+		this.windowPos1 = 0;
+		this.windowPos2 = 0;
+		this.windowPos3 = 0;
+		this.windowPos4 = 0;
+		this.zipURLPending = [];
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -172,6 +181,7 @@ class VGMPlay_js {
 				this.zipFileListWindow.appendChild(this.loader);
 			}
 			this.setupDropZone();
+			this._createSkippedWindow();
 		}
 
 		this.currentFileKey = "";
@@ -244,6 +254,36 @@ class VGMPlay_js {
 	stopDrag() {
 		window.removeEventListener('mousemove', this.elementDrag);
 		window.removeEventListener('mouseup', this.stopDrag);
+	}
+
+	_dragStartWindow(e) {
+		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'A') {
+			return;
+		}
+		e.preventDefault();
+		this.windowDragTarget = e.currentTarget;
+		this.windowPos3 = e.clientX;
+		this.windowPos4 = e.clientY;
+		window.addEventListener('mousemove', this._elementDragWindow);
+		window.addEventListener('mouseup', this._stopDragWindow);
+	}
+
+	_elementDragWindow(e) {
+		if (!this.windowDragTarget) return;
+		e.preventDefault();
+		this.windowPos1 = this.windowPos3 - e.clientX;
+		this.windowPos2 = this.windowPos4 - e.clientY;
+		this.windowPos3 = e.clientX;
+		this.windowPos4 = e.clientY;
+		const target = this.windowDragTarget;
+		target.style.top = (target.offsetTop - this.windowPos2) + "px";
+		target.style.left = (target.offsetLeft - this.windowPos1) + "px";
+	}
+
+	_stopDragWindow() {
+		window.removeEventListener('mousemove', this._elementDragWindow);
+		window.removeEventListener('mouseup', this._stopDragWindow);
+		this.windowDragTarget = null;
 	}
 
 	showPlayer() {
@@ -471,6 +511,157 @@ class VGMPlay_js {
 		}
 	}
 
+	_createSkippedWindow() {
+		if (!this.vgmplayContainer) return;
+		this.skippedWindow = document.createElement('div');
+		this.skippedWindow.id = "vgmplaySkippedWindow";
+		this.skippedWindow.className = "vgmplaySkippedWindow";
+		this.skippedWindow.style.display = 'none';
+		this.skippedWindow.style.top = '20px';
+		this.skippedWindow.style.left = '300px';
+
+		this.skippedHeader = document.createElement('div');
+		this.skippedHeader.className = 'vgmplaySkippedHeader';
+		this.skippedHeader.innerHTML = `
+			<span class="vgmplaySkippedTitle">Skipped Downloads</span>
+			<button class="vgmplaySkippedClose" title="Close">×</button>
+		`;
+		this.skippedWindow.appendChild(this.skippedHeader);
+
+		this.skippedList = document.createElement('div');
+		this.skippedList.className = 'vgmplaySkippedList';
+		this.skippedWindow.appendChild(this.skippedList);
+
+		this.vgmplayContainer.appendChild(this.skippedWindow);
+
+		this._elementDragWindow = this._elementDragWindow.bind(this);
+		this._stopDragWindow = this._stopDragWindow.bind(this);
+		this._dragStartWindow = this._dragStartWindow.bind(this);
+
+		this.skippedHeader.addEventListener('mousedown', this._dragStartWindow);
+		this.skippedHeader.querySelector('.vgmplaySkippedClose').addEventListener('click', () => {
+			this.skippedWindow.style.display = 'none';
+			this.skippedWindowVisible = false;
+		});
+
+		this._renderSkippedDownloads();
+	}
+
+	_renderSkippedDownloads() {
+		if (!this.skippedList) return;
+		this.skippedList.innerHTML = '';
+
+		if (this.skippedDownloads.length === 0) {
+			const empty = document.createElement('div');
+			empty.className = 'vgmplaySkippedEmpty';
+			empty.textContent = 'No skipped downloads.';
+			this.skippedList.appendChild(empty);
+			return;
+		}
+
+		for (const item of this.skippedDownloads) {
+			const row = document.createElement('div');
+			row.className = 'vgmplaySkippedRow';
+
+			const name = document.createElement('div');
+			name.className = 'vgmplaySkippedName';
+			name.textContent = item.name;
+
+			const size = document.createElement('div');
+			size.className = 'vgmplaySkippedSize';
+			size.textContent = item.sizeMB + ' MB';
+
+			const loadBtn = document.createElement('button');
+			loadBtn.className = 'vgmplaySkippedLoad';
+			loadBtn.textContent = 'Load';
+			loadBtn.addEventListener('click', () => {
+				this._loadSkippedDownload(item.url);
+				this.skippedDownloads = this.skippedDownloads.filter((x) => x.url !== item.url);
+				this._renderSkippedDownloads();
+			});
+
+			row.appendChild(name);
+			row.appendChild(size);
+			row.appendChild(loadBtn);
+			this.skippedList.appendChild(row);
+		}
+	}
+
+	_showSkippedWindow() {
+		if (!this.skippedWindow) return;
+		if (!this.skippedWindowVisible) {
+			this.skippedWindow.style.display = 'block';
+			this.skippedWindowVisible = true;
+		}
+	}
+
+	_addSkippedDownload(url, size) {
+		const existing = this.skippedDownloads.find((x) => x.url === url);
+		if (existing) return;
+		const name = this._getFileNameFromUrl(url);
+		const sizeMB = this._formatMB(size);
+		this.skippedDownloads.push({ url, name, sizeMB });
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	}
+
+	_loadSkippedDownload(url) {
+		const lower = url.toLowerCase();
+		if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+			this.loadZIPWithVGMFromURL(url, true);
+		} else if (lower.endsWith('.vgm') || lower.endsWith('.vgz')) {
+			this._queueURL(url, true);
+		}
+	}
+
+	_getFileNameFromUrl(url) {
+		try {
+			const u = new URL(url);
+			const p = u.pathname;
+			const last = p.substring(p.lastIndexOf('/') + 1);
+			return decodeURIComponent(last || url);
+		} catch (e) {
+			const idx = url.lastIndexOf('/');
+			return decodeURIComponent(idx >= 0 ? url.substring(idx + 1) : url);
+		}
+	}
+
+	async _getRemoteFileSize(url) {
+		try {
+			const res = await fetch(url, { method: 'HEAD' });
+			if (!res.ok) return null;
+			const len = res.headers.get('content-length');
+			if (!len) return null;
+			const size = parseInt(len, 10);
+			if (!Number.isFinite(size)) return null;
+			return size;
+		} catch (e) {
+			return null;
+		}
+	}
+
+	_formatMB(bytes) {
+		const mb = bytes / (1024 * 1024);
+		const rounded = Math.round(mb * 10) / 10;
+		return (rounded % 1 === 0) ? String(rounded.toFixed(0)) : String(rounded);
+	}
+
+	async _shouldDownload(url, forceLarge) {
+		if (forceLarge) return true;
+		const size = await this._getRemoteFileSize(url);
+		if (!size || size <= this.largeDownloadLimitBytes) return true;
+		this._addSkippedDownload(url, size);
+		return false;
+	}
+
+	_queueURL(url, forceLarge = false) {
+		if (this.zipURLLoaded.includes(url)) return;
+		if (this.zipURLPending.includes(url)) return;
+		this.zipURLPending.push(url);
+		this.zipQueue.push({ type: 'url', data: url, forceLarge });
+		this._processQueue();
+	}
+
 	loadVGMFromURL(url) {
 		return new Promise(function (resolve, reject) {
 			try {
@@ -481,26 +672,27 @@ class VGMPlay_js {
 			xhr.responseType = "arraybuffer";
 
 			const classContext = this;
-			xhr.onreadystatechange = function () {
-				if (xhr.readyState == XMLHttpRequest.DONE) {
-					var arrayBuffer = xhr.response;
-					var byteArray = new Uint8Array(arrayBuffer);
-					FS.createDataFile("/", "url.vgm", byteArray, true, true);
-					resolve(xhr.response);
+			classContext._shouldDownload(url, false).then((ok) => {
+				if (!ok) {
+					resolve(null);
+					return;
 				}
-			}
-			xhr.open('GET', url, true);
-			xhr.send(null);
+				xhr.onreadystatechange = function () {
+					if (xhr.readyState == XMLHttpRequest.DONE) {
+						var arrayBuffer = xhr.response;
+						var byteArray = new Uint8Array(arrayBuffer);
+						FS.createDataFile("/", "url.vgm", byteArray, true, true);
+						resolve(xhr.response);
+					}
+				}
+				xhr.open('GET', url, true);
+				xhr.send(null);
+			});
 		});
 	}
 
-	loadZIPWithVGMFromURL(url) {
-		if (this.zipURLLoaded.includes(url)) {
-			return;
-		}
-		this.zipURLLoaded.push(url);
-		this.zipQueue.push({ type: 'url', data: url });
-		this._processQueue();
+	loadZIPWithVGMFromURL(url, forceLarge = false) {
+		this._queueURL(url, forceLarge);
 	}
 
 	_processQueue() {
@@ -523,28 +715,37 @@ class VGMPlay_js {
 		const classContext = this;
 		this.checkEverythingReady().then(() => {
 			if (job.type === 'url') {
-				var xhr = new XMLHttpRequest();
-				xhr.responseType = "arraybuffer";
-				xhr.onreadystatechange = function () {
-					if (xhr.readyState == XMLHttpRequest.DONE) {
-						if (xhr.status === 200) {
-							var arrayBuffer = xhr.response;
-							var byteArray = new Uint8Array(arrayBuffer);
-							if (job.data.toLowerCase().endsWith('.7z')) {
-								classContext.process7zBuffer(byteArray).then(next);
-							} else if (job.data.toLowerCase().endsWith('.psf')) {
-								classContext.processPSFBuffer(byteArray, job.data).then(next);
+				classContext._shouldDownload(job.data, job.forceLarge).then((ok) => {
+					if (!ok) {
+						classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
+						next();
+						return;
+					}
+					var xhr = new XMLHttpRequest();
+					xhr.responseType = "arraybuffer";
+					xhr.onreadystatechange = function () {
+						if (xhr.readyState == XMLHttpRequest.DONE) {
+							if (xhr.status === 200) {
+								var arrayBuffer = xhr.response;
+								var byteArray = new Uint8Array(arrayBuffer);
+								if (job.data.toLowerCase().endsWith('.7z')) {
+									classContext.process7zBuffer(byteArray).then(next);
+								} else if (job.data.toLowerCase().endsWith('.psf')) {
+									classContext.processPSFBuffer(byteArray, job.data).then(next);
+								} else {
+									classContext.processZipBuffer(byteArray).then(next);
+								}
+								classContext.zipURLLoaded.push(job.data);
 							} else {
-								classContext.processZipBuffer(byteArray).then(next);
+								console.error("Failed to load archive from URL:", job.data);
+								next();
 							}
-						} else {
-							console.error("Failed to load archive from URL:", job.data);
-							next();
+							classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
 						}
 					}
-				}
-				xhr.open('GET', job.data, true);
-				xhr.send(null);
+					xhr.open('GET', job.data, true);
+					xhr.send(null);
+				});
 			} else if (job.type === 'file') {
 				if (job.name && job.name.toLowerCase().endsWith('.7z')) {
 					classContext.process7zBuffer(job.data).then(next);
@@ -698,8 +899,7 @@ class VGMPlay_js {
 				this.loadZIPWithVGMFromURL(url);
 			} else if (lower.endsWith('.vgm') || lower.endsWith('.vgz')) {
 				// Handle direct links? For now just try to load them as single files in queue
-				this.zipQueue.push({ type: 'url', data: url });
-				this._processQueue();
+				this._queueURL(url);
 			}
 		});
 	}

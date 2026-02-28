@@ -67,6 +67,91 @@
   margin: auto;
 }
 
+.vgmplayContainer .vgmplaySkippedWindow {
+  position: absolute;
+  border: 1px solid white;
+  background: #2a2a2a 0 0 repeat;
+  border-radius: 10px;
+  width: 360px;
+  height: auto;
+  color: white;
+  overflow: hidden;
+  text-align: left;
+  z-index: 20;
+}
+
+.vgmplayContainer .vgmplaySkippedHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: move;
+}
+
+.vgmplayContainer .vgmplaySkippedTitle {
+  font-size: 11px;
+  font-weight: bold;
+  color: #00ff66;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vgmplayContainer .vgmplaySkippedClose {
+  background: #444;
+  color: white;
+  border: 1px solid #666;
+  border-radius: 3px;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  line-height: 16px;
+  padding: 0;
+  text-align: center;
+}
+
+.vgmplayContainer .vgmplaySkippedList {
+  overflow: visible;
+  padding: 4px 6px;
+}
+
+.vgmplayContainer .vgmplaySkippedRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vgmplayContainer .vgmplaySkippedName {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+
+.vgmplayContainer .vgmplaySkippedSize {
+  font-family: monospace !important;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.vgmplayContainer .vgmplaySkippedLoad {
+  background: #444;
+  color: white;
+  border: 1px solid #666;
+  border-radius: 3px;
+  cursor: pointer;
+  min-width: 40px;
+}
+
+.vgmplayContainer .vgmplaySkippedEmpty {
+  font-size: 11px;
+  opacity: 0.7;
+  padding: 4px 2px;
+}
+
 .vgmplayContainer .vgmplayPlayerWindow button {
   background: #444;
   color: white;

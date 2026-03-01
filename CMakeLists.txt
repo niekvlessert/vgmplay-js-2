@@ -49,6 +49,8 @@ set(VGMPLAY_EXPORTS
     "'_VGMEnded'"
     "'_GetTrackLength'"
     "'_GetTrackLengthDirect'"
+    "'_GetGMETrackCountDirect'"
+    "'_GetGMETrackNameDirect'"
     "'_GetVGMTagDirect'"
     "'_GetLoopPoint'"
     "'_FillBuffer2'"

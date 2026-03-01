@@ -1142,11 +1142,39 @@ class VGMPlay_js {
 				const lower = fileName.toLowerCase();
 				if (this.isPlayable(lower)) {
 					try {
-						const trackLength = this.GetTrackLengthDirect(fullPath);
-
-						// Use a default sample rate if not initialized yet
 						const currentSampleRate = this.sampleRate || 44100;
+						if (this._isGmeFile(lower) && this.GetGMETrackCountDirect) {
+							const count = this.GetGMETrackCountDirect(fullPath);
+							if (count > 1) {
+								for (let t = 0; t < count; t++) {
+									const trackPath = `${fullPath}|track=${t}`;
+									const trackLength = this.GetTrackLengthDirect(trackPath);
+									const totalSampleCount = trackLength * currentSampleRate / 44100;
+									const trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
+									const trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
 
+									const a = document.createElement("a");
+									a.className = "vgmplayTrack";
+									a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, key);
+
+									const nameSpan = document.createElement("span");
+									nameSpan.className = "track-name";
+									const tName = this.GetGMETrackNameDirect ? this.GetGMETrackNameDirect(fullPath, t) : "";
+									nameSpan.textContent = tName || `${fileName} - Track ${t + 1}`;
+									a.appendChild(nameSpan);
+
+									const lengthSpan = document.createElement("span");
+									lengthSpan.className = "track-length";
+									lengthSpan.textContent = trackLengthHumanReadeable;
+									a.appendChild(lengthSpan);
+
+									fragment.appendChild(a);
+								}
+								continue;
+							}
+						}
+
+						const trackLength = this.GetTrackLengthDirect(fullPath);
 						const totalSampleCount = trackLength * currentSampleRate / 44100;
 
 						if (totalSampleCount > 0) {
@@ -1228,10 +1256,17 @@ class VGMPlay_js {
 	}
 
 	isPlayable(path) {
-		const p = path.toLowerCase();
+		const p = path.toLowerCase().split('|track=')[0];
 		return p.endsWith('.vgm') || p.endsWith('.vgz') ||
 			p.endsWith('.psf') || p.endsWith('.minipsf') ||
 			p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
+			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
+			p.endsWith('.kss') || p.endsWith('.sap') || p.endsWith('.ay');
+	}
+
+	_isGmeFile(path) {
+		const p = path.toLowerCase().split('|track=')[0];
+		return p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
 			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
 			p.endsWith('.kss') || p.endsWith('.sap') || p.endsWith('.ay');
 	}
@@ -1411,6 +1446,8 @@ class VGMPlay_js {
 			this.VGMEnded = Module.cwrap('VGMEnded');
 			this.GetTrackLength = Module.cwrap('GetTrackLength');
 			this.GetTrackLengthDirect = Module.cwrap('GetTrackLengthDirect', 'number', ['string']);
+			this.GetGMETrackCountDirect = Module.cwrap('GetGMETrackCountDirect', 'number', ['string']);
+			this.GetGMETrackNameDirect = Module.cwrap('GetGMETrackNameDirect', 'string', ['string', 'number']);
 			this._GetVGMTagDirectNative = Module.cwrap('GetVGMTagDirect', 'string', ['string', 'number']);
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
 			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);

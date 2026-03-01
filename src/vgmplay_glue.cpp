@@ -43,6 +43,7 @@ static Music_Emu *gmeEmu = nullptr;
 static gme_info_t *gmeInfo = nullptr;
 static int gmeLengthMs = 0;
 static std::vector<short> gmeBuffer;
+static int gmeTrackIndex = 0;
 
 extern "C" {
 int stop_sexy_execute = 0; // Declare stop_sexy_execute here
@@ -83,6 +84,7 @@ static void cleanup() {
     }
     isGME = false;
     gmeLengthMs = 0;
+    gmeTrackIndex = 0;
   }
   if (isPSF) {
     if (psfInfo) {
@@ -113,6 +115,30 @@ static void cleanup() {
     free(chipBuf);
     chipBuf = nullptr;
   }
+}
+
+static int parseTrackSuffix(const char *path, std::string &basePath) {
+  if (!path) {
+    basePath.clear();
+    return 0;
+  }
+  std::string s(path);
+  const std::string key = "|track=";
+  size_t pos = s.rfind(key);
+  if (pos == std::string::npos) {
+    basePath = s;
+    return 0;
+  }
+  basePath = s.substr(0, pos);
+  int track = 0;
+  try {
+    track = std::stoi(s.substr(pos + key.size()));
+  } catch (...) {
+    track = 0;
+  }
+  if (track < 0)
+    track = 0;
+  return track;
 }
 
 static const char *gmeTagByIndex(const gme_info_t *info, int tagIndex) {
@@ -163,8 +189,10 @@ int OpenVGMFile(const char *path) {
   cleanup();
 
   /* Detect PSF by extension */
-  std::string sPath(path);
-  std::string lowerPath = sPath;
+  std::string basePath;
+  int trackIndex = parseTrackSuffix(path, basePath);
+  std::string sPath = basePath;
+  std::string lowerPath = basePath;
   for (auto &c : lowerPath)
     c = tolower(c);
   if (sPath.size() > 4 && (sPath.substr(sPath.size() - 4) == ".psf" ||
@@ -195,21 +223,26 @@ int OpenVGMFile(const char *path) {
        lowerPath.find(".kss") != std::string::npos ||
        lowerPath.find(".sap") != std::string::npos ||
        lowerPath.find(".ay") != std::string::npos)) {
-    gme_err_t err = gme_open_file(path, &gmeEmu, (int)gSampleRate);
+    gme_err_t err = gme_open_file(basePath.c_str(), &gmeEmu, (int)gSampleRate);
     if (err) {
       gmeEmu = nullptr;
       return 0;
     }
     isGME = true;
+    gmeTrackIndex = trackIndex;
     gme_ignore_silence(gmeEmu, 1);
-    gme_start_track(gmeEmu, 0);
+    gme_start_track(gmeEmu, gmeTrackIndex);
     if (gmeInfo) {
       gme_free_info(gmeInfo);
       gmeInfo = nullptr;
     }
-    if (!gme_track_info(gmeEmu, &gmeInfo, 0) && gmeInfo &&
-        gmeInfo->length > 0) {
-      gmeLengthMs = gmeInfo->length;
+    if (!gme_track_info(gmeEmu, &gmeInfo, gmeTrackIndex) && gmeInfo) {
+      if (gmeInfo->play_length > 0)
+        gmeLengthMs = gmeInfo->play_length;
+      else if (gmeInfo->length > 0)
+        gmeLengthMs = gmeInfo->length;
+      else
+        gmeLengthMs = 180000;
     } else {
       gmeLengthMs = 180000;
     }
@@ -294,7 +327,9 @@ int GetLoopPoint(void) {
 }
 
 int GetTrackLengthDirect(const char *path) {
-  std::string lowerPath = path;
+  std::string basePath;
+  int trackIndex = parseTrackSuffix(path, basePath);
+  std::string lowerPath = basePath;
   for (auto &c : lowerPath)
     c = tolower(c);
   if (lowerPath.find(".psflib") != std::string::npos)
@@ -321,14 +356,17 @@ int GetTrackLengthDirect(const char *path) {
       lowerPath.find(".sap") != std::string::npos ||
       lowerPath.find(".ay") != std::string::npos) {
     Music_Emu *emu = nullptr;
-    gme_err_t err = gme_open_file(path, &emu, (int)gSampleRate);
+    gme_err_t err = gme_open_file(basePath.c_str(), &emu, (int)gSampleRate);
     if (err || !emu) {
       return 0;
     }
     gme_info_t *info = nullptr;
     int lengthMs = 180000;
-    if (!gme_track_info(emu, &info, 0) && info && info->length > 0) {
-      lengthMs = info->length;
+    if (!gme_track_info(emu, &info, trackIndex) && info) {
+      if (info->play_length > 0)
+        lengthMs = info->play_length;
+      else if (info->length > 0)
+        lengthMs = info->length;
     }
     if (info)
       gme_free_info(info);
@@ -361,7 +399,9 @@ int GetTrackLengthDirect(const char *path) {
 }
 
 const char *GetVGMTagDirect(const char *path, int tagIndex) {
-  std::string lowerPath = path;
+  std::string basePath;
+  int trackIndex = parseTrackSuffix(path, basePath);
+  std::string lowerPath = basePath;
   for (auto &c : lowerPath)
     c = tolower(c);
 
@@ -412,11 +452,11 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
       lowerPath.find(".sap") != std::string::npos ||
       lowerPath.find(".ay") != std::string::npos) {
     Music_Emu *emu = nullptr;
-    gme_err_t err = gme_open_file(path, &emu, (int)gSampleRate);
+    gme_err_t err = gme_open_file(basePath.c_str(), &emu, (int)gSampleRate);
     if (err || !emu)
       return "";
     gme_info_t *info = nullptr;
-    if (gme_track_info(emu, &info, 0) != 0 || !info) {
+    if (gme_track_info(emu, &info, trackIndex) != 0 || !info) {
       if (emu)
         gme_delete(emu);
       return "";
@@ -600,7 +640,7 @@ char *ShowTitle(void) {
       gme_free_info(gmeInfo);
       gmeInfo = nullptr;
     }
-    if (gme_track_info(gmeEmu, &gmeInfo, 0) != 0 || !gmeInfo)
+    if (gme_track_info(gmeEmu, &gmeInfo, gmeTrackIndex) != 0 || !gmeInfo)
       return nullptr;
 
     std::string s;
@@ -714,6 +754,44 @@ int GetDeviceCount() {
     return (int)ids.size();
   }
   return 0;
+}
+
+int GetGMETrackCountDirect(const char *path) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return 0;
+  Music_Emu *emu = nullptr;
+  gme_err_t err = gme_open_file(basePath.c_str(), &emu, (int)gSampleRate);
+  if (err || !emu)
+    return 0;
+  int count = gme_track_count(emu);
+  gme_delete(emu);
+  return count;
+}
+
+const char *GetGMETrackNameDirect(const char *path, int trackIndex) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return "";
+  Music_Emu *emu = nullptr;
+  gme_err_t err = gme_open_file(basePath.c_str(), &emu, (int)gSampleRate);
+  if (err || !emu)
+    return "";
+  gme_info_t *info = nullptr;
+  if (gme_track_info(emu, &info, trackIndex) != 0 || !info) {
+    if (emu)
+      gme_delete(emu);
+    return "";
+  }
+  static char nameBuf[256];
+  const char *name = info->song ? info->song : "";
+  strncpy(nameBuf, name, 255);
+  nameBuf[255] = '\0';
+  gme_free_info(info);
+  gme_delete(emu);
+  return nameBuf;
 }
 
 } /* extern "C" */

@@ -47,6 +47,10 @@ class VGMPlay_js {
 		this.zipURLPending = [];
 		this._isLoadingFile = false;
 		this._loadLock = Promise.resolve();
+		this.autoDownloadLimit = 10;
+		this.autoDownloadCount = 0;
+		this.autoOverflowURLs = [];
+		this.noPlayableNotices = [];
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -219,7 +223,7 @@ class VGMPlay_js {
 		for (var ii = 0; ii < this.len; ii++) {
 			const lower = this.elms[ii].href.toLowerCase();
 			if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
-				this.loadZIPWithVGMFromURL(this.elms[ii].href);
+				this._queueURL(this.elms[ii].href, false, true);
 			}
 		}
 		this.setKeyBindings();
@@ -529,6 +533,16 @@ class VGMPlay_js {
 			<button class="vgmplaySkippedClose" title="Close">×</button>
 		`;
 		this.skippedWindow.appendChild(this.skippedHeader);
+		this.skippedTitleEl = this.skippedHeader.querySelector('.vgmplaySkippedTitle');
+
+		this.skippedNotice = document.createElement('div');
+		this.skippedNotice.className = 'vgmplaySkippedNotice';
+		this.skippedNotice.textContent = 'Big files detected; those files eat bandwidth and the memory on your device. Select files you want to load anyway.';
+		this.skippedWindow.appendChild(this.skippedNotice);
+
+		this.skippedAutoLimit = document.createElement('div');
+		this.skippedAutoLimit.className = 'vgmplaySkippedAutoLimit';
+		this.skippedWindow.appendChild(this.skippedAutoLimit);
 
 		this.skippedList = document.createElement('div');
 		this.skippedList.className = 'vgmplaySkippedList';
@@ -547,13 +561,20 @@ class VGMPlay_js {
 		});
 
 		this._renderSkippedDownloads();
+		this._positionSkippedWindow();
+		window.addEventListener('resize', () => this._positionSkippedWindow());
 	}
 
 	_renderSkippedDownloads() {
 		if (!this.skippedList) return;
 		this.skippedList.innerHTML = '';
+		this._updateSkippedTitle();
+		this._updateSkippedNotice();
+		if (this.skippedAutoLimit) {
+			this._renderAutoLimitNotice();
+		}
 
-		if (this.skippedDownloads.length === 0) {
+		if (this.skippedDownloads.length === 0 && this.noPlayableNotices.length === 0) {
 			const empty = document.createElement('div');
 			empty.className = 'vgmplaySkippedEmpty';
 			empty.textContent = 'No skipped downloads.';
@@ -587,6 +608,56 @@ class VGMPlay_js {
 			row.appendChild(loadBtn);
 			this.skippedList.appendChild(row);
 		}
+
+		for (const notice of this.noPlayableNotices) {
+			const row = document.createElement('div');
+			row.className = 'vgmplaySkippedNoticeRow';
+			row.textContent = notice;
+			this.skippedList.appendChild(row);
+		}
+
+		this._positionSkippedWindow();
+	}
+
+	_updateSkippedTitle() {
+		if (!this.skippedTitleEl) return;
+		const hasBig = this.skippedDownloads.length > 0;
+		const hasLots = this.autoOverflowURLs.length > 0;
+		let title = 'Skipped Downloads';
+		if (hasLots && !hasBig) {
+			title = 'Lots of files';
+		} else if (hasLots && hasBig) {
+			title = 'Skipped Downloads & Lots of Files';
+		}
+		this.skippedTitleEl.textContent = title;
+	}
+
+	_updateSkippedNotice() {
+		if (!this.skippedNotice) return;
+		this.skippedNotice.style.display = (this.skippedDownloads.length > 0) ? 'block' : 'none';
+	}
+
+	_renderAutoLimitNotice() {
+		const count = this.autoOverflowURLs.length;
+		if (count === 0) {
+			this.skippedAutoLimit.innerHTML = '';
+			return;
+		}
+		this.skippedAutoLimit.innerHTML = `
+			<div class="vgmplaySkippedAutoText">Auto-download limit hit. ${count} file${count === 1 ? '' : 's'} waiting.</div>
+			<div class="vgmplaySkippedAutoActions">
+				<button class="vgmplaySkippedLoadMore">Load 10 more</button>
+				<button class="vgmplaySkippedLoadAll">Load all</button>
+			</div>
+		`;
+		const moreBtn = this.skippedAutoLimit.querySelector('.vgmplaySkippedLoadMore');
+		const allBtn = this.skippedAutoLimit.querySelector('.vgmplaySkippedLoadAll');
+		moreBtn.addEventListener('click', () => {
+			this._loadMoreAuto(10);
+		});
+		allBtn.addEventListener('click', () => {
+			this._loadMoreAuto(Infinity);
+		});
 	}
 
 	_showSkippedWindow() {
@@ -594,6 +665,7 @@ class VGMPlay_js {
 		if (!this.skippedWindowVisible) {
 			this.skippedWindow.style.display = 'block';
 			this.skippedWindowVisible = true;
+			this._positionSkippedWindow();
 		}
 	}
 
@@ -607,6 +679,15 @@ class VGMPlay_js {
 		this._renderSkippedDownloads();
 	}
 
+	_addNoPlayableNotice(name) {
+		const safeName = name || 'File';
+		const msg = `${safeName} did not contain playable music for VGMPlay!`;
+		if (this.noPlayableNotices.includes(msg)) return;
+		this.noPlayableNotices.push(msg);
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	}
+
 	_loadSkippedDownload(url) {
 		const lower = url.toLowerCase();
 		if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
@@ -614,6 +695,17 @@ class VGMPlay_js {
 		} else if (lower.endsWith('.vgm') || lower.endsWith('.vgz')) {
 			this._queueURL(url, true);
 		}
+	}
+
+	_loadMoreAuto(count) {
+		let remaining = count;
+		while (this.autoOverflowURLs.length > 0 && remaining > 0) {
+			const url = this.autoOverflowURLs.shift();
+			this._queueURL(url, false, false);
+			remaining--;
+		}
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
 	}
 
 	_getFileNameFromUrl(url) {
@@ -626,6 +718,36 @@ class VGMPlay_js {
 			const idx = url.lastIndexOf('/');
 			return decodeURIComponent(idx >= 0 ? url.substring(idx + 1) : url);
 		}
+	}
+
+	_positionSkippedWindow() {
+		if (!this.skippedWindow || !this.playerWindow) return;
+		if (this.skippedWindowVisible === false) return;
+		requestAnimationFrame(() => {
+			const isMobile = window.innerWidth <= 600;
+			const playerLeft = this.playerWindow.offsetLeft;
+			const playerTop = this.playerWindow.offsetTop;
+			const playerWidth = this.playerWindow.offsetWidth;
+			let gap = 8;
+			if (this.titleWindow) {
+				const titleTop = this.titleWindow.offsetTop;
+				const titleHeight = this.titleWindow.offsetHeight;
+				const inferred = playerTop - (titleTop + titleHeight);
+				if (Number.isFinite(inferred) && inferred >= 0) {
+					gap = inferred;
+				}
+			}
+
+			if (isMobile) {
+				this.skippedWindow.style.left = playerLeft + "px";
+				const desiredTop = playerTop - this.skippedWindow.offsetHeight - gap;
+				this.skippedWindow.style.top = Math.max(0, desiredTop) + "px";
+			} else {
+				const desiredLeft = playerLeft + playerWidth + gap;
+				this.skippedWindow.style.left = desiredLeft + "px";
+				this.skippedWindow.style.top = playerTop + "px";
+			}
+		});
 	}
 
 	async _getRemoteFileSize(url) {
@@ -656,12 +778,32 @@ class VGMPlay_js {
 		return false;
 	}
 
-	_queueURL(url, forceLarge = false) {
+	_queueURL(url, forceLarge = false, isAuto = false) {
 		if (this.zipURLLoaded.includes(url)) return;
 		if (this.zipURLPending.includes(url)) return;
+		if (isAuto && this.autoDownloadCount >= this.autoDownloadLimit) {
+			this._queueAutoOverflow(url);
+			return;
+		}
 		this.zipURLPending.push(url);
-		this.zipQueue.push({ type: 'url', data: url, forceLarge });
+		this.zipQueue.push({ type: 'url', data: url, forceLarge, name: this._getFileNameFromUrl(url) });
+		if (isAuto) this.autoDownloadCount++;
 		this._processQueue();
+	}
+
+	_queueAutoOverflow(url) {
+		if (!this.autoOverflowURLs.includes(url)) {
+			this.autoOverflowURLs.push(url);
+		}
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+		this._checkLargeOverflow(url);
+	}
+
+	async _checkLargeOverflow(url) {
+		const size = await this._getRemoteFileSize(url);
+		if (!size || size <= this.largeDownloadLimitBytes) return;
+		this._addSkippedDownload(url, size);
 	}
 
 	loadVGMFromURL(url) {
@@ -731,11 +873,11 @@ class VGMPlay_js {
 								var arrayBuffer = xhr.response;
 								var byteArray = new Uint8Array(arrayBuffer);
 								if (job.data.toLowerCase().endsWith('.7z')) {
-									classContext.process7zBuffer(byteArray).then(next);
+									classContext.process7zBuffer(byteArray, job.name).then(next);
 								} else if (job.data.toLowerCase().endsWith('.psf')) {
 									classContext.processPSFBuffer(byteArray, job.data).then(next);
 								} else {
-									classContext.processZipBuffer(byteArray).then(next);
+									classContext.processZipBuffer(byteArray, job.name).then(next);
 								}
 								classContext.zipURLLoaded.push(job.data);
 							} else {
@@ -750,11 +892,11 @@ class VGMPlay_js {
 				});
 			} else if (job.type === 'file') {
 				if (job.name && job.name.toLowerCase().endsWith('.7z')) {
-					classContext.process7zBuffer(job.data).then(next);
+					classContext.process7zBuffer(job.data, job.name).then(next);
 				} else if (job.name && job.name.toLowerCase().endsWith('.psf')) {
 					classContext.processPSFBuffer(job.data, job.name).then(next);
 				} else {
-					classContext.processZipBuffer(job.data).then(next);
+					classContext.processZipBuffer(job.data, job.name).then(next);
 				}
 			}
 		});
@@ -783,7 +925,7 @@ class VGMPlay_js {
 		return "";
 	}
 
-	processZipBuffer(byteArray) {
+	processZipBuffer(byteArray, sourceName = '') {
 		return new Promise((resolve) => {
 			var m3uFile;
 			var txtFile;
@@ -820,6 +962,10 @@ class VGMPlay_js {
 			}
 			var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
 			this.games.push(game);
+			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
+			if (!hasPlayable) {
+				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
 			this.checkEverythingReady().then(() => {
 				this.showVGMFromZip(game);
 				resolve();
@@ -827,7 +973,7 @@ class VGMPlay_js {
 		});
 	}
 
-	async process7zBuffer(byteArray) {
+	async process7zBuffer(byteArray, sourceName = '') {
 		const sz = await SevenZip({
 			locateFile: (path) => this.baseURL + path,
 			print: () => { },
@@ -875,6 +1021,10 @@ class VGMPlay_js {
 
 		var game = { files: fileList, path: gamePath };
 		this.games.push(game);
+		const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
+		if (!hasPlayable) {
+			this._addNoPlayableNotice(sourceName || 'Archive');
+		}
 		await this.checkEverythingReady();
 		this.showVGMFromZip(game);
 	}
@@ -898,10 +1048,10 @@ class VGMPlay_js {
 		urls.forEach(url => {
 			const lower = url.toLowerCase();
 			if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
-				this.loadZIPWithVGMFromURL(url);
+				this._queueURL(url, false, true);
 			} else if (lower.endsWith('.vgm') || lower.endsWith('.vgz')) {
 				// Handle direct links? For now just try to load them as single files in queue
-				this._queueURL(url);
+				this._queueURL(url, false, true);
 			}
 		});
 	}

@@ -23,6 +23,7 @@ extern "C" {
 #include "../modules/sexypsf/driver.h"
 void psxShutdown(void);
 }
+#include "../modules/game-music-emu/gme/gme.h"
 
 /* ---- globals ---- */
 static VGMPlayer *player = nullptr;
@@ -37,6 +38,11 @@ static PSFINFO *psfInfo = nullptr;
 static std::vector<float> psfBufferL;
 static std::vector<float> psfBufferR;
 extern UINT32 sampcount;
+static bool isGME = false;
+static Music_Emu *gmeEmu = nullptr;
+static gme_info_t *gmeInfo = nullptr;
+static int gmeLengthMs = 0;
+static std::vector<short> gmeBuffer;
 
 extern "C" {
 int stop_sexy_execute = 0; // Declare stop_sexy_execute here
@@ -66,6 +72,18 @@ static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
 }
 
 static void cleanup() {
+  if (isGME) {
+    if (gmeInfo) {
+      gme_free_info(gmeInfo);
+      gmeInfo = nullptr;
+    }
+    if (gmeEmu) {
+      gme_delete(gmeEmu);
+      gmeEmu = nullptr;
+    }
+    isGME = false;
+    gmeLengthMs = 0;
+  }
   if (isPSF) {
     if (psfInfo) {
       sexy_freepsfinfo(psfInfo);
@@ -97,6 +115,29 @@ static void cleanup() {
   }
 }
 
+static const char *gmeTagByIndex(const gme_info_t *info, int tagIndex) {
+  if (!info)
+    return "";
+  switch (tagIndex) {
+  case 0:
+    return info->song ? info->song : "";
+  case 2:
+    return info->game ? info->game : "";
+  case 4:
+    return info->system ? info->system : "";
+  case 6:
+    return info->author ? info->author : "";
+  case 8:
+    return info->copyright ? info->copyright : "";
+  case 9:
+    return info->dumper ? info->dumper : "";
+  case 10:
+    return info->comment ? info->comment : "";
+  default:
+    return "";
+  }
+}
+
 extern "C" {
 
 /* store rate globally; apply to player if one exists */
@@ -123,6 +164,9 @@ int OpenVGMFile(const char *path) {
 
   /* Detect PSF by extension */
   std::string sPath(path);
+  std::string lowerPath = sPath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
   if (sPath.size() > 4 && (sPath.substr(sPath.size() - 4) == ".psf" ||
                            sPath.substr(sPath.size() - 4) == ".PSF" ||
                            sPath.substr(sPath.size() - 8) == ".minipsf" ||
@@ -137,6 +181,37 @@ int OpenVGMFile(const char *path) {
     psfBufferR.clear();
     if (psfInfo->length == 0) {
       psfInfo->length = 180000;
+    }
+    return 1;
+  }
+
+  if (lowerPath.size() > 4 &&
+      (lowerPath.find(".spc") != std::string::npos ||
+       lowerPath.find(".nsf") != std::string::npos ||
+       lowerPath.find(".nsfe") != std::string::npos ||
+       lowerPath.find(".gbs") != std::string::npos ||
+       lowerPath.find(".gym") != std::string::npos ||
+       lowerPath.find(".hes") != std::string::npos ||
+       lowerPath.find(".kss") != std::string::npos ||
+       lowerPath.find(".sap") != std::string::npos ||
+       lowerPath.find(".ay") != std::string::npos)) {
+    gme_err_t err = gme_open_file(path, &gmeEmu, (int)gSampleRate);
+    if (err) {
+      gmeEmu = nullptr;
+      return 0;
+    }
+    isGME = true;
+    gme_ignore_silence(gmeEmu, 1);
+    gme_start_track(gmeEmu, 0);
+    if (gmeInfo) {
+      gme_free_info(gmeInfo);
+      gmeInfo = nullptr;
+    }
+    if (!gme_track_info(gmeEmu, &gmeInfo, 0) && gmeInfo &&
+        gmeInfo->length > 0) {
+      gmeLengthMs = gmeInfo->length;
+    } else {
+      gmeLengthMs = 180000;
     }
     return 1;
   }
@@ -189,6 +264,9 @@ void StopVGM(void) {
 }
 
 int VGMEnded(void) {
+  if (isGME) {
+    return gmeEmu ? (gme_track_ended(gmeEmu) ? 1 : 0) : 1;
+  }
   if (isPSF) {
     return (psfInfo && sampcount >= psfInfo->length * 44.1) ? 1 : 0;
   }
@@ -198,6 +276,9 @@ int VGMEnded(void) {
 }
 
 int GetTrackLength(void) {
+  if (isGME) {
+    return gmeLengthMs > 0 ? (int)(gmeLengthMs * 44.1) : 0;
+  }
   if (isPSF) {
     return psfInfo ? (int)(psfInfo->length * 44.1) : 0;
   }
@@ -228,6 +309,31 @@ int GetTrackLengthDirect(const char *path) {
         (int)((info->length / 1000.0) * 44100); // ms to samples at 44.1kHz
     sexy_freepsfinfo(info);
     return length;
+  }
+
+  if (lowerPath.find(".spc") != std::string::npos ||
+      lowerPath.find(".nsf") != std::string::npos ||
+      lowerPath.find(".nsfe") != std::string::npos ||
+      lowerPath.find(".gbs") != std::string::npos ||
+      lowerPath.find(".gym") != std::string::npos ||
+      lowerPath.find(".hes") != std::string::npos ||
+      lowerPath.find(".kss") != std::string::npos ||
+      lowerPath.find(".sap") != std::string::npos ||
+      lowerPath.find(".ay") != std::string::npos) {
+    Music_Emu *emu = nullptr;
+    gme_err_t err = gme_open_file(path, &emu, (int)gSampleRate);
+    if (err || !emu) {
+      return 0;
+    }
+    gme_info_t *info = nullptr;
+    int lengthMs = 180000;
+    if (!gme_track_info(emu, &info, 0) && info && info->length > 0) {
+      lengthMs = info->length;
+    }
+    if (info)
+      gme_free_info(info);
+    gme_delete(emu);
+    return (int)(lengthMs * 44.1);
   }
 
   DATA_LOADER *locLoader = FileLoader_Init(path);
@@ -296,6 +402,34 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     return "";
   }
 
+  if (lowerPath.find(".spc") != std::string::npos ||
+      lowerPath.find(".nsf") != std::string::npos ||
+      lowerPath.find(".nsfe") != std::string::npos ||
+      lowerPath.find(".gbs") != std::string::npos ||
+      lowerPath.find(".gym") != std::string::npos ||
+      lowerPath.find(".hes") != std::string::npos ||
+      lowerPath.find(".kss") != std::string::npos ||
+      lowerPath.find(".sap") != std::string::npos ||
+      lowerPath.find(".ay") != std::string::npos) {
+    Music_Emu *emu = nullptr;
+    gme_err_t err = gme_open_file(path, &emu, (int)gSampleRate);
+    if (err || !emu)
+      return "";
+    gme_info_t *info = nullptr;
+    if (gme_track_info(emu, &info, 0) != 0 || !info) {
+      if (emu)
+        gme_delete(emu);
+      return "";
+    }
+    static char tagResult[256];
+    const char *val = gmeTagByIndex(info, tagIndex);
+    strncpy(tagResult, val ? val : "", 255);
+    tagResult[255] = '\0';
+    gme_free_info(info);
+    gme_delete(emu);
+    return tagResult;
+  }
+
   // For non-PSF, we'd need to load the file and use VGMPlayer::GetTags.
   // This is heavier but possible. For now, focus on PSF.
   return "";
@@ -304,6 +438,26 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;
+
+  if (isGME) {
+    if (!gmeEmu) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    gmeBuffer.resize(n * 2);
+    gme_err_t err = gme_play(gmeEmu, n * 2, gmeBuffer.data());
+    if (err) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    for (int i = 0; i < n; i++) {
+      left[i] = (float)(gmeBuffer[i * 2] / 32768.0f);
+      right[i] = (float)(gmeBuffer[i * 2 + 1] / 32768.0f);
+    }
+    return;
+  }
 
   if (isPSF) {
     int max_exec = 10000; // Increased limit for slower WASM execution
@@ -433,6 +587,28 @@ char *ShowTitle(void) {
       s += "|||"; // Key (not really used by JS except to skip)
       s += getTag(keys[i]);
       s += "|||"; // Value
+    }
+
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
+  if (isGME) {
+    if (!gmeEmu)
+      return nullptr;
+    if (gmeInfo) {
+      gme_free_info(gmeInfo);
+      gmeInfo = nullptr;
+    }
+    if (gme_track_info(gmeEmu, &gmeInfo, 0) != 0 || !gmeInfo)
+      return nullptr;
+
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      s += gmeTagByIndex(gmeInfo, i);
+      s += "|||";
     }
 
     free(titleBuf);

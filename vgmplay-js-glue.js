@@ -85,6 +85,8 @@ class VGMPlay_js {
 		// Define Emscripten Module object before loading vgmplay-js.js
 		if (typeof window !== 'undefined') {
 			window.Module = window.Module || {};
+			if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
+			if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
 			const base = this.baseURL;
 			window.Module.print = () => { };
 			window.Module.printErr = () => { };
@@ -222,7 +224,7 @@ class VGMPlay_js {
 		this.len = this.elms.length;
 		for (var ii = 0; ii < this.len; ii++) {
 			const lower = this.elms[ii].href.toLowerCase();
-			if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
 				this._queueURL(this.elms[ii].href, false, true);
 			}
 		}
@@ -381,10 +383,11 @@ class VGMPlay_js {
 	async handleFiles(files) {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
-			if (file.name.toLowerCase().endsWith('.zip')) {
+			const lower = file.name.toLowerCase();
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
 				const arrayBuffer = await file.arrayBuffer();
 				const byteArray = new Uint8Array(arrayBuffer);
-				this.zipQueue.push({ type: 'file', data: byteArray });
+				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
 			}
 		}
 		this._processQueue();
@@ -690,9 +693,9 @@ class VGMPlay_js {
 
 	_loadSkippedDownload(url) {
 		const lower = url.toLowerCase();
-		if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+		if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
 			this.loadZIPWithVGMFromURL(url, true);
-		} else if (lower.endsWith('.vgm') || lower.endsWith('.vgz')) {
+		} else if (this.isPlayable(lower)) {
 			this._queueURL(url, true);
 		}
 	}
@@ -872,12 +875,15 @@ class VGMPlay_js {
 							if (xhr.status === 200) {
 								var arrayBuffer = xhr.response;
 								var byteArray = new Uint8Array(arrayBuffer);
-								if (job.data.toLowerCase().endsWith('.7z')) {
+								const lower = job.data.toLowerCase();
+								if (lower.endsWith('.7z')) {
 									classContext.process7zBuffer(byteArray, job.name).then(next);
-								} else if (job.data.toLowerCase().endsWith('.psf')) {
+								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
 									classContext.processPSFBuffer(byteArray, job.data).then(next);
-								} else {
+								} else if (lower.endsWith('.zip')) {
 									classContext.processZipBuffer(byteArray, job.name).then(next);
+								} else {
+									classContext.processSingleBuffer(byteArray, job.name).then(next);
 								}
 								classContext.zipURLLoaded.push(job.data);
 							} else {
@@ -891,12 +897,15 @@ class VGMPlay_js {
 					xhr.send(null);
 				});
 			} else if (job.type === 'file') {
-				if (job.name && job.name.toLowerCase().endsWith('.7z')) {
+				const lower = (job.name || '').toLowerCase();
+				if (lower.endsWith('.7z')) {
 					classContext.process7zBuffer(job.data, job.name).then(next);
-				} else if (job.name && job.name.toLowerCase().endsWith('.psf')) {
+				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
 					classContext.processPSFBuffer(job.data, job.name).then(next);
-				} else {
+				} else if (lower.endsWith('.zip')) {
 					classContext.processZipBuffer(job.data, job.name).then(next);
+				} else {
+					classContext.processSingleBuffer(job.data, job.name).then(next);
 				}
 			}
 		});
@@ -965,6 +974,28 @@ class VGMPlay_js {
 			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
 			if (!hasPlayable) {
 				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
+			this.checkEverythingReady().then(() => {
+				this.showVGMFromZip(game);
+				resolve();
+			});
+		});
+	}
+
+	processSingleBuffer(byteArray, sourceName = '') {
+		return new Promise((resolve) => {
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+			const fileName = sourceName || "track";
+			const fsPath = gamePath + "/" + fileName;
+			FS.createDataFile(gamePath, fileName, byteArray, true, true);
+			const fileList = [{ filepath: fsPath }];
+			var game = { files: fileList, path: gamePath };
+			this.games.push(game);
+			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
+			if (!hasPlayable) {
+				this._addNoPlayableNotice(sourceName || 'File');
 			}
 			this.checkEverythingReady().then(() => {
 				this.showVGMFromZip(game);
@@ -1047,10 +1078,10 @@ class VGMPlay_js {
 	addHarvestedTracks(urls) {
 		urls.forEach(url => {
 			const lower = url.toLowerCase();
-			if (lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
 				this._queueURL(url, false, true);
-			} else if (lower.endsWith('.vgm') || lower.endsWith('.vgz')) {
-				// Handle direct links? For now just try to load them as single files in queue
+			} else if (this.isPlayable(lower)) {
+				// Handle direct links as single files
 				this._queueURL(url, false, true);
 			}
 		});
@@ -1086,7 +1117,7 @@ class VGMPlay_js {
 				let psfGame = "";
 				for (const f of files) {
 					const l = f.filepath.toLowerCase();
-					if (l.endsWith(".psf") || l.endsWith(".minipsf")) {
+					if (this.isPlayable(l)) {
 						psfGame = this.GetVGMTagDirect(f.filepath, 2); // Game tag
 						if (psfGame) break;
 					}
@@ -1109,7 +1140,7 @@ class VGMPlay_js {
 				const fullPath = files[key].filepath;
 				const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 				const lower = fileName.toLowerCase();
-				if (lower.endsWith(".vgm") || lower.endsWith(".vgz") || lower.endsWith(".psf") || lower.endsWith(".minipsf")) {
+				if (this.isPlayable(lower)) {
 					try {
 						const trackLength = this.GetTrackLengthDirect(fullPath);
 
@@ -1198,7 +1229,15 @@ class VGMPlay_js {
 
 	isPlayable(path) {
 		const p = path.toLowerCase();
-		return p.endsWith('.vgm') || p.endsWith('.vgz') || p.endsWith('.psf') || p.endsWith('.minipsf');
+		return p.endsWith('.vgm') || p.endsWith('.vgz') ||
+			p.endsWith('.psf') || p.endsWith('.minipsf') ||
+			p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
+			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
+			p.endsWith('.kss') || p.endsWith('.sap') || p.endsWith('.ay');
+	}
+
+	_isArchiveUrl(lower) {
+		return lower.endsWith('.zip') || lower.endsWith('.7z');
 	}
 
 	async changeTrack(action) {

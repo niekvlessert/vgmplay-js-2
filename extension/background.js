@@ -39,6 +39,15 @@ function togglePlayer() {
 
     const shadow = root.attachShadow({ mode: 'open' });
 
+    // Ensure Module exists in the page context before loading Emscripten bundle
+    const preInit = document.createElement('script');
+    preInit.textContent = `
+        window.Module = window.Module || {};
+        if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
+        if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
+    `;
+    document.head.appendChild(preInit);
+
     // Add styles
     const styleLink = document.createElement('link');
     styleLink.rel = 'stylesheet';

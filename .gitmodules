@@ -1,3 +1,6 @@
 [submodule "modules/libvgm"]
 	path = modules/libvgm
 	url = https://github.com/ValleyBell/libvgm.git
+[submodule "modules/game-music-emu"]
+	path = modules/game-music-emu
+	url = https://github.com/libgme/game-music-emu.git

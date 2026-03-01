@@ -43,6 +43,7 @@ FILES_TO_COPY=(
     "vgmplay-audio-processor.js"
     "7zz.umd.js"
     "7zz.wasm"
+    "unrar.min.js"
 )
 
 # Optional files

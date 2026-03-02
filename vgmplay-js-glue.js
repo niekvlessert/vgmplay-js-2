@@ -37,6 +37,9 @@ class VGMPlay_js {
 		this.sampleRate = "";
 		this.trackLengthHumanReadeable = false;
 		this.largeDownloadLimitBytes = 7.5 * 1024 * 1024;
+		this.standalone = this._normalizeBool(options.standalone);
+		this.analyzerPreset = 'dual';
+		this.rightPanelMode = 'dual';
 		this.skippedDownloads = [];
 		this.skippedWindowVisible = false;
 		this.windowDragTarget = null;
@@ -139,7 +142,73 @@ class VGMPlay_js {
 				this.vgmplayContainer.id = "vgmplayContainer";
 				document.body.insertBefore(this.vgmplayContainer, document.body.firstChild);
 			}
-			this.vgmplayContainer.className = "vgmplayContainer";
+			this.vgmplayContainer.className = this.standalone ? "vgmplayContainer vgmplayStandalone" : "vgmplayContainer";
+
+			if (this.standalone) {
+				document.documentElement.style.height = '100%';
+				document.body.style.height = '100%';
+				document.body.style.margin = '0';
+				document.body.style.background = '#2a2a2a';
+				document.body.style.overflow = 'hidden';
+				this.vgmplayContainer.style.position = 'fixed';
+				this.vgmplayContainer.style.top = '0';
+				this.vgmplayContainer.style.left = '0';
+				this.vgmplayContainer.style.width = '100vw';
+				this.vgmplayContainer.style.height = '100vh';
+
+				this.standaloneLeft = document.createElement('div');
+				this.standaloneLeft.className = 'vgmplayStandaloneLeft';
+				this.vgmplayContainer.appendChild(this.standaloneLeft);
+
+				this.standaloneRight = document.createElement('div');
+				this.standaloneRight.className = 'vgmplayStandaloneRight';
+				this.vgmplayContainer.appendChild(this.standaloneRight);
+
+				this.standaloneAnalyzerEl = document.createElement('div');
+				this.standaloneAnalyzerEl.className = 'vgmplayStandaloneAnalyzer';
+				this.standaloneRight.appendChild(this.standaloneAnalyzerEl);
+
+				const menuEl = document.getElementById('vgmplayMenu');
+				if (menuEl) {
+					menuEl.style.display = 'none';
+				}
+
+				this.standaloneOverlay = document.createElement('div');
+				this.standaloneOverlay.className = 'vgmplayStandaloneOverlay';
+				this.standaloneOverlay.innerHTML = `
+					<label class="vgmplayStandaloneLabel">Spectrum</label>
+					<select class="vgmplayStandaloneSelect">
+						<option value="off">Off</option>
+						<option value="bars">Big Bars</option>
+						<option value="lines">Lines</option>
+						<option value="dual">Dual</option>
+					</select>
+				`;
+				this.standaloneRight.appendChild(this.standaloneOverlay);
+				this.standaloneSelect = this.standaloneOverlay.querySelector('.vgmplayStandaloneSelect');
+				this.standaloneSelect.value = this.rightPanelMode;
+				this.standaloneSelect.addEventListener('change', () => {
+					this.rightPanelMode = this.standaloneSelect.value;
+					this._updateStandaloneRightPanel();
+				});
+			}
+
+			if (this.standalone) {
+				const children = Array.from(document.body.children);
+				const hiddenWrapper = document.createElement('div');
+				hiddenWrapper.id = 'vgmplayHiddenContent';
+				hiddenWrapper.style.display = 'none';
+				for (const child of children) {
+					if (child !== this.vgmplayContainer) {
+						hiddenWrapper.appendChild(child);
+					}
+				}
+				if (hiddenWrapper.childNodes.length) {
+					document.body.appendChild(hiddenWrapper);
+				}
+			}
+
+			const uiParent = this.standalone ? this.standaloneLeft : this.vgmplayContainer;
 
 			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
@@ -161,7 +230,7 @@ class VGMPlay_js {
 			if (this.displayTitleWindow) {
 				this.titleWindow = document.createElement('div');
 				this.titleWindow.id = "vgmplayTitleWindow";
-				this.vgmplayContainer.appendChild(this.titleWindow);
+				uiParent.appendChild(this.titleWindow);
 				this.titleWindow.className = "vgmplayTitleWindow";
 				this.titleWindow.addEventListener("mousedown", this.dragStart);
 			}
@@ -169,13 +238,13 @@ class VGMPlay_js {
 				this.playerWindow = document.createElement('div');
 				this.playerWindow.id = "vgmplayPlayer";
 				this.playerWindow.addEventListener("mousedown", this.dragStart);
-				this.vgmplayContainer.appendChild(this.playerWindow);
+				uiParent.appendChild(this.playerWindow);
 				this.showPlayer();
 			}
 			if (this.displayZipFileList) {
 				this.tracksContainer = document.createElement('div');
 				this.tracksContainer.id = "vgmplayTracksContainer";
-				this.vgmplayContainer.appendChild(this.tracksContainer);
+				uiParent.appendChild(this.tracksContainer);
 
 				this.zipFileListWindow = document.createElement('div');
 				this.zipFileListWindow.id = "vgmplayZipFileList";
@@ -190,11 +259,25 @@ class VGMPlay_js {
 			}
 			this.setupDropZone();
 			this._createSkippedWindow();
+			if (this.standalone) {
+				this._updateStandaloneRightPanel();
+			}
 		}
 
 		this.currentFileKey = "";
 
 
+	}
+
+	_normalizeBool(value) {
+		if (value === true) return true;
+		if (value === false) return false;
+		if (value === undefined || value === null) return false;
+		if (typeof value === 'string') {
+			const v = value.trim().toLowerCase();
+			return v === 'true' || v === '1' || v === 'yes' || v === '';
+		}
+		return !!value;
 	}
 
 	setKeyBindings() {
@@ -297,15 +380,17 @@ class VGMPlay_js {
 	showPlayer() {
 		this.playerWindow.className = "vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = `
-			<button onclick="vgmplay_js.changeTrack('previous')">|&lt;</button>
-			<button id="buttonTogglePlayback" onclick="vgmplay_js.togglePlayback()">&#9654;</button>
-			<button onclick="vgmplay_js.changeTrack('next')">&gt;|</button>
-			<button onclick="vgmplay_js.stop()">&#9632;</button>
-			<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
-			<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
-			<button id="btnRandom" onclick="vgmplay_js.toggleRandom()">R</button>
-			<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
-			<span id="vgmplayTime" style="color:white; font-family:monospace; margin-left:5px;">0:00/0:00</span>
+			<div class="vgmplayControls">
+				<button onclick="vgmplay_js.changeTrack('previous')">|&lt;</button>
+				<button id="buttonTogglePlayback" onclick="vgmplay_js.togglePlayback()">&#9654;</button>
+				<button onclick="vgmplay_js.changeTrack('next')">&gt;|</button>
+				<button onclick="vgmplay_js.stop()">&#9632;</button>
+				<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
+				<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
+				<button id="btnRandom" onclick="vgmplay_js.toggleRandom()">R</button>
+				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
+				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
+			</div>
 		`;
 		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
 		this.vgmplayTime = document.getElementById('vgmplayTime');
@@ -1436,6 +1521,8 @@ class VGMPlay_js {
 			}
 
 			this.isWebAudioInitialized = true;
+			await this._ensureAudioMotion();
+			this._updateStandaloneRightPanel();
 		}
 		if (!this.functionsWrapped) {
 			this.FillBuffer = Module.cwrap('FillBuffer2', 'void', ['number', 'number', 'number']);
@@ -1474,6 +1561,77 @@ class VGMPlay_js {
 
 
 		return true;
+	}
+
+	_initStandaloneAnalyzer(forceRecreate = false) {
+		if (!this.standalone || !this.standaloneAnalyzerEl) return;
+		if (typeof window === 'undefined' || !window.AudioMotionAnalyzer) return;
+		if (this._audiomotion && forceRecreate) {
+			try {
+				if (typeof this._audiomotion.destroy === 'function') {
+					this._audiomotion.destroy();
+				}
+			} catch (e) { }
+			this._audiomotion = null;
+		}
+		if (this._audiomotion) return;
+		const preset = this.analyzerPreset || 'bars';
+		const presetOptions = {
+			bars: { mode: 6, gradient: 'prism' },
+			lines: { mode: 4, gradient: 'classic' },
+			dual: { mode: 2, gradient: 'rainbow' }
+		};
+		const chosen = presetOptions[preset] || presetOptions.bars;
+		try {
+			this._audiomotion = new window.AudioMotionAnalyzer(this.standaloneAnalyzerEl, {
+				audioCtx: this.context,
+				source: this.masterGain,
+				connectSpeakers: false,
+				gradient: chosen.gradient,
+				mode: chosen.mode,
+				barSpace: 0.2,
+				showScaleX: false,
+				showScaleY: false,
+				bgAlpha: 0.1,
+				overlay: true
+			});
+		} catch (e) {
+			console.error('[AudioMotion] init failed', e);
+		}
+	}
+
+	async _ensureAudioMotion() {
+		if (!this.standalone) return;
+		if (typeof window === 'undefined') return;
+		if (window.AudioMotionAnalyzer) return;
+		if (!this._audioMotionLoading) {
+			this._audioMotionLoading = import('https://cdn.jsdelivr.net/npm/audiomotion-analyzer@4/+esm')
+				.then((mod) => {
+					window.AudioMotionAnalyzer = mod.default || mod;
+				})
+				.catch((e) => {
+					console.warn('[AudioMotion] failed to load', e);
+				});
+		}
+		await this._audioMotionLoading;
+	}
+
+	_updateStandaloneRightPanel() {
+		if (!this.standalone || !this.standaloneAnalyzerEl) return;
+		const mode = this.rightPanelMode || 'bars';
+		const isSpectrum = mode === 'bars' || mode === 'lines' || mode === 'dual';
+
+		this.standaloneAnalyzerEl.style.display = isSpectrum ? 'block' : 'none';
+
+		if (isSpectrum) {
+			this.analyzerPreset = mode;
+			this._ensureAudioMotion().then(() => {
+				this._initStandaloneAnalyzer(true);
+			});
+		} else if (this._audiomotion && typeof this._audiomotion.destroy === 'function') {
+			try { this._audiomotion.destroy(); } catch (e) { }
+			this._audiomotion = null;
+		}
 	}
 
 	generateBuffer() {
@@ -1994,6 +2152,12 @@ VGMPlay_js.prototype._setupTooltips = function () {
 };
 
 if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id)) {
-	var vgmplay_js = new VGMPlay_js();
+	const scriptEl = document.currentScript;
+	const data = scriptEl ? scriptEl.dataset : {};
+	const options = {};
+	if (data && typeof data.standalone !== 'undefined') {
+		options.standalone = data.standalone;
+	}
+	var vgmplay_js = new VGMPlay_js(options);
 	window.vgmPlayInstance = vgmplay_js;
 }

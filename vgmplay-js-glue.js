@@ -38,8 +38,8 @@ class VGMPlay_js {
 		this.trackLengthHumanReadeable = false;
 		this.largeDownloadLimitBytes = 7.5 * 1024 * 1024;
 		this.standalone = this._normalizeBool(options.standalone);
-		this.analyzerPreset = 'dual';
-		this.rightPanelMode = 'dual';
+		this.analyzerPreset = 'linePrism';
+		this.rightPanelMode = 'linePrism';
 		this.skippedDownloads = [];
 		this.skippedWindowVisible = false;
 		this.windowDragTarget = null;
@@ -182,6 +182,9 @@ class VGMPlay_js {
 						<option value="bars">Big Bars</option>
 						<option value="lines">Lines</option>
 						<option value="dual">Dual</option>
+						<option value="oct6">1/6 Octave</option>
+						<option value="radialApple">Radial (Apple ][)</option>
+						<option value="linePrism">Line Prism (Dual Vertical)</option>
 					</select>
 				`;
 				this.standaloneRight.appendChild(this.standaloneOverlay);
@@ -1566,6 +1569,7 @@ class VGMPlay_js {
 	_initStandaloneAnalyzer(forceRecreate = false) {
 		if (!this.standalone || !this.standaloneAnalyzerEl) return;
 		if (typeof window === 'undefined' || !window.AudioMotionAnalyzer) return;
+		this.standaloneAnalyzerEl.style.background = '#000';
 		if (this._audiomotion && forceRecreate) {
 			try {
 				if (typeof this._audiomotion.destroy === 'function') {
@@ -1575,11 +1579,14 @@ class VGMPlay_js {
 			this._audiomotion = null;
 		}
 		if (this._audiomotion) return;
-		const preset = this.analyzerPreset || 'bars';
+		const preset = this.analyzerPreset || 'dual';
 		const presetOptions = {
 			bars: { mode: 6, gradient: 'prism' },
-			lines: { mode: 4, gradient: 'classic' },
-			dual: { mode: 2, gradient: 'rainbow' }
+			lines: { mode: 0, gradient: 'classic' },
+			dual: { mode: 2, gradient: 'rainbow' },
+			oct6: { mode: 4, gradient: 'classic', showScaleX: true, frequencyScale: 'log' },
+			radialApple: { mode: 0, gradient: 'classic', radial: true, showScaleX: true },
+			linePrism: { mode: 10, gradient: 'prism', channelLayout: 'dual-vertical', showScaleX: true, showScaleY: true }
 		};
 		const chosen = presetOptions[preset] || presetOptions.bars;
 		try {
@@ -1589,12 +1596,34 @@ class VGMPlay_js {
 				connectSpeakers: false,
 				gradient: chosen.gradient,
 				mode: chosen.mode,
+				channelLayout: chosen.channelLayout,
+				radial: !!chosen.radial,
+				frequencyScale: chosen.frequencyScale,
+				lineWidth: chosen.mode === 10 ? 2 : undefined,
+				fillAlpha: chosen.mode === 10 ? 0 : undefined,
 				barSpace: 0.2,
-				showScaleX: false,
-				showScaleY: false,
-				bgAlpha: 0.1,
-				overlay: true
+				showScaleX: chosen.showScaleX ?? false,
+				showScaleY: chosen.showScaleY ?? false,
+				bgAlpha: 1,
+				overlay: false,
+				showBgColor: false
 			});
+			if (preset === 'radialApple' && this._audiomotion.registerGradient) {
+				try {
+					this._audiomotion.registerGradient('apple2', {
+						bgColor: '#000000',
+						colorStops: [
+							{ color: '#00ff66' },
+							{ color: '#7cff5a' },
+							{ color: '#f7e45b' },
+							{ color: '#ff8a5b' },
+							{ color: '#5bd6ff' },
+							{ color: '#00ff66' }
+						]
+					});
+					this._audiomotion.setOptions({ gradient: 'apple2', radial: true });
+				} catch (e) { }
+			}
 		} catch (e) {
 			console.error('[AudioMotion] init failed', e);
 		}
@@ -1619,7 +1648,8 @@ class VGMPlay_js {
 	_updateStandaloneRightPanel() {
 		if (!this.standalone || !this.standaloneAnalyzerEl) return;
 		const mode = this.rightPanelMode || 'bars';
-		const isSpectrum = mode === 'bars' || mode === 'lines' || mode === 'dual';
+		const isSpectrum = mode === 'bars' || mode === 'lines' || mode === 'dual' ||
+			mode === 'oct6' || mode === 'radialApple' || mode === 'linePrism';
 
 		this.standaloneAnalyzerEl.style.display = isSpectrum ? 'block' : 'none';
 

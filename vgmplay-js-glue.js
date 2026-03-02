@@ -61,6 +61,8 @@ class VGMPlay_js {
 		this.pos4 = 0;
 		this.trackListTransformX = 0;
 		this.trackListTransformY = 0;
+		this.standaloneGroupTransformX = 0;
+		this.standaloneGroupTransformY = 0;
 		this.libraryState = 0; // 0: Attached, 1: Floating, 2: Hidden
 
 		// Playback tracking
@@ -160,6 +162,10 @@ class VGMPlay_js {
 				this.standaloneLeft.className = 'vgmplayStandaloneLeft';
 				this.vgmplayContainer.appendChild(this.standaloneLeft);
 
+				this.standaloneGroup = document.createElement('div');
+				this.standaloneGroup.className = 'vgmplayStandaloneGroup';
+				this.standaloneLeft.appendChild(this.standaloneGroup);
+
 				this.standaloneRight = document.createElement('div');
 				this.standaloneRight.className = 'vgmplayStandaloneRight';
 				this.vgmplayContainer.appendChild(this.standaloneRight);
@@ -211,7 +217,7 @@ class VGMPlay_js {
 				}
 			}
 
-			const uiParent = this.standalone ? this.standaloneLeft : this.vgmplayContainer;
+			const uiParent = this.standalone ? this.standaloneGroup : this.vgmplayContainer;
 
 			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
@@ -236,6 +242,7 @@ class VGMPlay_js {
 				uiParent.appendChild(this.titleWindow);
 				this.titleWindow.className = "vgmplayTitleWindow";
 				this.titleWindow.addEventListener("mousedown", this.dragStart);
+				this._bindScrollProxy(this.titleWindow);
 			}
 			if (this.displayPlayer) {
 				this.playerWindow = document.createElement('div');
@@ -243,11 +250,16 @@ class VGMPlay_js {
 				this.playerWindow.addEventListener("mousedown", this.dragStart);
 				uiParent.appendChild(this.playerWindow);
 				this.showPlayer();
+				this._bindScrollProxy(this.playerWindow);
 			}
 			if (this.displayZipFileList) {
 				this.tracksContainer = document.createElement('div');
 				this.tracksContainer.id = "vgmplayTracksContainer";
-				uiParent.appendChild(this.tracksContainer);
+				if (this.standalone) {
+					this.standaloneLeft.appendChild(this.tracksContainer);
+				} else {
+					uiParent.appendChild(this.tracksContainer);
+				}
 
 				this.zipFileListWindow = document.createElement('div');
 				this.zipFileListWindow.id = "vgmplayZipFileList";
@@ -305,6 +317,18 @@ class VGMPlay_js {
 		});
 	}
 
+	_bindScrollProxy(el) {
+		if (!el) return;
+		el.addEventListener('wheel', (e) => {
+			if (!this.tracksContainer || !this.zipFileListWindow) return;
+			if (!this.standalone || this.libraryState !== 1) return;
+			const list = this.zipFileListWindow;
+			if (list.scrollHeight <= list.clientHeight) return;
+			list.scrollTop += e.deltaY;
+			e.preventDefault();
+		}, { passive: false });
+	}
+
 	loadWhenReady() {
 		this.elms = document.getElementsByTagName("a");
 		this.len = this.elms.length;
@@ -325,6 +349,12 @@ class VGMPlay_js {
 		e.preventDefault();
 		this.pos3 = e.clientX;
 		this.pos4 = e.clientY;
+		if (this.standalone && this.libraryState === 1) {
+			this.dragTargetWindow = this.standaloneGroup || null;
+			if (this.dragTargetWindow) {
+				this.dragTargetWindow.style.width = '266px';
+			}
+		}
 		window.addEventListener('mousemove', this.elementDrag);
 		window.addEventListener('mouseup', this.stopDrag);
 	}
@@ -335,10 +365,16 @@ class VGMPlay_js {
 		this.pos2 = this.pos4 - e.clientY;
 		this.pos3 = e.clientX;
 		this.pos4 = e.clientY;
-		this.vgmplayContainer.style.top = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
-		this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
+		if (this.standalone && this.libraryState === 1 && this.dragTargetWindow) {
+			this.standaloneGroupTransformX -= this.pos1;
+			this.standaloneGroupTransformY -= this.pos2;
+			this.dragTargetWindow.style.transform = `translate(${this.standaloneGroupTransformX}px, ${this.standaloneGroupTransformY}px)`;
+		} else {
+			this.vgmplayContainer.style.top = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
+			this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
+		}
 
-		if (this.libraryState === 1) {
+		if (this.libraryState === 1 && !this.standalone) {
 			this.trackListTransformX += this.pos1;
 			this.trackListTransformY += this.pos2;
 			if (this.tracksContainer) this.tracksContainer.style.transform = `translate(${this.trackListTransformX}px, ${this.trackListTransformY}px)`;
@@ -348,6 +384,7 @@ class VGMPlay_js {
 	stopDrag() {
 		window.removeEventListener('mousemove', this.elementDrag);
 		window.removeEventListener('mouseup', this.stopDrag);
+		this.dragTargetWindow = null;
 	}
 
 	_dragStartWindow(e) {
@@ -491,7 +528,6 @@ class VGMPlay_js {
 			this.trackListTransformX = 0;
 			this.trackListTransformY = 0;
 			if (this.tracksContainer) this.tracksContainer.style.transform = `translate(0px, 0px)`;
-
 			if (this.btnLibrary) {
 				this.btnLibrary.classList.remove('active');
 				this.btnLibrary.classList.remove('blue-active');
@@ -500,6 +536,11 @@ class VGMPlay_js {
 			// Floating
 			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
 			this.showZipFileListWindow = true;
+			if (this.standalone && this.tracksContainer) {
+				this.trackListTransformX = 0;
+				this.trackListTransformY = 0;
+				this.tracksContainer.style.transform = 'none';
+			}
 			// Keep current transform
 
 			if (this.btnLibrary) {

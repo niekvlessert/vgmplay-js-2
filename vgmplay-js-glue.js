@@ -39,6 +39,7 @@ class VGMPlay_js {
 		this.trackLengthHumanReadeable = false;
 		this.largeDownloadLimitBytes = 7.5 * 1024 * 1024;
 		this.standalone = this._normalizeBool(options.standalone);
+		this.isLibrary = this._normalizeBool(options.library);
 		this.analyzerPreset = 'linePrism';
 		this.rightPanelMode = 'linePrism';
 		this.isMobile = this._isMobileDevice();
@@ -147,12 +148,15 @@ class VGMPlay_js {
 				this.vgmplayContainer.id = "vgmplayContainer";
 				document.body.insertBefore(this.vgmplayContainer, document.body.firstChild);
 			}
+			if (this.isLibrary) {
+				this.vgmplayContainer.style.display = 'none';
+			}
 			this.vgmplayContainer.className = this.standalone ? "vgmplayContainer vgmplayStandalone" : "vgmplayContainer";
 			if (this.standalone && this.isMobile) {
 				this.vgmplayContainer.classList.add('vgmplayMobile');
 			}
 
-			if (this.standalone) {
+			if (this.standalone && !this.isLibrary) {
 				document.documentElement.style.height = '100%';
 				document.body.style.height = '100%';
 				document.body.style.margin = '0';
@@ -348,13 +352,15 @@ class VGMPlay_js {
 	}
 
 	setKeyBindings() {
-		window.addEventListener('keydown', function (e) {
-			if (e.keyCode == 32) e.preventDefault();
-		});
+		if (!this.isLibrary) {
+			window.addEventListener('keydown', function (e) {
+				if (e.keyCode == 32) e.preventDefault();
+			});
 
-		Mousetrap.bind('space', (e) => {
-			this.togglePlayback();
-		});
+			Mousetrap.bind('space', (e) => {
+				this.togglePlayback();
+			});
+		}
 		Mousetrap.bind('n', (e) => {
 			this.changeTrack('next');
 		});
@@ -1000,9 +1006,13 @@ class VGMPlay_js {
 	}
 
 	loadVGMFromURL(url) {
-		return new Promise(function (resolve, reject) {
+		return new Promise((resolve, reject) => {
+			const parts = url.split('/');
+			const originalFilename = parts[parts.length - 1].split('?')[0].split('#')[0];
+			const destPath = "/" + (originalFilename || "remote_file.vgm");
+
 			try {
-				FS.unlink("url.vgm");
+				FS.unlink(destPath);
 			} catch (err) { }
 
 			var xhr = new XMLHttpRequest();
@@ -1016,10 +1026,19 @@ class VGMPlay_js {
 				}
 				xhr.onreadystatechange = function () {
 					if (xhr.readyState == XMLHttpRequest.DONE) {
-						var arrayBuffer = xhr.response;
-						var byteArray = new Uint8Array(arrayBuffer);
-						FS.createDataFile("/", "url.vgm", byteArray, true, true);
-						resolve(xhr.response);
+						if (xhr.status === 200) {
+							var arrayBuffer = xhr.response;
+							var byteArray = new Uint8Array(arrayBuffer);
+							try {
+								FS.createDataFile("/", originalFilename || "remote_file.vgm", byteArray, true, true);
+								resolve(destPath);
+							} catch (e) {
+								console.error("FS Error loading direct file:", e);
+								resolve(null);
+							}
+						} else {
+							resolve(null);
+						}
 					}
 				}
 				xhr.open('GET', url, true);
@@ -1537,8 +1556,13 @@ class VGMPlay_js {
 
 	async togglePlayback() {
 		if (await this.checkEverythingReady()) {
-			if (!this.isVGMLoaded && !this.currentFileKey) {
-				await this.changeTrack('next');
+			if (!this.isVGMLoaded) {
+				if (this.activeGame && this.currentFileKey != null && this.activeGame.files[this.currentFileKey]) {
+					const gameIndex = this.games.indexOf(this.activeGame);
+					await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, gameIndex + 1, this.currentFileKey);
+				} else {
+					await this.changeTrack('next');
+				}
 			} else {
 				if (this.isPlaybackPaused) {
 					this.play();
@@ -2130,6 +2154,13 @@ VGMPlay_js.prototype._checkTrackEnd = function () {
 
 	this.visualSamplePosition = currentSample;
 
+	// If the track is set to loop indefinitely (0), keep playing
+	// (the engine will seamlessly loop audio, we just need to prevent the UI/JS from stopping it)
+	if (this._loopCount === 0) {
+		// We can optionally reset visual progress or just let it pin to 100%
+		return;
+	}
+
 	// Fade out logic
 	const FADE_DURATION = 2.0; // seconds
 	const fadeStartSample = this.totalSampleCount - (FADE_DURATION * this.sampleRate);
@@ -2322,12 +2353,96 @@ VGMPlay_js.prototype._setupTooltips = function () {
 	});
 };
 
+VGMPlay_js.prototype.playTrack = async function (url, trackIndex = 0, loopCount = 0) {
+	const isArchive = /\.(zip|7z)$/i.test(url.split('?')[0].split('#')[0]);
+
+	if (isArchive) {
+		return this.playZipTrack(url, trackIndex, loopCount);
+	} else {
+		// Individual file support
+		const fsPath = await this.loadVGMFromURL(url);
+		if (fsPath) {
+			this._loopCount = loopCount;
+			if (this.SetLoopCount) {
+				this.SetLoopCount(loopCount);
+			}
+			// Use track suffix for formats like NSF, SPC if needed (the C++ engine parses it)
+			const trackPath = trackIndex > 0 ? `${fsPath}|track=${trackIndex}` : fsPath;
+
+			// We skip setting this.activeGame as it's a standalone file
+			await this.playFileFromFS(false, trackPath, null, null);
+		} else {
+			console.error("Failed to load direct track:", url);
+		}
+	}
+};
+
+VGMPlay_js.prototype.playZipTrack = async function (zipUrl, trackIndex, loopCount = 0) {
+	const parts = zipUrl.split('/');
+	const filename = parts[parts.length - 1];
+	const gameNameBase = filename.replace(/\.(zip|7z)$/i, '');
+
+	let targetGame = this.games.find(g => g.name === filename || (g.files && g.files.some(f => f.filepath && f.filepath.includes(gameNameBase))));
+
+	if (!targetGame) {
+		const targetLoadCount = this.amountOfGamesLoaded + 1;
+		this.loadZIPWithVGMFromURL(zipUrl, true);
+		await new Promise(resolve => {
+			const check = () => {
+				if (this.amountOfGamesLoaded >= targetLoadCount) resolve();
+				else setTimeout(check, 100);
+			};
+			check();
+		});
+		targetGame = this.games.find(g => g.name === filename || (g.files && g.files.some(f => f.filepath && f.filepath.includes(gameNameBase))));
+	}
+
+	if (targetGame && targetGame.files) {
+		// Collect only playable files to map the index
+		const playableFiles = [];
+		for (let i = 0; i < targetGame.files.length; i++) {
+			if (this.isPlayable(targetGame.files[i].filepath.toLowerCase())) {
+				playableFiles.push({ file: targetGame.files[i], originalIndex: i });
+			}
+		}
+
+		if (playableFiles.length > trackIndex) {
+			const gameIndex = this.games.indexOf(targetGame);
+			const targetFileDef = playableFiles[trackIndex];
+			this._loopCount = loopCount;
+			if (this.SetLoopCount) {
+				this.SetLoopCount(loopCount);
+			}
+			await this.playFileFromFS(false, targetFileDef.file.filepath, gameIndex + 1, targetFileDef.originalIndex);
+		} else {
+			console.error("Track index out of bounds among playable files: ", zipUrl, trackIndex);
+		}
+	} else {
+		console.error("Track/Game not found: ", zipUrl, trackIndex);
+	}
+};
+
+VGMPlay_js.prototype.pauseTrack = function () {
+	this.pause();
+};
+
+VGMPlay_js.prototype.resumeTrack = function () {
+	this.play();
+};
+
+VGMPlay_js.prototype.stopTrack = function () {
+	this.stop();
+};
+
 if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id)) {
 	const scriptEl = document.currentScript;
 	const data = scriptEl ? scriptEl.dataset : {};
 	const options = {};
 	if (data && typeof data.standalone !== 'undefined') {
 		options.standalone = data.standalone;
+	}
+	if (data && typeof data.library !== 'undefined') {
+		options.library = data.library;
 	}
 	var vgmplay_js = new VGMPlay_js(options);
 	window.vgmPlayInstance = vgmplay_js;

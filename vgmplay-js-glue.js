@@ -29,6 +29,7 @@ class VGMPlay_js {
 		this.bassBoostEnabled = false;
 		this.reverbEnabled = false;
 		this.isRandomEnabled = false;
+		this.randomMode = 0; // 0=off,1=game,2=all
 		this.games = [];
 		this.activeGame = "";
 		this.amountOfGamesLoaded = 0;
@@ -427,7 +428,7 @@ class VGMPlay_js {
 				<button onclick="vgmplay_js.stop()">&#9632;</button>
 				<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
 				<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
-				<button id="btnRandom" onclick="vgmplay_js.toggleRandom()">R</button>
+				<button id="btnRandom" onclick="vgmplay_js.toggleRandomScope()">R</button>
 				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
 				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
 			</div>
@@ -2166,17 +2167,27 @@ VGMPlay_js.prototype.toggleReverb = function () {
 	}
 };
 
-VGMPlay_js.prototype.toggleRandom = function () {
-	this.isRandomEnabled = !this.isRandomEnabled;
+VGMPlay_js.prototype.toggleRandomScope = function () {
+	this.randomMode = (this.randomMode + 1) % 3;
+	this.isRandomEnabled = this.randomMode > 0;
 	if (this.btnRandom) {
-		this.btnRandom.classList.toggle('active', this.isRandomEnabled);
+		this.btnRandom.classList.toggle('active', this.randomMode === 1);
+		this.btnRandom.classList.toggle('blue-active', this.randomMode === 2);
 	}
 };
 
 VGMPlay_js.prototype.playRandom = function () {
 	if (this.games.length === 0) return;
-	const gameIndex = Math.floor(Math.random() * this.games.length);
-	const game = this.games[gameIndex];
+	let gameIndex = 0;
+	let game = null;
+	if (this.randomMode === 1 && this.activeGame) {
+		gameIndex = this.games.indexOf(this.activeGame);
+		game = this.activeGame;
+	} else {
+		gameIndex = Math.floor(Math.random() * this.games.length);
+		game = this.games[gameIndex];
+	}
+	if (!game || !game.files || game.files.length === 0) return;
 	const fileIndex = Math.floor(Math.random() * game.files.length);
 	this.playFileFromFS(false, game.files[fileIndex].filepath, gameIndex + 1, fileIndex);
 };
@@ -2213,7 +2224,7 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'\u25A0': 'Stop',
 		'B': 'Bass Boost',
 		'V': 'Reverb',
-		'R': 'Shuffle',
+		'R': 'Shuffle game/all',
 		'Z': 'Toggle Float/Library'
 	};
 

@@ -69,6 +69,11 @@
   background: #000;
 }
 
+.vgmplayContainer .vgmplayGameToggle {
+  display: block;
+  margin: 0 auto;
+}
+
 .vgmplayContainer.vgmplayStandalone .vgmplayStandaloneOverlay {
   position: absolute;
   top: 12px;
@@ -96,7 +101,17 @@
 .vgmplayContainer.vgmplayMobile .vgmplayTitleWindow,
 .vgmplayContainer.vgmplayMobile .vgmplayZipFileListWindow,
 .vgmplayContainer.vgmplayMobile .vgmplayUploader {
-  width: 100%;
+  width: 100% !important;
+}
+
+.vgmplayContainer.vgmplayMobile .vgmplayZipFileListWindow {
+  margin: 0;
+  border-radius: 0;
+}
+
+.vgmplayContainer.vgmplayMobile .vgmplayProgressBar,
+.vgmplayContainer.vgmplayMobile .vgmplaySpectrum {
+  width: 100% !important;
 }
 
 .vgmplayContainer.vgmplayMobile .vgmplayStandaloneAnalyzer {

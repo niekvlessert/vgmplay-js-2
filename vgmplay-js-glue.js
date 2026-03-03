@@ -330,7 +330,7 @@ class VGMPlay_js {
 	_resetMobileIdleTimer() {
 		if (!this.isMobile) return;
 		if (this._mobileIdleTimer) clearTimeout(this._mobileIdleTimer);
-		if (!this.isVGMPlaying || this.isPlaybackPaused) return;
+		if (this.isPlaybackPaused) return;
 		this._mobileIdleTimer = setTimeout(() => {
 			this._setMobileView('analyzer');
 		}, 5000);
@@ -1831,9 +1831,6 @@ class VGMPlay_js {
 	}
 
 	play() {
-		if (this.isMobile) {
-			this._resetMobileIdleTimer();
-		}
 		document.getElementById("buttonTogglePlayback").innerHTML = "||";
 		if (window.Android) window.Android.updatePlaybackState(true);
 		this.samplesGenerated = 0;
@@ -1856,6 +1853,9 @@ class VGMPlay_js {
 		if (!this.isVGMPlaying) {
 			this.PlayVGM();
 			this.isVGMPlaying = true;
+		}
+		if (this.isMobile) {
+			this._resetMobileIdleTimer();
 		}
 
 		// Reconnect audio graph (stop() disconnects it)

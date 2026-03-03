@@ -95,6 +95,13 @@
 .vgmplayContainer.vgmplayMobile .vgmplayStandaloneLeft {
   width: 100%;
   min-width: 0;
+  align-items: stretch;
+  padding: 0;
+}
+
+.vgmplayContainer.vgmplayMobile .vgmplayStandaloneGroup {
+  width: 100%;
+  align-self: stretch;
 }
 
 .vgmplayContainer.vgmplayMobile .vgmplayPlayerWindow,
@@ -102,16 +109,16 @@
 .vgmplayContainer.vgmplayMobile .vgmplayZipFileListWindow,
 .vgmplayContainer.vgmplayMobile .vgmplayUploader {
   width: 100% !important;
-}
-
-.vgmplayContainer.vgmplayMobile .vgmplayZipFileListWindow {
-  margin: 0;
   border-radius: 0;
+  border-left: none;
+  border-right: none;
+  margin: 0;
 }
 
 .vgmplayContainer.vgmplayMobile .vgmplayProgressBar,
 .vgmplayContainer.vgmplayMobile .vgmplaySpectrum {
   width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .vgmplayContainer.vgmplayMobile .vgmplayStandaloneAnalyzer {

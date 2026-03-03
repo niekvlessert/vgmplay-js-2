@@ -460,7 +460,16 @@
 }
 
 .vgmplayContainer .vgmplayGameTracks {
-  display: none;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  will-change: max-height, opacity;
+}
+
+.vgmplayContainer .vgmplayGameExpanded .vgmplayGameTracks {
+  max-height: 2000px;
+  opacity: 1;
 }
 
 .vgmplayContainer .game-spacer {

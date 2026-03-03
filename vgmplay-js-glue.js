@@ -616,6 +616,15 @@ class VGMPlay_js {
 
 			}
 
+			// For PSF files, add System: Playstation as last info line
+			if (this.currentFileKey !== "" && this.activeGame && this.activeGame.files && this.activeGame.files[this.currentFileKey]) {
+				const path = this.activeGame.files[this.currentFileKey].filepath || "";
+				const lower = path.toLowerCase();
+				if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
+					this.titleWindow.innerHTML += "System: Playstation<br/>";
+				}
+			}
+
 			// Display chips with volume sliders as the last entry of the top frame
 			const chipCount = this.GetDeviceCount ? this.GetDeviceCount() : 0;
 			if (chipCount > 0) {
@@ -1225,6 +1234,7 @@ class VGMPlay_js {
 			const gameWrap = document.createElement('div');
 			gameWrap.className = 'vgmplayGame';
 			gameWrap.dataset.expanded = 'false';
+			gameWrap.classList.add('vgmplayGameCollapsed');
 
 			if (game.png) {
 				const url = URL.createObjectURL(game.png);
@@ -1279,7 +1289,8 @@ class VGMPlay_js {
 				if (!(tgt && tgt.classList && tgt.classList.contains('vgmplayGameToggle'))) return;
 				const expanded = gameWrap.dataset.expanded === 'true';
 				gameWrap.dataset.expanded = expanded ? 'false' : 'true';
-				trackContainer.style.display = expanded ? 'none' : 'block';
+				gameWrap.classList.toggle('vgmplayGameExpanded', !expanded);
+				gameWrap.classList.toggle('vgmplayGameCollapsed', expanded);
 			});
 
 			for (let key = 0; key < files.length; key++) {

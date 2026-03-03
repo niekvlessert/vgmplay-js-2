@@ -41,6 +41,8 @@ class VGMPlay_js {
 		this.standalone = this._normalizeBool(options.standalone);
 		this.analyzerPreset = 'linePrism';
 		this.rightPanelMode = 'linePrism';
+		this.isMobile = this._isMobileDevice();
+		this._mobileIdleTimer = null;
 		this.skippedDownloads = [];
 		this.skippedWindowVisible = false;
 		this.windowDragTarget = null;
@@ -146,6 +148,9 @@ class VGMPlay_js {
 				document.body.insertBefore(this.vgmplayContainer, document.body.firstChild);
 			}
 			this.vgmplayContainer.className = this.standalone ? "vgmplayContainer vgmplayStandalone" : "vgmplayContainer";
+			if (this.standalone && this.isMobile) {
+				this.vgmplayContainer.classList.add('vgmplayMobile');
+			}
 
 			if (this.standalone) {
 				document.documentElement.style.height = '100%';
@@ -277,12 +282,58 @@ class VGMPlay_js {
 			this._createSkippedWindow();
 			if (this.standalone) {
 				this._updateStandaloneRightPanel();
+				if (this.isMobile) {
+					this._initMobileUI();
+				}
 			}
 		}
 
 		this.currentFileKey = "";
 
 
+	}
+
+	_isMobileDevice() {
+		if (typeof window === 'undefined') return false;
+		const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+		const small = window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
+		return coarse || small;
+	}
+
+	_initMobileUI() {
+		if (!this.standalone || !this.vgmplayContainer || this._mobileInited) return;
+		this._mobileInited = true;
+		this.mobileToggleBtn = document.createElement('button');
+		this.mobileToggleBtn.className = 'vgmplayMobileToggle';
+		this.mobileToggleBtn.textContent = 'P';
+		this.mobileToggleBtn.title = 'Show Player';
+		this.mobileToggleBtn.addEventListener('click', () => {
+			this._setMobileView('ui');
+		});
+		this.vgmplayContainer.appendChild(this.mobileToggleBtn);
+
+		const reset = () => this._resetMobileIdleTimer();
+		['touchstart', 'mousedown', 'keydown'].forEach((evt) => {
+			window.addEventListener(evt, reset, { passive: true });
+		});
+	}
+
+	_setMobileView(mode) {
+		if (!this.isMobile || !this.vgmplayContainer) return;
+		const analyzerOnly = mode === 'analyzer';
+		this.vgmplayContainer.classList.toggle('vgmplayMobileAnalyzerOnly', analyzerOnly);
+		if (this.mobileToggleBtn) {
+			this.mobileToggleBtn.style.display = analyzerOnly ? 'block' : 'none';
+		}
+	}
+
+	_resetMobileIdleTimer() {
+		if (!this.isMobile) return;
+		if (this._mobileIdleTimer) clearTimeout(this._mobileIdleTimer);
+		if (!this.isVGMPlaying || this.isPlaybackPaused) return;
+		this._mobileIdleTimer = setTimeout(() => {
+			this._setMobileView('analyzer');
+		}, 5000);
 	}
 
 	_normalizeBool(value) {
@@ -1780,6 +1831,9 @@ class VGMPlay_js {
 	}
 
 	play() {
+		if (this.isMobile) {
+			this._resetMobileIdleTimer();
+		}
 		document.getElementById("buttonTogglePlayback").innerHTML = "||";
 		if (window.Android) window.Android.updatePlaybackState(true);
 		this.samplesGenerated = 0;
@@ -1849,6 +1903,9 @@ class VGMPlay_js {
 		this.isPlaybackPaused = true;
 		if (window.Android) window.Android.updatePlaybackState(false);
 		this.buttonTogglePlayback.innerHTML = "&#9654;"
+		if (this.isMobile) {
+			this._setMobileView('ui');
+		}
 
 		// Update visual position one last time to save state
 		if (this.context) {
@@ -1869,6 +1926,9 @@ class VGMPlay_js {
 	stop() {
 		this.buttonTogglePlayback.innerHTML = "&#9654;";
 		if (window.Android) window.Android.updatePlaybackState(false);
+		if (this.isMobile) {
+			this._setMobileView('ui');
+		}
 
 		if (this.workletNode) {
 			this.workletNode.port.postMessage({ type: 'stop' });

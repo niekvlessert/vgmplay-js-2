@@ -1,16 +1,32 @@
 # vgmplay-js-2
-VGMRips VGMPlay transpiled to Javascript, can be used as player and library
+VGMRips VGMPlay transpiled to Javascript, can be used as player, library or Chrome/Firefox Extension
 
-This is a newer version, based on vgmplay-js. Objectives:
+This is a newer version, once based on vgmplay-js. 
 
-- Make it work on current Emscripten version and browser versions.
+Objectives:
+
+General:
+- libvgm
+- Playback through Audioworklet
+
+For the player:
+
 - Minimize the amount of HTML code required to use it.
-- Make it usuable as a library as well as a player.
-- Playback through Audioworklet 
+- Nice full screen experience on phone and desktop
+
+For the extension:
+
+- Plugin into any website and play back the media that is available there.
+
+For the library:
+
+- Make it easy to design your own webbased games and play vgm files in that.
 
 Works on current Brave and Chrome now (feb 2026). Compilation works with Emscripten 5.0.1
 
 Lately a lot of additions using vibe coding.
+
+The compiled binaries are included. However if you want to build yourself use this. Prepare_for_usage.sh is required to make the extension feature work.
 
 Buildin: make sure you have cmake and Emscripten installed.
 ```

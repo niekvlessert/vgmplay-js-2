@@ -455,6 +455,14 @@
   letter-spacing: 1px;
 }
 
+.vgmplayContainer .vgmplayGameToggle {
+  cursor: pointer;
+}
+
+.vgmplayContainer .vgmplayGameTracks {
+  display: none;
+}
+
 .vgmplayContainer .game-spacer {
   height: 40px;
   width: 100%;

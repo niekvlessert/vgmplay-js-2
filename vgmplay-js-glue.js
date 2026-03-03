@@ -1222,6 +1222,9 @@ class VGMPlay_js {
 
 		if (this.zipFileListWindow) {
 			const fragment = document.createDocumentFragment();
+			const gameWrap = document.createElement('div');
+			gameWrap.className = 'vgmplayGame';
+			gameWrap.dataset.expanded = 'false';
 
 			if (game.png) {
 				const url = URL.createObjectURL(game.png);
@@ -1229,14 +1232,15 @@ class VGMPlay_js {
 				img.src = url;
 				img.style.width = '256px';
 				img.style.height = '212px';
-				fragment.appendChild(img);
-				fragment.appendChild(document.createElement("br"));
+				img.className = 'vgmplayGameToggle';
+				gameWrap.appendChild(img);
+				gameWrap.appendChild(document.createElement("br"));
 			} else {
 				// No logo, add spacer and game name placeholder
 				if (this.games.length > 1 && gameIndex > 1) {
 					const spacer = document.createElement("div");
 					spacer.className = "game-spacer";
-					fragment.appendChild(spacer);
+					gameWrap.appendChild(spacer);
 				}
 
 				const placeholder = document.createElement("div");
@@ -1262,8 +1266,21 @@ class VGMPlay_js {
 				}
 
 				placeholder.textContent = psfGame || "Game " + gameIndex;
-				fragment.appendChild(placeholder);
+				placeholder.classList.add('vgmplayGameToggle');
+				gameWrap.appendChild(placeholder);
 			}
+
+			const trackContainer = document.createElement('div');
+			trackContainer.className = 'vgmplayGameTracks';
+			gameWrap.appendChild(trackContainer);
+
+			gameWrap.addEventListener('click', (e) => {
+				const tgt = e.target;
+				if (!(tgt && tgt.classList && tgt.classList.contains('vgmplayGameToggle'))) return;
+				const expanded = gameWrap.dataset.expanded === 'true';
+				gameWrap.dataset.expanded = expanded ? 'false' : 'true';
+				trackContainer.style.display = expanded ? 'none' : 'block';
+			});
 
 			for (let key = 0; key < files.length; key++) {
 				const fullPath = files[key].filepath;
@@ -1297,7 +1314,7 @@ class VGMPlay_js {
 									lengthSpan.textContent = trackLengthHumanReadeable;
 									a.appendChild(lengthSpan);
 
-									fragment.appendChild(a);
+									trackContainer.appendChild(a);
 								}
 								continue;
 							}
@@ -1325,13 +1342,14 @@ class VGMPlay_js {
 							lengthSpan.textContent = trackLengthHumanReadeable;
 							a.appendChild(lengthSpan);
 
-							fragment.appendChild(a);
+							trackContainer.appendChild(a);
 						}
 					} catch (e) {
 						console.error("[UI] Error getting track length for:", fullPath, e);
 					}
 				}
 			}
+			fragment.appendChild(gameWrap);
 			this.zipFileListWindow.appendChild(fragment);
 		}
 	}

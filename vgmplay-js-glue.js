@@ -362,9 +362,11 @@ class VGMPlay_js {
 			});
 		}
 		Mousetrap.bind('n', (e) => {
+			if (this.libraryState === 1) return;
 			this.changeTrack('next');
 		});
 		Mousetrap.bind('p', (e) => {
+			if (this.libraryState === 1) return;
 			this.changeTrack('previous');
 		});
 		Mousetrap.bind('s', (e) => {
@@ -1145,28 +1147,115 @@ class VGMPlay_js {
 
 	processZipBuffer(byteArray, sourceName = '') {
 		return new Promise((resolve) => {
-			var m3uFile;
-			var txtFile;
-			var pngFile;
 			this.mz = new Minizip(byteArray);
 			var fileList = this.mz.list();
-			this.amountOfGamesLoaded++;
-			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			const entries = Array.isArray(fileList)
+				? fileList
+				: (fileList && (fileList.files || fileList.filelist || fileList.entries))
+					? (fileList.files || fileList.filelist || fileList.entries)
+					: Object.values(fileList || {});
 
-			this._makedirs(gamePath);
+			let hasKss = false;
+			for (const entry of entries) {
+				if (!entry || !entry.filepath) continue;
+				const lower = entry.filepath.toLowerCase();
+				if (this._isKssFile(lower)) {
+					hasKss = true;
+					break;
+				}
+			}
 
-			for (var key in fileList) {
-				var fileArray = this.mz.extract(fileList[key].filepath);
-				var fileName = fileList[key].filepath;
-				var fullPath = gamePath + "/" + fileName;
+			if (!hasKss) {
+				var m3uFile;
+				var txtFile;
+				var pngFile;
+				this.amountOfGamesLoaded++;
+				const gamePath = "/game_" + this.amountOfGamesLoaded;
+				this._makedirs(gamePath);
 
-				// If fileName contains slashes (escaped or not), we need to ensure parents exist
+				for (const entry of entries) {
+					if (!entry || !entry.filepath) continue;
+					const relPath = entry.filepath;
+					const fileArray = this.mz.extract(relPath);
+					const fullPath = gamePath + "/" + relPath;
+
+					const lastSlash = fullPath.lastIndexOf('/');
+					if (lastSlash > gamePath.length) {
+						this._makedirs(fullPath.substring(0, lastSlash));
+					}
+
+					entry.filepath = fullPath;
+					try {
+						const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+						const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+						FS.createDataFile(parent, name, fileArray, true, true);
+					} catch (e) {
+						console.error("Error creating file in FS:", e);
+					}
+				const lower = relPath.toLowerCase();
+				if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
+				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+				}
+
+				var game = { files: entries.filter(e => e && e.filepath), m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
+				this.games.push(game);
+				const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+				if (!hasPlayable) {
+					this._addNoPlayableNotice(sourceName || 'Archive');
+				}
+				this.checkEverythingReady().then(() => {
+					this.showVGMFromZip(game);
+					resolve();
+				});
+				return;
+			}
+
+			const gamesInOrder = [];
+			const gamesByKey = {};
+
+			const getGameKey = (relPath) => {
+				const parts = relPath.split('/');
+				if (parts.length > 1) return parts[0];
+				const lower = relPath.toLowerCase();
+				if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
+					const dot = relPath.lastIndexOf('.');
+					return dot > 0 ? relPath.substring(0, dot) : relPath;
+				}
+				return 'root';
+			};
+
+			const getRelPath = (relPath, gameKey) => {
+				if (relPath.startsWith(gameKey + '/')) return relPath.substring(gameKey.length + 1);
+				return relPath;
+			};
+
+			const getGame = (gameKey) => {
+				if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+				this.amountOfGamesLoaded++;
+				const gamePath = "/game_" + this.amountOfGamesLoaded;
+				this._makedirs(gamePath);
+				const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+				gamesByKey[gameKey] = game;
+				gamesInOrder.push(game);
+				return game;
+			};
+
+			for (const entry of entries) {
+				if (!entry || !entry.filepath) continue;
+				const relPath = entry.filepath;
+				const fileArray = this.mz.extract(relPath);
+				const gameKey = getGameKey(relPath);
+				const game = getGame(gameKey);
+				const gameRelPath = getRelPath(relPath, gameKey);
+				const fullPath = game.path + "/" + gameRelPath;
+
 				const lastSlash = fullPath.lastIndexOf('/');
-				if (lastSlash > gamePath.length) {
+				if (lastSlash > game.path.length) {
 					this._makedirs(fullPath.substring(0, lastSlash));
 				}
 
-				fileList[key].filepath = fullPath; // Store full path
+				entry.filepath = fullPath;
 				try {
 					const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 					const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
@@ -1174,18 +1263,38 @@ class VGMPlay_js {
 				} catch (e) {
 					console.error("Error creating file in FS:", e);
 				}
-				if (fileName.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
-				if (fileName.includes("txt")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
-				if (fileName.includes("png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+
+				game.files.push({ filepath: fullPath });
+
+				const lower = relPath.toLowerCase();
+				if (lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
+					const base = relPath.substring(relPath.lastIndexOf('/') + 1, relPath.lastIndexOf('.'));
+					const txt = FS.readFile(fullPath, { encoding: "utf8" });
+					game.kssTxtByBase[base] = txt;
+					game.kssTxtOrder.push(base);
+				}
+				if (lower.endsWith('.png') && !game.png) {
+					game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+				}
 			}
-			var game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
-			this.games.push(game);
-			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
-			if (!hasPlayable) {
+
+			let anyPlayable = false;
+			for (const game of gamesInOrder) {
+				const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+				if (hasPlayable) {
+					this.games.push(game);
+					anyPlayable = true;
+				}
+			}
+			if (!anyPlayable) {
 				this._addNoPlayableNotice(sourceName || 'Archive');
 			}
+
 			this.checkEverythingReady().then(() => {
-				this.showVGMFromZip(game);
+				for (const game of gamesInOrder) {
+					if (!this.games.includes(game)) continue;
+					this.showVGMFromZip(game);
+				}
 				resolve();
 			});
 		});
@@ -1229,9 +1338,37 @@ class VGMPlay_js {
 		// Looking at use-strict/7z-wasm, we can run commands.
 		sz.callMain(["x", archiveName, "-o/out"]);
 
-		const fileList = [];
-		const gamePath = "/game_" + (++this.amountOfGamesLoaded);
-		this._makedirs(gamePath);
+		const gamesInOrder = [];
+		const gamesByKey = {};
+		const allEntries = [];
+		let hasKss = false;
+
+		const getGameKey = (relPath) => {
+			const parts = relPath.split('/');
+			if (parts.length > 1) return parts[0];
+			const lower = relPath.toLowerCase();
+			if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
+				const dot = relPath.lastIndexOf('.');
+				return dot > 0 ? relPath.substring(0, dot) : relPath;
+			}
+			return 'root';
+		};
+
+		const getRelPath = (relPath, gameKey) => {
+			if (relPath.startsWith(gameKey + '/')) return relPath.substring(gameKey.length + 1);
+			return relPath;
+		};
+
+		const getGame = (gameKey) => {
+			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+			gamesByKey[gameKey] = game;
+			gamesInOrder.push(game);
+			return game;
+		};
 
 		const recurseFS = (path, relativePath = "") => {
 			const entries = sz.FS.readdir(path);
@@ -1243,30 +1380,92 @@ class VGMPlay_js {
 				if (sz.FS.isDir(stat.mode)) {
 					recurseFS(fullSZPath, fullRelPath);
 				} else {
+					allEntries.push(fullRelPath);
+					if (!hasKss && this._isKssFile(fullRelPath.toLowerCase())) {
+						hasKss = true;
+					}
 					const data = sz.FS.readFile(fullSZPath);
-					const fsPath = gamePath + "/" + fullRelPath;
+					const gameKey = getGameKey(fullRelPath);
+					const game = getGame(gameKey);
+					const gameRelPath = getRelPath(fullRelPath, gameKey);
+					const fsPath = game.path + "/" + gameRelPath;
 					const lastSlash = fsPath.lastIndexOf('/');
-					if (lastSlash > gamePath.length) {
+					if (lastSlash > game.path.length) {
 						this._makedirs(fsPath.substring(0, lastSlash));
 					}
 					const name = fsPath.substring(fsPath.lastIndexOf('/') + 1);
 					const parent = fsPath.substring(0, fsPath.lastIndexOf('/'));
 					FS.createDataFile(parent, name, data, true, true);
-					fileList.push({ filepath: fsPath });
+					game.files.push({ filepath: fsPath });
+
+					const lower = fullRelPath.toLowerCase();
+					if (lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
+						const base = fullRelPath.substring(fullRelPath.lastIndexOf('/') + 1, fullRelPath.lastIndexOf('.'));
+						const txt = FS.readFile(fsPath, { encoding: "utf8" });
+						game.kssTxtByBase[base] = txt;
+						game.kssTxtOrder.push(base);
+					}
+					if (lower.endsWith('.png') && !game.png) {
+						game.png = new Blob([FS.readFile(fsPath)], { type: "image/png" });
+					}
 				}
 			}
 		};
 
 		recurseFS("/out");
 
-		var game = { files: fileList, path: gamePath };
-		this.games.push(game);
-		const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
-		if (!hasPlayable) {
+		if (!hasKss) {
+			const gamePath = "/game_" + (++this.amountOfGamesLoaded);
+			this._makedirs(gamePath);
+			const fileList = [];
+			let m3uFile;
+			let txtFile;
+			let pngFile;
+
+			for (const relPath of allEntries) {
+				const data = sz.FS.readFile("/out/" + relPath);
+				const fsPath = gamePath + "/" + relPath;
+				const lastSlash = fsPath.lastIndexOf('/');
+				if (lastSlash > gamePath.length) {
+					this._makedirs(fsPath.substring(0, lastSlash));
+				}
+				const name = fsPath.substring(fsPath.lastIndexOf('/') + 1);
+				const parent = fsPath.substring(0, fsPath.lastIndexOf('/'));
+				FS.createDataFile(parent, name, data, true, true);
+				fileList.push({ filepath: fsPath });
+				const lower = relPath.toLowerCase();
+				if (lower.includes("m3u")) m3uFile = FS.readFile(fsPath, { encoding: "utf8" });
+				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo")) txtFile = FS.readFile(fsPath, { encoding: "utf8" });
+				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fsPath)], { type: "image/png" });
+			}
+
+			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
+			this.games.push(game);
+			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
+			if (!hasPlayable) {
+				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
+			await this.checkEverythingReady();
+			this.showVGMFromZip(game);
+			return;
+		}
+
+		let anyPlayable = false;
+		for (const game of gamesInOrder) {
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (hasPlayable) {
+				this.games.push(game);
+				anyPlayable = true;
+			}
+		}
+		if (!anyPlayable) {
 			this._addNoPlayableNotice(sourceName || 'Archive');
 		}
 		await this.checkEverythingReady();
-		this.showVGMFromZip(game);
+		for (const game of gamesInOrder) {
+			if (!this.games.includes(game)) continue;
+			this.showVGMFromZip(game);
+		}
 	}
 
 	async processPSFBuffer(byteArray, fileName) {
@@ -1401,31 +1600,103 @@ class VGMPlay_js {
 								continue;
 							}
 						}
+						if (this._isKssFile(lower) && this.GetKSSTrackCountDirect) {
+							const kssMeta = this._getKssMetaForFile(game, fileName);
+							if (kssMeta && kssMeta.entries && kssMeta.entries.length > 0) {
+								const trkMin = this.GetKSSTrackMinDirect ? this.GetKSSTrackMinDirect(fullPath) : 0;
+								const count = this.GetKSSTrackCountDirect ? this.GetKSSTrackCountDirect(fullPath) : 0;
+								const trkMax = (count > 0) ? (trkMin + count - 1) : (this.GetKSSTrackMaxDirect ? this.GetKSSTrackMaxDirect(fullPath) : trkMin);
+								for (const entry of kssMeta.entries) {
+									let trackIndex = entry.index;
+									if (trackIndex == null) {
+										if (entry.num == null || isNaN(entry.num)) continue;
+										const actualNum = entry.num;
+										if (actualNum < trkMin || actualNum > trkMax) continue;
+										trackIndex = actualNum - trkMin;
+									}
+									if (trackIndex == null || trackIndex < 0) continue;
+									if (count && trackIndex >= count) continue;
+									const trackPath = `${fullPath}|track=${trackIndex}`;
+									let trackLengthSeconds = entry.lengthSec || 0;
+									if (!trackLengthSeconds) {
+										const trackLength = this.GetTrackLengthDirect(trackPath);
+										const totalSampleCount = trackLength * currentSampleRate / 44100;
+										trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
+									}
+									const trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
+
+									const a = document.createElement("a");
+									a.className = "vgmplayTrack";
+									a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, key);
+									if (entry.title) a.dataset.trackTitle = entry.title;
+									if (trackLengthSeconds) a.dataset.trackLengthSec = trackLengthSeconds;
+
+									const nameSpan = document.createElement("span");
+									nameSpan.className = "track-name";
+									nameSpan.textContent = entry.title || `${fileName} - Track ${trackIndex + 1}`;
+									a.appendChild(nameSpan);
+
+									const lengthSpan = document.createElement("span");
+									lengthSpan.className = "track-length";
+									lengthSpan.textContent = trackLengthHumanReadeable;
+									a.appendChild(lengthSpan);
+
+									trackContainer.appendChild(a);
+								}
+								continue;
+							} else {
+								const count = this.GetKSSTrackCountDirect(fullPath);
+								if (count > 1) {
+									for (let t = 0; t < count; t++) {
+										const trackPath = `${fullPath}|track=${t}`;
+										const trackLength = this.GetTrackLengthDirect(trackPath);
+										const totalSampleCount = trackLength * currentSampleRate / 44100;
+										const trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
+										const trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
+
+										const a = document.createElement("a");
+										a.className = "vgmplayTrack";
+										a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, key);
+
+										const nameSpan = document.createElement("span");
+										nameSpan.className = "track-name";
+										const kssName = this.GetKSSTrackNameDirect ? this.GetKSSTrackNameDirect(fullPath, t) : "";
+										nameSpan.textContent = kssName || `${fileName} - Track ${t + 1}`;
+										a.appendChild(nameSpan);
+
+										const lengthSpan = document.createElement("span");
+										lengthSpan.className = "track-length";
+										lengthSpan.textContent = trackLengthHumanReadeable;
+										a.appendChild(lengthSpan);
+
+										trackContainer.appendChild(a);
+									}
+									continue;
+								}
+							}
+						}
 
 						const trackLength = this.GetTrackLengthDirect(fullPath);
 						const totalSampleCount = trackLength * currentSampleRate / 44100;
+						const trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
+						const trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
 
-						if (totalSampleCount > 0) {
-							const trackLengthSeconds = Math.round(totalSampleCount / currentSampleRate);
-							const trackLengthHumanReadeable = new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5);
+						const a = document.createElement("a");
+						a.className = "vgmplayTrack";
+						a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, key);
+						files[key].linkElement = a; // Store reference for highlighting
 
-							const a = document.createElement("a");
-							a.className = "vgmplayTrack";
-							a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, key);
-							files[key].linkElement = a; // Store reference for highlighting
+						const nameSpan = document.createElement("span");
+						nameSpan.className = "track-name";
+						nameSpan.textContent = fileName;
+						a.appendChild(nameSpan);
 
-							const nameSpan = document.createElement("span");
-							nameSpan.className = "track-name";
-							nameSpan.textContent = fileName;
-							a.appendChild(nameSpan);
+						const lengthSpan = document.createElement("span");
+						lengthSpan.className = "track-length";
+						lengthSpan.textContent = trackLengthHumanReadeable;
+						a.appendChild(lengthSpan);
 
-							const lengthSpan = document.createElement("span");
-							lengthSpan.className = "track-length";
-							lengthSpan.textContent = trackLengthHumanReadeable;
-							a.appendChild(lengthSpan);
-
-							trackContainer.appendChild(a);
-						}
+						trackContainer.appendChild(a);
 					} catch (e) {
 						console.error("[UI] Error getting track length for:", fullPath, e);
 					}
@@ -1464,16 +1735,30 @@ class VGMPlay_js {
 
 			this._isLoadingFile = true;
 			try {
-				this.load(file);
+				const ok = this.load(file);
+				if (!ok) {
+					this._addNoPlayableNotice(file);
+					return;
+				}
 				this.currentFileKey = key;
 				this.play();
 				this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
 				this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
+				if ((!this.trackLengthSeconds || this.trackLengthSeconds <= 0) && href_object && href_object.dataset && href_object.dataset.trackLengthSec) {
+					const len = parseInt(href_object.dataset.trackLengthSec, 10);
+					if (len > 0) {
+						this.trackLengthSeconds = len;
+						this.totalSampleCount = this.trackLengthSeconds * this.sampleRate;
+					}
+				}
 				this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 				this.getVGMTag();
 
 				let gameName = (this.VGMTag && this.VGMTag.length >= 8) ? (this.VGMTag[5] || this.VGMTag[7] || "Unknown Game") : "Unknown Game";
 				let trackName = file.substring(file.lastIndexOf('/') + 1);
+				if (href_object && href_object.dataset && href_object.dataset.trackTitle) {
+					trackName = href_object.dataset.trackTitle;
+				}
 				if (window.Android) window.Android.updateMetadata(gameName + " - " + unescape(trackName), this.trackLengthSeconds * 1000);
 
 				//console.log("ChipInfoString: " + this.GetChipInfoString());
@@ -1490,18 +1775,124 @@ class VGMPlay_js {
 			p.endsWith('.psf') || p.endsWith('.minipsf') ||
 			p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
 			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
-			p.endsWith('.kss') || p.endsWith('.sap') || p.endsWith('.ay');
+			p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
+			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
+			p.endsWith('.mpk') || p.endsWith('.mbm') ||
+			p.endsWith('.sap') || p.endsWith('.ay');
 	}
 
 	_isGmeFile(path) {
 		const p = path.toLowerCase().split('|track=')[0];
 		return p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
 			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
-			p.endsWith('.kss') || p.endsWith('.sap') || p.endsWith('.ay');
+			p.endsWith('.sap') || p.endsWith('.ay');
+	}
+
+	_isKssFile(path) {
+		const p = path.toLowerCase().split('|track=')[0];
+		return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
+			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
+			p.endsWith('.mpk') || p.endsWith('.mbm');
 	}
 
 	_isArchiveUrl(lower) {
 		return lower.endsWith('.zip') || lower.endsWith('.7z');
+	}
+
+	_parseKssTxt(text) {
+		if (!text) return null;
+		const lines = text.split(/\r?\n/);
+		const raw = [];
+		for (let line of lines) {
+			let l = line.trim();
+			if (!l) continue;
+			if (l.startsWith('#') || l.startsWith(';') || l.startsWith('//')) continue;
+
+			let num = null;
+			let title = "";
+			let lengthSec = 0;
+
+			if (l.includes(',')) {
+				const parts = l.split(',');
+				if (parts.length >= 2 && /^\d+$/.test(parts[0].trim())) {
+					num = parseInt(parts[0].trim(), 10);
+					title = (parts[1] || "").trim();
+					const lenStr = (parts[2] || "").trim();
+					if (lenStr) {
+						const maybe = parseInt(lenStr, 10);
+						if (!isNaN(maybe)) lengthSec = maybe;
+					}
+					raw.push({ num, title: title || "Track", lengthSec });
+					continue;
+				}
+			}
+
+			let timeMatch = l.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?(?!.*\d)/);
+			if (timeMatch) {
+				const h = timeMatch[3] ? parseInt(timeMatch[1], 10) : 0;
+				const m = timeMatch[3] ? parseInt(timeMatch[2], 10) : parseInt(timeMatch[1], 10);
+				const s = timeMatch[3] ? parseInt(timeMatch[3], 10) : parseInt(timeMatch[2], 10);
+				lengthSec = h * 3600 + m * 60 + s;
+				l = l.replace(timeMatch[0], '').trim();
+				l = l.replace(/[\s\-–—:]+$/, '').trim();
+			}
+
+			let m = l.match(/^(?:track\s*)?(\d{1,3})\s*[\.\-:)]*\s*/i);
+			if (m) {
+				num = parseInt(m[1], 10);
+				l = l.slice(m[0].length).trim();
+			}
+			title = l || "Track";
+			raw.push({ num, title, lengthSec });
+		}
+
+		if (raw.length === 0) return null;
+		const hasNums = raw.some(e => e.num !== null && !isNaN(e.num));
+		const hasZero = raw.some(e => e.num === 0);
+		const oneBased = hasNums && !hasZero;
+
+		const entries = [];
+		for (let i = 0; i < raw.length; i++) {
+			const r = raw[i];
+			let index = null;
+			if (r.num === null || isNaN(r.num)) {
+				index = i;
+			}
+			entries.push({ index, num: r.num, title: r.title, lengthSec: r.lengthSec });
+		}
+		return { entries, oneBased };
+	}
+
+	_getKssMetaForFile(game, fileName) {
+		if (!game || !game.kssTxtByBase) return null;
+		const dot = fileName.lastIndexOf('.');
+		const base = dot > 0 ? fileName.substring(0, dot) : fileName;
+		let txt = game.kssTxtByBase[base];
+		if (!txt) {
+			const keys = Object.keys(game.kssTxtByBase);
+			if (keys.length === 1) txt = game.kssTxtByBase[keys[0]];
+			if (!txt) {
+				const match = keys.find(k => k.toLowerCase().includes('track info'));
+				if (match) txt = game.kssTxtByBase[match];
+			}
+		}
+		if (!txt) {
+			const keys = Object.keys(game.kssTxtByBase);
+			for (const k of keys) {
+				const candidate = this._parseKssTxt(game.kssTxtByBase[k]);
+				if (candidate && candidate.entries && candidate.entries.some(e => e.num != null)) {
+					txt = game.kssTxtByBase[k];
+					break;
+				}
+			}
+		}
+		if (!txt) return null;
+		if (!game._kssMetaCache) game._kssMetaCache = {};
+		const cacheKey = base || 'default';
+		if (game._kssMetaCache[cacheKey]) return game._kssMetaCache[cacheKey];
+		const meta = this._parseKssTxt(txt);
+		game._kssMetaCache[cacheKey] = meta;
+		return meta;
 	}
 
 	async changeTrack(action) {
@@ -1683,7 +2074,11 @@ class VGMPlay_js {
 			this.GetTrackLength = Module.cwrap('GetTrackLength');
 			this.GetTrackLengthDirect = Module.cwrap('GetTrackLengthDirect', 'number', ['string']);
 			this.GetGMETrackCountDirect = Module.cwrap('GetGMETrackCountDirect', 'number', ['string']);
+			this.GetKSSTrackCountDirect = Module.cwrap('GetKSSTrackCountDirect', 'number', ['string']);
+			this.GetKSSTrackMinDirect = Module.cwrap('GetKSSTrackMinDirect', 'number', ['string']);
+			this.GetKSSTrackMaxDirect = Module.cwrap('GetKSSTrackMaxDirect', 'number', ['string']);
 			this.GetGMETrackNameDirect = Module.cwrap('GetGMETrackNameDirect', 'string', ['string', 'number']);
+			this.GetKSSTrackNameDirect = Module.cwrap('GetKSSTrackNameDirect', 'string', ['string', 'number']);
 			this._GetVGMTagDirectNative = Module.cwrap('GetVGMTagDirect', 'string', ['string', 'number']);
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
 			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);
@@ -2008,8 +2403,13 @@ class VGMPlay_js {
 		if (this.CloseVGMFile) {
 			this.CloseVGMFile();
 		}
-		this.OpenVGMFile(fileName);
-		this.isVGMLoaded = true;
+		const res = this.OpenVGMFile(fileName);
+		const ok = !!res;
+		if (!ok) {
+			console.error("[VGM] Failed to open file:", fileName);
+		}
+		this.isVGMLoaded = ok;
+		return ok;
 	}
 
 	// ---- Spectrum Analyser ----
@@ -2302,14 +2702,14 @@ VGMPlay_js.prototype._setupTooltips = function () {
 	const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
 	const targets = [...buttons, ...tracks];
 	const descriptions = {
-		'|&lt;': 'Previous Track',
-		'|<': 'Previous Track',
-		'&#9654;': 'Play/Pause',
-		'▶': 'Play/Pause',
-		'\u25B6': 'Play/Pause',
+		'|&lt;': 'Previous Track (P)',
+		'|<': 'Previous Track (P)',
+		'&#9654;': 'Play/Pause (Space)',
+		'▶': 'Play/Pause (Space)',
+		'\u25B6': 'Play/Pause (Space)',
 		'||': 'Play/Pause',
-		'&gt;|': 'Next Track',
-		'>|': 'Next Track',
+		'&gt;|': 'Next Track (N)',
+		'>|': 'Next Track (N)',
 		'&#9632;': 'Stop',
 		'■': 'Stop',
 		'\u25A0': 'Stop',

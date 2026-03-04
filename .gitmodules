@@ -4,3 +4,6 @@
 [submodule "modules/game-music-emu"]
 	path = modules/game-music-emu
 	url = https://github.com/libgme/game-music-emu.git
+[submodule "modules/libkss"]
+	path = modules/libkss
+	url = https://github.com/digital-sound-antiques/libkss

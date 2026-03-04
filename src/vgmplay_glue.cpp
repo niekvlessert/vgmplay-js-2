@@ -18,6 +18,8 @@
 #include "../modules/libvgm/player/vgmplayer.hpp"
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
+#include "../modules/libkss/src/kss/kss.h"
+#include "../modules/libkss/src/kssplay.h"
 
 extern "C" {
 #include "../modules/sexypsf/driver.h"
@@ -44,6 +46,37 @@ static gme_info_t *gmeInfo = nullptr;
 static int gmeLengthMs = 0;
 static std::vector<short> gmeBuffer;
 static int gmeTrackIndex = 0;
+static bool isKSS = false;
+static KSS *gKss = nullptr;
+static KSSPLAY *gKssPlay = nullptr;
+static int gKssTrackIndex = 0;
+static uint64_t gKssSamplePos = 0;
+
+static const char *kssSystemName(int mode) {
+  switch (mode) {
+  case 0:
+    return "MSX";
+  case 1:
+    return "Sega Master System";
+  case 2:
+    return "Sega Game Gear";
+  default:
+    return "MSX";
+  }
+}
+
+static const char *kssTrackTitle(KSS *kss, int trackNum) {
+  if (!kss || !kss->info || kss->info_num == 0)
+    return "";
+  for (uint16_t i = 0; i < kss->info_num; i++) {
+    if (kss->info[i].song != trackNum)
+      continue;
+    if (kss->info[i].title && kss->info[i].title[0]) {
+      return kss->info[i].title;
+    }
+  }
+  return "";
+}
 
 extern "C" {
 int stop_sexy_execute = 0; // Declare stop_sexy_execute here
@@ -73,6 +106,19 @@ static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
 }
 
 static void cleanup() {
+  if (isKSS) {
+    if (gKssPlay) {
+      KSSPLAY_delete(gKssPlay);
+      gKssPlay = nullptr;
+    }
+    if (gKss) {
+      KSS_delete(gKss);
+      gKss = nullptr;
+    }
+    isKSS = false;
+    gKssTrackIndex = 0;
+    gKssSamplePos = 0;
+  }
   if (isGME) {
     if (gmeInfo) {
       gme_free_info(gmeInfo);
@@ -141,6 +187,17 @@ static int parseTrackSuffix(const char *path, std::string &basePath) {
   return track;
 }
 
+static bool isKssFormatPath(const std::string &lowerPath) {
+  return (lowerPath.find(".kss") != std::string::npos ||
+          lowerPath.find(".kssx") != std::string::npos ||
+          lowerPath.find(".kscc") != std::string::npos ||
+          lowerPath.find(".mgs") != std::string::npos ||
+          lowerPath.find(".bgm") != std::string::npos ||
+          lowerPath.find(".opx") != std::string::npos ||
+          lowerPath.find(".mpk") != std::string::npos ||
+          lowerPath.find(".mbm") != std::string::npos);
+}
+
 static const char *gmeTagByIndex(const gme_info_t *info, int tagIndex) {
   if (!info)
     return "";
@@ -180,6 +237,20 @@ void SetLoopCount(unsigned int loops) {
 }
 
 void Seek(unsigned int sec, unsigned int ms) {
+  if (isKSS && gKssPlay) {
+    UINT64 totalMs = (UINT64)sec * 1000 + (UINT64)ms;
+    UINT32 sample = (UINT32)((totalMs * gSampleRate) / 1000);
+    KSSPLAY_reset(gKssPlay, gKssTrackIndex, 0);
+    const UINT32 CHUNK = 4096;
+    UINT32 remaining = sample;
+    while (remaining > 0) {
+      UINT32 toCalc = (remaining > CHUNK) ? CHUNK : remaining;
+      KSSPLAY_calc_silent(gKssPlay, toCalc);
+      remaining -= toCalc;
+    }
+    gKssSamplePos = sample;
+    return;
+  }
   if (!player)
     return;
   player->Seek(sec, ms);
@@ -213,6 +284,62 @@ int OpenVGMFile(const char *path) {
     return 1;
   }
 
+  if (isKssFormatPath(lowerPath)) {
+    DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
+    if (!kssLoader) {
+      return 0;
+    }
+    if (DataLoader_Load(kssLoader)) {
+      DataLoader_Deinit(kssLoader);
+      return 0;
+    }
+    const UINT8 *fileData = DataLoader_GetData(kssLoader);
+    UINT32 fileSize = DataLoader_GetSize(kssLoader);
+    if (!fileData || fileSize == 0) {
+      DataLoader_Deinit(kssLoader);
+      return 0;
+    }
+    const char *filename = strrchr(basePath.c_str(), '/');
+    filename = filename ? filename + 1 : basePath.c_str();
+
+    gKss = KSS_bin2kss(const_cast<UINT8 *>(fileData), fileSize, filename);
+    if (!gKss) {
+      DataLoader_Deinit(kssLoader);
+      return 0;
+    }
+    gKssPlay = KSSPLAY_new(gSampleRate, 2, 16);
+    if (!gKssPlay) {
+      KSS_delete(gKss);
+      gKss = nullptr;
+      DataLoader_Deinit(kssLoader);
+      return 0;
+    }
+    KSSPLAY_set_data(gKssPlay, gKss);
+    // Enable higher-quality rendering for libkss devices
+    KSSPLAY_set_device_quality(gKssPlay, KSS_DEVICE_PSG, 1);
+    KSSPLAY_set_device_quality(gKssPlay, KSS_DEVICE_SCC, 1);
+    KSSPLAY_set_device_quality(gKssPlay, KSS_DEVICE_OPLL, 1);
+    KSSPLAY_set_device_quality(gKssPlay, KSS_DEVICE_OPL, 1);
+
+    int trkMin = gKss->trk_min;
+    int trkMax = gKss->trk_max;
+    if (trkMax < trkMin) {
+      trkMin = 0;
+      trkMax = 0;
+    }
+    int trackNum = trkMin + trackIndex;
+    if (trackNum < trkMin)
+      trackNum = trkMin;
+    if (trackNum > trkMax)
+      trackNum = trkMax;
+    gKssTrackIndex = trackNum;
+    KSSPLAY_reset(gKssPlay, gKssTrackIndex, 0);
+    gKssSamplePos = 0;
+    isKSS = true;
+    DataLoader_Deinit(kssLoader);
+    return 1;
+  }
+
   if (lowerPath.size() > 4 &&
       (lowerPath.find(".spc") != std::string::npos ||
        lowerPath.find(".nsf") != std::string::npos ||
@@ -220,7 +347,6 @@ int OpenVGMFile(const char *path) {
        lowerPath.find(".gbs") != std::string::npos ||
        lowerPath.find(".gym") != std::string::npos ||
        lowerPath.find(".hes") != std::string::npos ||
-       lowerPath.find(".kss") != std::string::npos ||
        lowerPath.find(".sap") != std::string::npos ||
        lowerPath.find(".ay") != std::string::npos)) {
     gme_err_t err = gme_open_file(basePath.c_str(), &gmeEmu, (int)gSampleRate);
@@ -297,6 +423,9 @@ void StopVGM(void) {
 }
 
 int VGMEnded(void) {
+  if (isKSS) {
+    return gKssPlay ? (KSSPLAY_get_stop_flag(gKssPlay) ? 1 : 0) : 1;
+  }
   if (isGME) {
     return gmeEmu ? (gme_track_ended(gmeEmu) ? 1 : 0) : 1;
   }
@@ -309,6 +438,17 @@ int VGMEnded(void) {
 }
 
 int GetTrackLength(void) {
+  if (isKSS) {
+    if (gKss && gKss->info && gKss->info_num > 0) {
+      for (uint16_t i = 0; i < gKss->info_num; i++) {
+        if (gKss->info[i].song == gKssTrackIndex &&
+            gKss->info[i].time_in_ms > 0) {
+          return (int)((uint64_t)gKss->info[i].time_in_ms * 44.1);
+        }
+      }
+    }
+    return 0;
+  }
   if (isGME) {
     return gmeLengthMs > 0 ? (int)(gmeLengthMs * 44.1) : 0;
   }
@@ -352,7 +492,6 @@ int GetTrackLengthDirect(const char *path) {
       lowerPath.find(".gbs") != std::string::npos ||
       lowerPath.find(".gym") != std::string::npos ||
       lowerPath.find(".hes") != std::string::npos ||
-      lowerPath.find(".kss") != std::string::npos ||
       lowerPath.find(".sap") != std::string::npos ||
       lowerPath.find(".ay") != std::string::npos) {
     Music_Emu *emu = nullptr;
@@ -372,6 +511,48 @@ int GetTrackLengthDirect(const char *path) {
       gme_free_info(info);
     gme_delete(emu);
     return (int)(lengthMs * 44.1);
+  }
+
+  if (isKssFormatPath(lowerPath)) {
+    DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
+    if (!kssLoader)
+      return 0;
+    if (DataLoader_Load(kssLoader)) {
+      DataLoader_Deinit(kssLoader);
+      return 0;
+    }
+    const UINT8 *fileData = DataLoader_GetData(kssLoader);
+    UINT32 fileSize = DataLoader_GetSize(kssLoader);
+    if (!fileData || fileSize == 0) {
+      DataLoader_Deinit(kssLoader);
+      return 0;
+    }
+    const char *filename = strrchr(basePath.c_str(), '/');
+    filename = filename ? filename + 1 : basePath.c_str();
+    KSS *kss = KSS_bin2kss(const_cast<UINT8 *>(fileData), fileSize, filename);
+    if (!kss) {
+      DataLoader_Deinit(kssLoader);
+      return 0;
+    }
+    int trkMin = kss->trk_min;
+    int trkMax = kss->trk_max;
+    int trackNum = trkMin + trackIndex;
+    if (trackNum < trkMin)
+      trackNum = trkMin;
+    if (trackNum > trkMax)
+      trackNum = trkMax;
+    int lengthMs = 0;
+    if (kss->info && kss->info_num > 0) {
+      for (uint16_t i = 0; i < kss->info_num; i++) {
+        if (kss->info[i].song == trackNum && kss->info[i].time_in_ms > 0) {
+          lengthMs = kss->info[i].time_in_ms;
+          break;
+        }
+      }
+    }
+    KSS_delete(kss);
+    DataLoader_Deinit(kssLoader);
+    return lengthMs > 0 ? (int)((uint64_t)lengthMs * 44.1) : 0;
   }
 
   DATA_LOADER *locLoader = FileLoader_Init(path);
@@ -442,13 +623,60 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     return "";
   }
 
+  if (isKssFormatPath(lowerPath)) {
+    DATA_LOADER *kssLoader = FileLoader_Init(path);
+    if (!kssLoader)
+      return "";
+    if (DataLoader_Load(kssLoader)) {
+      DataLoader_Deinit(kssLoader);
+      return "";
+    }
+    const UINT8 *fileData = DataLoader_GetData(kssLoader);
+    UINT32 fileSize = DataLoader_GetSize(kssLoader);
+    if (!fileData || fileSize == 0) {
+      DataLoader_Deinit(kssLoader);
+      return "";
+    }
+    const char *filename = strrchr(basePath.c_str(), '/');
+    filename = filename ? filename + 1 : basePath.c_str();
+    KSS *kss = KSS_bin2kss(const_cast<UINT8 *>(fileData), fileSize, filename);
+    if (!kss) {
+      DataLoader_Deinit(kssLoader);
+      return "";
+    }
+    const char *title = KSS_get_title(kss);
+    int trkMin = kss->trk_min;
+    int trkMax = kss->trk_max;
+    int trackNum = trkMin + trackIndex;
+    if (trackNum < trkMin)
+      trackNum = trkMin;
+    if (trackNum > trkMax)
+      trackNum = trkMax;
+    const char *trackTitle = kssTrackTitle(kss, trackNum);
+    static char tagResult[256];
+    tagResult[0] = '\0';
+    if (tagIndex == 0) {
+      const char *useTitle = (trackTitle && trackTitle[0]) ? trackTitle : title;
+      strncpy(tagResult, useTitle ? useTitle : "", 255);
+      tagResult[255] = '\0';
+    } else if (tagIndex == 2) {
+      strncpy(tagResult, title ? title : "", 255);
+      tagResult[255] = '\0';
+    } else if (tagIndex == 4) {
+      strncpy(tagResult, kssSystemName(kss->mode), 255);
+      tagResult[255] = '\0';
+    }
+    KSS_delete(kss);
+    DataLoader_Deinit(kssLoader);
+    return tagResult;
+  }
+
   if (lowerPath.find(".spc") != std::string::npos ||
       lowerPath.find(".nsf") != std::string::npos ||
       lowerPath.find(".nsfe") != std::string::npos ||
       lowerPath.find(".gbs") != std::string::npos ||
       lowerPath.find(".gym") != std::string::npos ||
       lowerPath.find(".hes") != std::string::npos ||
-      lowerPath.find(".kss") != std::string::npos ||
       lowerPath.find(".sap") != std::string::npos ||
       lowerPath.find(".ay") != std::string::npos) {
     Music_Emu *emu = nullptr;
@@ -478,6 +706,22 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;
+
+  if (isKSS) {
+    if (!gKssPlay) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    std::vector<INT16> tmp(n * 2);
+    KSSPLAY_calc(gKssPlay, tmp.data(), n);
+    gKssSamplePos += (uint64_t)n;
+    for (int i = 0; i < n; i++) {
+      left[i] = (float)(tmp[i * 2] / 32768.0f);
+      right[i] = (float)(tmp[i * 2 + 1] / 32768.0f);
+    }
+    return;
+  }
 
   if (isGME) {
     if (!gmeEmu) {
@@ -633,6 +877,33 @@ char *ShowTitle(void) {
     titleBuf = strdup(s.c_str());
     return titleBuf;
   }
+  if (isKSS) {
+    if (!gKss)
+      return nullptr;
+    const char *title = KSS_get_title(gKss);
+    const char *trackTitle = kssTrackTitle(gKss, gKssTrackIndex);
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      if (i == 0) {
+        const char *useTitle =
+            (trackTitle && trackTitle[0]) ? trackTitle : title;
+        s += (useTitle ? useTitle : "");
+      } else if (i == 2) {
+        s += (title ? title : "");
+      } else if (i == 4) {
+        s += kssSystemName(gKss->mode);
+      }
+      else
+        s += "";
+      s += "|||";
+    }
+
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
   if (isGME) {
     if (!gmeEmu)
       return nullptr;
@@ -768,6 +1039,165 @@ int GetGMETrackCountDirect(const char *path) {
   int count = gme_track_count(emu);
   gme_delete(emu);
   return count;
+}
+
+int GetKSSTrackCountDirect(const char *path) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return 0;
+  std::string lowerPath = basePath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+  if (!isKssFormatPath(lowerPath))
+    return 0;
+  DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
+  if (!kssLoader)
+    return 0;
+  if (DataLoader_Load(kssLoader)) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  const UINT8 *fileData = DataLoader_GetData(kssLoader);
+  UINT32 fileSize = DataLoader_GetSize(kssLoader);
+  if (!fileData || fileSize == 0) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  const char *filename = strrchr(basePath.c_str(), '/');
+  filename = filename ? filename + 1 : basePath.c_str();
+  KSS *kss = KSS_bin2kss(const_cast<UINT8 *>(fileData), fileSize, filename);
+  if (!kss) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  int count = kss->trk_max - kss->trk_min + 1;
+  if (count < 1)
+    count = 1;
+  KSS_delete(kss);
+  DataLoader_Deinit(kssLoader);
+  return count;
+}
+
+int GetKSSTrackMinDirect(const char *path) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return 0;
+  std::string lowerPath = basePath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+  if (!isKssFormatPath(lowerPath))
+    return 0;
+  DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
+  if (!kssLoader)
+    return 0;
+  if (DataLoader_Load(kssLoader)) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  const UINT8 *fileData = DataLoader_GetData(kssLoader);
+  UINT32 fileSize = DataLoader_GetSize(kssLoader);
+  if (!fileData || fileSize == 0) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  const char *filename = strrchr(basePath.c_str(), '/');
+  filename = filename ? filename + 1 : basePath.c_str();
+  KSS *kss = KSS_bin2kss(const_cast<UINT8 *>(fileData), fileSize, filename);
+  if (!kss) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  int trkMin = kss->trk_min;
+  KSS_delete(kss);
+  DataLoader_Deinit(kssLoader);
+  return trkMin;
+}
+
+int GetKSSTrackMaxDirect(const char *path) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return 0;
+  std::string lowerPath = basePath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+  if (!isKssFormatPath(lowerPath))
+    return 0;
+  DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
+  if (!kssLoader)
+    return 0;
+  if (DataLoader_Load(kssLoader)) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  const UINT8 *fileData = DataLoader_GetData(kssLoader);
+  UINT32 fileSize = DataLoader_GetSize(kssLoader);
+  if (!fileData || fileSize == 0) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  const char *filename = strrchr(basePath.c_str(), '/');
+  filename = filename ? filename + 1 : basePath.c_str();
+  KSS *kss = KSS_bin2kss(const_cast<UINT8 *>(fileData), fileSize, filename);
+  if (!kss) {
+    DataLoader_Deinit(kssLoader);
+    return 0;
+  }
+  int trkMax = kss->trk_max;
+  KSS_delete(kss);
+  DataLoader_Deinit(kssLoader);
+  return trkMax;
+}
+
+const char *GetKSSTrackNameDirect(const char *path, int trackIndex) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return "";
+  std::string lowerPath = basePath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+  if (!isKssFormatPath(lowerPath))
+    return "";
+  DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
+  if (!kssLoader)
+    return "";
+  if (DataLoader_Load(kssLoader)) {
+    DataLoader_Deinit(kssLoader);
+    return "";
+  }
+  const UINT8 *fileData = DataLoader_GetData(kssLoader);
+  UINT32 fileSize = DataLoader_GetSize(kssLoader);
+  if (!fileData || fileSize == 0) {
+    DataLoader_Deinit(kssLoader);
+    return "";
+  }
+  const char *filename = strrchr(basePath.c_str(), '/');
+  filename = filename ? filename + 1 : basePath.c_str();
+  KSS *kss = KSS_bin2kss(const_cast<UINT8 *>(fileData), fileSize, filename);
+  if (!kss) {
+    DataLoader_Deinit(kssLoader);
+    return "";
+  }
+  int trkMin = kss->trk_min;
+  int trkMax = kss->trk_max;
+  int trackNum = trkMin + trackIndex;
+  if (trackNum < trkMin)
+    trackNum = trkMin;
+  if (trackNum > trkMax)
+    trackNum = trkMax;
+  static char nameBuf[256];
+  nameBuf[0] = '\0';
+  const char *trackTitle = kssTrackTitle(kss, trackNum);
+  if (trackTitle && trackTitle[0]) {
+    strncpy(nameBuf, trackTitle, 255);
+    nameBuf[255] = '\0';
+  }
+  KSS_delete(kss);
+  DataLoader_Deinit(kssLoader);
+  return nameBuf;
 }
 
 const char *GetGMETrackNameDirect(const char *path, int trackIndex) {

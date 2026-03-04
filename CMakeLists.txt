@@ -19,6 +19,7 @@ add_subdirectory(modules/sexypsf)
 set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
 set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
 add_subdirectory(modules/game-music-emu)
+add_subdirectory(modules/libkss)
 
 # Main Executable
 add_executable(vgmplay-js src/vgmplay_glue.cpp)
@@ -27,6 +28,8 @@ add_executable(vgmplay-js src/vgmplay_glue.cpp)
 # Note: vgm-player depends on vgm-emu and vgm-utils
 target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf)
 target_link_libraries(vgmplay-js gme::gme)
+target_link_libraries(vgmplay-js kss)
+target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
 
 # Include directories (glue code needs headers)
 target_include_directories(vgmplay-js PRIVATE 
@@ -35,6 +38,9 @@ target_include_directories(vgmplay-js PRIVATE
     modules/libvgm/emu
     modules/sexypsf
     modules/game-music-emu/gme
+    modules/libkss/src
+    modules/libkss/src/kss
+    modules/libkss/modules
 )
 
 # Exported functions
@@ -51,6 +57,10 @@ set(VGMPLAY_EXPORTS
     "'_GetTrackLengthDirect'"
     "'_GetGMETrackCountDirect'"
     "'_GetGMETrackNameDirect'"
+    "'_GetKSSTrackCountDirect'"
+    "'_GetKSSTrackMinDirect'"
+    "'_GetKSSTrackMaxDirect'"
+    "'_GetKSSTrackNameDirect'"
     "'_GetVGMTagDirect'"
     "'_GetLoopPoint'"
     "'_FillBuffer2'"

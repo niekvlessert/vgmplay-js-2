@@ -2289,6 +2289,18 @@ class VGMPlay_js {
 		if (this.VGMEnded()) {
 			if (!this.emulatorFinished) {
 				this.emulatorFinished = true;
+				if (this.loopMode === 1 && this.currentTrackSupportsLoop) {
+					const list = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList : null;
+					const entry = list && list[this.currentFileKey];
+					if (entry && entry.filepath && !this._loopRestarting) {
+						this._loopRestarting = true;
+						setTimeout(async () => {
+							await this.playFileFromFS(false, entry.filepath, this.games.indexOf(this.activeGame) + 1, this.currentFileKey);
+							this._loopRestarting = false;
+						}, 0);
+					}
+					return;
+				}
 				this.stop();
 				setTimeout(() => {
 					if (this.loopMode === 1 && !this.currentTrackSupportsLoop) {
@@ -2659,6 +2671,18 @@ VGMPlay_js.prototype._checkTrackEnd = function () {
 
 	// Check for end of track
 	if (!this.isPlaybackPaused && currentSample >= this.totalSampleCount) {
+		if (this.loopMode === 1 && this.currentTrackSupportsLoop) {
+			const list = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList : null;
+			const entry = list && list[this.currentFileKey];
+			if (entry && entry.filepath && !this._loopRestarting) {
+				this._loopRestarting = true;
+				setTimeout(async () => {
+					await this.playFileFromFS(false, entry.filepath, this.games.indexOf(this.activeGame) + 1, this.currentFileKey);
+					this._loopRestarting = false;
+				}, 0);
+			}
+			return;
+		}
 		this.stop();
 		// Small delay to let the user "see" the end
 		setTimeout(() => {
@@ -2762,12 +2786,22 @@ VGMPlay_js.prototype._setLoopButtonState = function () {
 };
 
 VGMPlay_js.prototype._trackSupportsLoop = function () {
+	const isKss = () => {
+		if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
+		const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
+		if (!path) return false;
+		const clean = path.toLowerCase().split('|track=')[0];
+		return clean.endsWith('.kss') || clean.endsWith('.kssx') || clean.endsWith('.kscc') ||
+			clean.endsWith('.mgs') || clean.endsWith('.bgm') || clean.endsWith('.opx') ||
+			clean.endsWith('.mpk') || clean.endsWith('.mbm');
+	};
 	if (this.GetLoopPoint) {
 		try {
-			return this.GetLoopPoint() > 0;
+			if (this.GetLoopPoint() > 0) return true;
 		} catch (e) { }
 	}
-	return false;
+	// KSS doesn't expose loop points; allow software looping
+	return isKss();
 };
 
 	VGMPlay_js.prototype._applyLoopMode = function () {

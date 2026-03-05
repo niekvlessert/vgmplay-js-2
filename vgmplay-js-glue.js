@@ -56,7 +56,8 @@ class VGMPlay_js {
 		this.zipURLPending = [];
 		this._isLoadingFile = false;
 		this._loadLock = Promise.resolve();
-		this.autoDownloadLimit = 10;
+		// No auto-download cap in full standalone mode (desktop or mobile)
+		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
 		this.autoDownloadCount = 0;
 		this.autoOverflowURLs = [];
 		this.noPlayableNotices = [];

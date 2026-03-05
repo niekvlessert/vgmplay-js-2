@@ -2250,7 +2250,9 @@ class VGMPlay_js {
 	}
 
 	play() {
-		document.getElementById("buttonTogglePlayback").innerHTML = "||";
+		if (this.buttonTogglePlayback) {
+			this.buttonTogglePlayback.innerHTML = "||";
+		}
 		if (window.Android) window.Android.updatePlaybackState(true);
 		this.samplesGenerated = 0;
 		this.isPlaybackPaused = false;
@@ -2315,13 +2317,17 @@ class VGMPlay_js {
 		}
 
 		// Start spectrum analyser animation
-		this._startSpectrumAnimation();
+		if (!this.useAsLibrary) {
+			this._startSpectrumAnimation();
+		}
 	}
 
 	pause() {
 		this.isPlaybackPaused = true;
 		if (window.Android) window.Android.updatePlaybackState(false);
-		this.buttonTogglePlayback.innerHTML = "&#9654;"
+		if (this.buttonTogglePlayback) {
+			this.buttonTogglePlayback.innerHTML = "&#9654;";
+		}
 		if (this.isMobile) {
 			this._setMobileView('ui');
 		}
@@ -2339,11 +2345,15 @@ class VGMPlay_js {
 			this.context.suspend();
 		}
 
-		this._stopSpectrumAnimation();
+		if (!this.useAsLibrary) {
+			this._stopSpectrumAnimation();
+		}
 	}
 
 	stop() {
-		this.buttonTogglePlayback.innerHTML = "&#9654;";
+		if (this.buttonTogglePlayback) {
+			this.buttonTogglePlayback.innerHTML = "&#9654;";
+		}
 		if (window.Android) window.Android.updatePlaybackState(false);
 		if (this.isMobile) {
 			this._setMobileView('ui');
@@ -2753,96 +2763,12 @@ VGMPlay_js.prototype._setupTooltips = function () {
 	});
 };
 
-VGMPlay_js.prototype.playTrack = async function (url, trackIndex = 0, loopCount = 0) {
-	const isArchive = /\.(zip|7z)$/i.test(url.split('?')[0].split('#')[0]);
-
-	if (isArchive) {
-		return this.playZipTrack(url, trackIndex, loopCount);
-	} else {
-		// Individual file support
-		const fsPath = await this.loadVGMFromURL(url);
-		if (fsPath) {
-			this._loopCount = loopCount;
-			if (this.SetLoopCount) {
-				this.SetLoopCount(loopCount);
-			}
-			// Use track suffix for formats like NSF, SPC if needed (the C++ engine parses it)
-			const trackPath = trackIndex > 0 ? `${fsPath}|track=${trackIndex}` : fsPath;
-
-			// We skip setting this.activeGame as it's a standalone file
-			await this.playFileFromFS(false, trackPath, null, null);
-		} else {
-			console.error("Failed to load direct track:", url);
-		}
-	}
-};
-
-VGMPlay_js.prototype.playZipTrack = async function (zipUrl, trackIndex, loopCount = 0) {
-	const parts = zipUrl.split('/');
-	const filename = parts[parts.length - 1];
-	const gameNameBase = filename.replace(/\.(zip|7z)$/i, '');
-
-	let targetGame = this.games.find(g => g.name === filename || (g.files && g.files.some(f => f.filepath && f.filepath.includes(gameNameBase))));
-
-	if (!targetGame) {
-		const targetLoadCount = this.amountOfGamesLoaded + 1;
-		this.loadZIPWithVGMFromURL(zipUrl, true);
-		await new Promise(resolve => {
-			const check = () => {
-				if (this.amountOfGamesLoaded >= targetLoadCount) resolve();
-				else setTimeout(check, 100);
-			};
-			check();
-		});
-		targetGame = this.games.find(g => g.name === filename || (g.files && g.files.some(f => f.filepath && f.filepath.includes(gameNameBase))));
-	}
-
-	if (targetGame && targetGame.files) {
-		// Collect only playable files to map the index
-		const playableFiles = [];
-		for (let i = 0; i < targetGame.files.length; i++) {
-			if (this.isPlayable(targetGame.files[i].filepath.toLowerCase())) {
-				playableFiles.push({ file: targetGame.files[i], originalIndex: i });
-			}
-		}
-
-		if (playableFiles.length > trackIndex) {
-			const gameIndex = this.games.indexOf(targetGame);
-			const targetFileDef = playableFiles[trackIndex];
-			this._loopCount = loopCount;
-			if (this.SetLoopCount) {
-				this.SetLoopCount(loopCount);
-			}
-			await this.playFileFromFS(false, targetFileDef.file.filepath, gameIndex + 1, targetFileDef.originalIndex);
-		} else {
-			console.error("Track index out of bounds among playable files: ", zipUrl, trackIndex);
-		}
-	} else {
-		console.error("Track/Game not found: ", zipUrl, trackIndex);
-	}
-};
-
-VGMPlay_js.prototype.pauseTrack = function () {
-	this.pause();
-};
-
-VGMPlay_js.prototype.resumeTrack = function () {
-	this.play();
-};
-
-VGMPlay_js.prototype.stopTrack = function () {
-	this.stop();
-};
-
-if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id)) {
+if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id)) {
 	const scriptEl = document.currentScript;
 	const data = scriptEl ? scriptEl.dataset : {};
 	const options = {};
 	if (data && typeof data.standalone !== 'undefined') {
 		options.standalone = data.standalone;
-	}
-	if (data && typeof data.library !== 'undefined') {
-		options.library = data.library;
 	}
 	var vgmplay_js = new VGMPlay_js(options);
 	window.vgmPlayInstance = vgmplay_js;

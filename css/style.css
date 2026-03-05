@@ -187,7 +187,7 @@
 .vgmplayContainer.vgmplayStandalone .vgmplayControls {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
   justify-content: center;
 }
@@ -250,7 +250,7 @@
   line-height: 1.1;
   border-radius: 10px;
   width: 266px;
-  min-height: 20px;
+  min-height: 125px;
   height: auto;
   padding: 5px;
   color: white;
@@ -268,7 +268,7 @@
   background: #2a2a2a 0 0 repeat;
   border-radius: 10px;
   width: 266px;
-  padding: 5px;
+  padding: 3px;
   color: white;
   overflow: hidden;
   text-align: center;
@@ -419,7 +419,9 @@
   border: 1px solid #666;
   border-radius: 3px;
   cursor: pointer;
-  min-width: 25px;
+  min-width: 20px;
+  padding: 1px 3px;
+  font-size: 10px;
 }
 
 .vgmplayContainer .vgmplayPlayerWindow button.active {
@@ -432,6 +434,12 @@
   background: #0066ff !important;
   color: white !important;
   border-color: #0066ff !important;
+}
+
+.vgmplayContainer.vgmplayMobile .vgmplayPlayerWindow button {
+  min-width: 26px;
+  padding: 3px 6px;
+  font-size: 12px;
 }
 
 .vgmplayContainer .vgmplaySpectrum {

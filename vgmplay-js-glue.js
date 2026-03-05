@@ -30,6 +30,8 @@ class VGMPlay_js {
 		this.reverbEnabled = false;
 		this.isRandomEnabled = false;
 		this.randomMode = 0; // 0=off,1=game,2=all
+		this.loopMode = 0; // 0=off,1=track,2=game
+		this.currentTrackSupportsLoop = false;
 		this.games = [];
 		this.activeGame = "";
 		this.amountOfGamesLoaded = 0;
@@ -375,6 +377,9 @@ class VGMPlay_js {
 		Mousetrap.bind('z', (e) => {
 			this.toggleDisplayZipFileListWindow();
 		});
+		Mousetrap.bind('l', (e) => {
+			this.toggleLoopMode();
+		});
 	}
 
 	_bindScrollProxy(el) {
@@ -488,6 +493,7 @@ class VGMPlay_js {
 				<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
 				<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
 				<button id="btnRandom" onclick="vgmplay_js.toggleRandomScope()">R</button>
+				<button id="btnLoop" onclick="vgmplay_js.toggleLoopMode()">L</button>
 				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
 				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
 			</div>
@@ -497,6 +503,7 @@ class VGMPlay_js {
 		this.btnBass = document.getElementById('btnBass');
 		this.btnReverb = document.getElementById('btnReverb');
 		this.btnRandom = document.getElementById('btnRandom');
+		this.btnLoop = document.getElementById('btnLoop');
 		this.btnLibrary = document.getElementById('btnLibrary');
 
 		// Create progress bar
@@ -1802,6 +1809,8 @@ class VGMPlay_js {
 				if (window.Android) window.Android.updateMetadata(gameName + " - " + unescape(trackName), this.trackLengthSeconds * 1000);
 
 				//console.log("ChipInfoString: " + this.GetChipInfoString());
+				this.currentTrackSupportsLoop = this._trackSupportsLoop();
+				this._applyLoopMode();
 				this._updateHighlight();
 			} finally {
 				this._isLoadingFile = false;
@@ -2282,7 +2291,14 @@ class VGMPlay_js {
 				this.emulatorFinished = true;
 				this.stop();
 				setTimeout(() => {
-					if (this.isRandomEnabled) this.playRandom();
+					if (this.loopMode === 1 && !this.currentTrackSupportsLoop) {
+						this.loopMode = 0;
+						this._applyLoopMode();
+						this.changeTrack("next");
+						return;
+					}
+					if (this.loopMode === 2) this._changeTrackInGame('next');
+					else if (this.isRandomEnabled) this.playRandom();
 					else this.changeTrack("next");
 				}, 100);
 			}
@@ -2620,9 +2636,8 @@ VGMPlay_js.prototype._checkTrackEnd = function () {
 
 	this.visualSamplePosition = currentSample;
 
-	// If the track is set to loop indefinitely (0), keep playing
-	// (the engine will seamlessly loop audio, we just need to prevent the UI/JS from stopping it)
-	if (this._loopCount === 0) {
+	// If loop mode is track and the track supports looping, keep playing
+	if (this.loopMode === 1 && this.currentTrackSupportsLoop) {
 		// We can optionally reset visual progress or just let it pin to 100%
 		return;
 	}
@@ -2647,7 +2662,14 @@ VGMPlay_js.prototype._checkTrackEnd = function () {
 		this.stop();
 		// Small delay to let the user "see" the end
 		setTimeout(() => {
-			if (this.isRandomEnabled) this.playRandom();
+			if (this.loopMode === 1 && !this.currentTrackSupportsLoop) {
+				this.loopMode = 0;
+				this._applyLoopMode();
+				this.changeTrack("next");
+				return;
+			}
+			if (this.loopMode === 2) this._changeTrackInGame('next');
+			else if (this.isRandomEnabled) this.playRandom();
 			else this.changeTrack("next");
 		}, 100);
 	}
@@ -2733,6 +2755,59 @@ VGMPlay_js.prototype.toggleRandomScope = function () {
 	}
 };
 
+VGMPlay_js.prototype._setLoopButtonState = function () {
+	if (!this.btnLoop) return;
+	this.btnLoop.classList.toggle('active', this.loopMode === 1);
+	this.btnLoop.classList.toggle('blue-active', this.loopMode === 2);
+};
+
+VGMPlay_js.prototype._trackSupportsLoop = function () {
+	if (this.GetLoopPoint) {
+		try {
+			return this.GetLoopPoint() > 0;
+		} catch (e) { }
+	}
+	return false;
+};
+
+	VGMPlay_js.prototype._applyLoopMode = function () {
+		if (this.loopMode === 1) {
+			this._loopCount = 0;
+			if (this.SetLoopCount) this.SetLoopCount(0);
+			if (this.progressContainer) this.progressContainer.style.display = 'none';
+		} else {
+			this._loopCount = 1;
+			if (this.SetLoopCount) this.SetLoopCount(1);
+			if (this.progressContainer) this.progressContainer.style.display = '';
+		}
+		this._setLoopButtonState();
+	};
+
+VGMPlay_js.prototype.toggleLoopMode = function () {
+	this.loopMode = (this.loopMode + 1) % 3;
+	this._applyLoopMode();
+
+	if (this.loopMode === 1) {
+		this.currentTrackSupportsLoop = this._trackSupportsLoop();
+	}
+};
+
+VGMPlay_js.prototype._changeTrackInGame = async function (action) {
+	if (!this.activeGame) return;
+	const list = (this.activeGame.playableList && this.activeGame.playableList.length)
+		? this.activeGame.playableList
+		: (this.activeGame.files || []).filter(f => f && f.filepath && this.isPlayable(f.filepath))
+			.map(f => ({ filepath: f.filepath, linkElement: f.linkElement }));
+	if (!list.length) return;
+
+	if (action === 'next') {
+		this.currentFileKey = (this.currentFileKey + 1) % list.length;
+	} else {
+		this.currentFileKey = (this.currentFileKey - 1 + list.length) % list.length;
+	}
+	await this.playFileFromFS(false, list[this.currentFileKey].filepath, this.games.indexOf(this.activeGame) + 1, this.currentFileKey);
+};
+
 VGMPlay_js.prototype.playRandom = function () {
 	if (this.games.length === 0) return;
 	let gameIndex = 0;
@@ -2787,6 +2862,7 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'B': 'Bass Boost',
 		'V': 'Reverb',
 		'R': 'Shuffle game/all',
+		'L': 'Loop track/game (L)',
 		'Z': 'Toggle Float/Library'
 	};
 

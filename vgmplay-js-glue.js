@@ -685,6 +685,19 @@ class VGMPlay_js {
 				}
 			}
 
+			// Show file format as last info line
+			if (this.currentFileKey !== "" && this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
+				const path = this.activeGame.playableList[this.currentFileKey].filepath || "";
+				const clean = path.split('|track=')[0];
+				const dot = clean.lastIndexOf('.');
+				if (dot >= 0) {
+					const ext = clean.substring(dot + 1).toUpperCase();
+					if (ext) {
+						this.titleWindow.innerHTML += "Format: " + ext + "<br/>";
+					}
+				}
+			}
+
 			// Display chips with volume sliders as the last entry of the top frame
 			const chipCount = this.GetDeviceCount ? this.GetDeviceCount() : 0;
 			if (chipCount > 0) {
@@ -1523,11 +1536,7 @@ class VGMPlay_js {
 				gameWrap.appendChild(document.createElement("br"));
 			} else {
 				// No logo, add spacer and game name placeholder
-				if (this.games.length > 1 && gameIndex > 1) {
-					const spacer = document.createElement("div");
-					spacer.className = "game-spacer";
-					gameWrap.appendChild(spacer);
-				}
+				// No spacer; keep spacing minimal for text-only entries
 
 				const placeholder = document.createElement("div");
 				placeholder.className = "game-name-placeholder";

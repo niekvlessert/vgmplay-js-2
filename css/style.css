@@ -250,7 +250,7 @@
   line-height: 1.1;
   border-radius: 10px;
   width: 266px;
-  min-height: 125px;
+  min-height: 20px;
   height: auto;
   padding: 5px;
   color: white;
@@ -517,8 +517,8 @@
   font-weight: bold;
   color: #00ff66;
   text-align: center;
-  padding: 20px 10px;
-  margin: 10px 0;
+  padding: 8px 10px;
+  margin: 6px 0;
   border-bottom: 1px solid rgba(0, 255, 102, 0.3);
   text-transform: uppercase;
   letter-spacing: 1px;

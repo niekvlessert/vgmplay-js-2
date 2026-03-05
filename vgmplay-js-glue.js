@@ -677,8 +677,8 @@ class VGMPlay_js {
 			}
 
 			// For PSF files, add System: Playstation as last info line
-			if (this.currentFileKey !== "" && this.activeGame && this.activeGame.files && this.activeGame.files[this.currentFileKey]) {
-				const path = this.activeGame.files[this.currentFileKey].filepath || "";
+			if (this.currentFileKey !== "" && this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
+				const path = this.activeGame.playableList[this.currentFileKey].filepath || "";
 				const lower = path.toLowerCase();
 				if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
 					this.titleWindow.innerHTML += "System: Playstation<br/>";
@@ -1500,6 +1500,8 @@ class VGMPlay_js {
 		const gameIndex = this.games.indexOf(game) + 1;
 
 		if (this.zipFileListWindow) {
+			const playableList = [];
+			game.playableList = playableList;
 			const fragment = document.createDocumentFragment();
 			const gameWrap = document.createElement('div');
 			gameWrap.className = 'vgmplayGame';
@@ -1511,7 +1513,11 @@ class VGMPlay_js {
 				const img = new Image();
 				img.src = url;
 				img.style.width = '256px';
-				img.style.height = '212px';
+				img.style.height = 'auto';
+				img.style.objectFit = 'contain';
+				img.style.background = '#000';
+				img.style.maxHeight = '212px';
+				img.style.display = 'block';
 				img.className = 'vgmplayGameToggle';
 				gameWrap.appendChild(img);
 				gameWrap.appendChild(document.createElement("br"));
@@ -1582,7 +1588,9 @@ class VGMPlay_js {
 
 									const a = document.createElement("a");
 									a.className = "vgmplayTrack";
-									a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, key);
+									const playableIndex = playableList.length;
+									a.dataset.playableIndex = playableIndex;
+									a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, playableIndex);
 
 									const nameSpan = document.createElement("span");
 									nameSpan.className = "track-name";
@@ -1596,6 +1604,7 @@ class VGMPlay_js {
 									a.appendChild(lengthSpan);
 
 									trackContainer.appendChild(a);
+									playableList.push({ filepath: trackPath, linkElement: a, lengthSec: trackLengthSeconds, title: nameSpan.textContent });
 								}
 								continue;
 							}
@@ -1627,7 +1636,9 @@ class VGMPlay_js {
 
 									const a = document.createElement("a");
 									a.className = "vgmplayTrack";
-									a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, key);
+									const playableIndex = playableList.length;
+									a.dataset.playableIndex = playableIndex;
+									a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, playableIndex);
 									if (entry.title) a.dataset.trackTitle = entry.title;
 									if (trackLengthSeconds) a.dataset.trackLengthSec = trackLengthSeconds;
 
@@ -1642,6 +1653,7 @@ class VGMPlay_js {
 									a.appendChild(lengthSpan);
 
 									trackContainer.appendChild(a);
+									playableList.push({ filepath: trackPath, linkElement: a, lengthSec: trackLengthSeconds, title: nameSpan.textContent });
 								}
 								continue;
 							} else {
@@ -1656,7 +1668,9 @@ class VGMPlay_js {
 
 										const a = document.createElement("a");
 										a.className = "vgmplayTrack";
-										a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, key);
+										const playableIndex = playableList.length;
+										a.dataset.playableIndex = playableIndex;
+										a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, playableIndex);
 
 										const nameSpan = document.createElement("span");
 										nameSpan.className = "track-name";
@@ -1670,6 +1684,7 @@ class VGMPlay_js {
 										a.appendChild(lengthSpan);
 
 										trackContainer.appendChild(a);
+										playableList.push({ filepath: trackPath, linkElement: a, lengthSec: trackLengthSeconds, title: nameSpan.textContent });
 									}
 									continue;
 								}
@@ -1683,8 +1698,10 @@ class VGMPlay_js {
 
 						const a = document.createElement("a");
 						a.className = "vgmplayTrack";
-						a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, key);
-						files[key].linkElement = a; // Store reference for highlighting
+						const playableIndex = playableList.length;
+						a.dataset.playableIndex = playableIndex;
+						a.onclick = () => this.playFileFromFS(a, fullPath, gameIndex, playableIndex);
+						files[key].linkElement = a; // legacy reference
 
 						const nameSpan = document.createElement("span");
 						nameSpan.className = "track-name";
@@ -1697,6 +1714,7 @@ class VGMPlay_js {
 						a.appendChild(lengthSpan);
 
 						trackContainer.appendChild(a);
+						playableList.push({ filepath: fullPath, linkElement: a, lengthSec: trackLengthSeconds, title: nameSpan.textContent });
 					} catch (e) {
 						console.error("[UI] Error getting track length for:", fullPath, e);
 					}
@@ -1715,8 +1733,8 @@ class VGMPlay_js {
 		});
 
 		// Apply highlight to the active one
-		if (this.activeGame && this.activeGame.files[this.currentFileKey]) {
-			const activeLink = this.activeGame.files[this.currentFileKey].linkElement;
+		if (this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
+			const activeLink = this.activeGame.playableList[this.currentFileKey].linkElement;
 			if (activeLink) {
 				activeLink.classList.add('activeTrack');
 			}
@@ -1740,16 +1758,26 @@ class VGMPlay_js {
 					this._addNoPlayableNotice(file);
 					return;
 				}
-				this.currentFileKey = key;
+				if (href_object && href_object.dataset && href_object.dataset.playableIndex) {
+					const idx = parseInt(href_object.dataset.playableIndex, 10);
+					this.currentFileKey = isNaN(idx) ? key : idx;
+				} else {
+					this.currentFileKey = key;
+				}
 				this.play();
 				this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
 				this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
-				if ((!this.trackLengthSeconds || this.trackLengthSeconds <= 0) && href_object && href_object.dataset && href_object.dataset.trackLengthSec) {
+				let overrideLen = 0;
+				if (href_object && href_object.dataset && href_object.dataset.trackLengthSec) {
 					const len = parseInt(href_object.dataset.trackLengthSec, 10);
-					if (len > 0) {
-						this.trackLengthSeconds = len;
-						this.totalSampleCount = this.trackLengthSeconds * this.sampleRate;
-					}
+					if (len > 0) overrideLen = len;
+				} else if (this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
+					const pl = this.activeGame.playableList[this.currentFileKey];
+					if (pl && pl.lengthSec) overrideLen = pl.lengthSec;
+				}
+				if (overrideLen > 0) {
+					this.trackLengthSeconds = overrideLen;
+					this.totalSampleCount = this.trackLengthSeconds * this.sampleRate;
 				}
 				this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
 				this.getVGMTag();
@@ -1758,6 +1786,9 @@ class VGMPlay_js {
 				let trackName = file.substring(file.lastIndexOf('/') + 1);
 				if (href_object && href_object.dataset && href_object.dataset.trackTitle) {
 					trackName = href_object.dataset.trackTitle;
+				} else if (this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
+					const pl = this.activeGame.playableList[this.currentFileKey];
+					if (pl && pl.title) trackName = pl.title;
 				}
 				if (window.Android) window.Android.updateMetadata(gameName + " - " + unescape(trackName), this.trackLengthSeconds * 1000);
 
@@ -1903,19 +1934,32 @@ class VGMPlay_js {
 			return;
 		}
 
+		const getPlayableList = (g) => {
+			if (!g) return [];
+			if (g.playableList && g.playableList.length) return g.playableList;
+			if (!g.files) return [];
+			return g.files
+				.filter(f => f && f.filepath && this.isPlayable(f.filepath))
+				.map(f => ({ filepath: f.filepath, linkElement: f.linkElement }));
+		};
+
 		let gameIndex = this.activeGame ? this.games.indexOf(this.activeGame) : -1;
 
 		if (gameIndex === -1) {
 			gameIndex = 0;
 			this.activeGame = this.games[gameIndex];
-			this.currentFileKey = (action === "next") ? 0 : this.activeGame.files.length - 1;
+			const list = getPlayableList(this.activeGame);
+			this.currentFileKey = (action === "next") ? 0 : Math.max(0, list.length - 1);
 		} else {
 			if (action === "next") {
-				if (this.currentFileKey + 1 >= this.activeGame.files.length) {
+				const list = getPlayableList(this.activeGame);
+				if (this.currentFileKey + 1 >= list.length) {
 					// Move to first track of next game
 					gameIndex = (gameIndex + 1) % this.games.length;
 					this.activeGame = this.games[gameIndex];
+					const nextList = getPlayableList(this.activeGame);
 					this.currentFileKey = 0;
+					if (nextList.length === 0) return;
 				} else {
 					this.currentFileKey++;
 				}
@@ -1924,33 +1968,29 @@ class VGMPlay_js {
 					// Move to last track of previous game
 					gameIndex = (gameIndex - 1 + this.games.length) % this.games.length;
 					this.activeGame = this.games[gameIndex];
-					this.currentFileKey = this.activeGame.files.length - 1;
+					const prevList = getPlayableList(this.activeGame);
+					this.currentFileKey = Math.max(0, prevList.length - 1);
+					if (prevList.length === 0) return;
 				} else {
 					this.currentFileKey--;
 				}
 			}
 		}
 
-		// Skip non-playable files
-		let attempts = 0;
-		while (!this.isPlayable(this.activeGame.files[this.currentFileKey].filepath) && attempts < this.activeGame.files.length) {
-			if (action === "next") {
-				this.currentFileKey = (this.currentFileKey + 1) % this.activeGame.files.length;
-			} else {
-				this.currentFileKey = (this.currentFileKey - 1 + this.activeGame.files.length) % this.activeGame.files.length;
-			}
-			attempts++;
+		const playableList = getPlayableList(this.activeGame);
+		if (!playableList.length) return;
+		if (this.currentFileKey < 0 || this.currentFileKey >= playableList.length) {
+			this.currentFileKey = 0;
 		}
-
-		await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, gameIndex + 1, this.currentFileKey);
+		await this.playFileFromFS(false, playableList[this.currentFileKey].filepath, gameIndex + 1, this.currentFileKey);
 	}
 
 	async togglePlayback() {
 		if (await this.checkEverythingReady()) {
 			if (!this.isVGMLoaded) {
-				if (this.activeGame && this.currentFileKey != null && this.activeGame.files[this.currentFileKey]) {
+				if (this.activeGame && this.currentFileKey != null && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
 					const gameIndex = this.games.indexOf(this.activeGame);
-					await this.playFileFromFS(false, this.activeGame.files[this.currentFileKey].filepath, gameIndex + 1, this.currentFileKey);
+					await this.playFileFromFS(false, this.activeGame.playableList[this.currentFileKey].filepath, gameIndex + 1, this.currentFileKey);
 				} else {
 					await this.changeTrack('next');
 				}
@@ -2227,9 +2267,16 @@ class VGMPlay_js {
 		// Check for end of track (crucial for background advancement)
 		this._checkTrackEnd();
 
-		// Check if VGM ended
+		// Check if VGM ended (for formats without length info)
 		if (this.VGMEnded()) {
-			this.emulatorFinished = true;
+			if (!this.emulatorFinished) {
+				this.emulatorFinished = true;
+				this.stop();
+				setTimeout(() => {
+					if (this.isRandomEnabled) this.playRandom();
+					else this.changeTrack("next");
+				}, 100);
+			}
 			return;
 		}
 
@@ -2688,9 +2735,14 @@ VGMPlay_js.prototype.playRandom = function () {
 		gameIndex = Math.floor(Math.random() * this.games.length);
 		game = this.games[gameIndex];
 	}
-	if (!game || !game.files || game.files.length === 0) return;
-	const fileIndex = Math.floor(Math.random() * game.files.length);
-	this.playFileFromFS(false, game.files[fileIndex].filepath, gameIndex + 1, fileIndex);
+	if (!game) return;
+	const playableList = (game.playableList && game.playableList.length)
+		? game.playableList
+		: (game.files || []).filter(f => f && f.filepath && this.isPlayable(f.filepath))
+			.map(f => ({ filepath: f.filepath, linkElement: f.linkElement }));
+	if (!playableList.length) return;
+	const fileIndex = Math.floor(Math.random() * playableList.length);
+	this.playFileFromFS(false, playableList[fileIndex].filepath, gameIndex + 1, fileIndex);
 };
 
 VGMPlay_js.prototype._generateReverbImpulse = function () {

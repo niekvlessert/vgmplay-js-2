@@ -100,8 +100,8 @@ class VGMPlay_js {
 			if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
 			if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
 			const base = this.baseURL;
-			window.Module.print = () => { };
-			window.Module.printErr = () => { };
+			window.Module.print = (text) => { console.log(text); };
+			window.Module.printErr = (text) => { console.error(text); };
 			window.Module.locateFile = function (path, prefix) {
 				if (path.endsWith(".data")) return base + path;
 				return prefix + path;
@@ -400,7 +400,7 @@ class VGMPlay_js {
 		this.len = this.elms.length;
 		for (var ii = 0; ii < this.len; ii++) {
 			const lower = this.elms[ii].href.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib')) {
 				this._queueURL(this.elms[ii].href, false, true);
 			}
 		}
@@ -577,7 +577,7 @@ class VGMPlay_js {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib')) {
 				const arrayBuffer = await file.arrayBuffer();
 				const byteArray = new Uint8Array(arrayBuffer);
 				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
@@ -634,6 +634,7 @@ class VGMPlay_js {
 			this.VGMTag = titleStr.split("|||");
 			this.tagType = 0;
 			this.titleWindow.innerHTML = "";
+			let systemShown = false;
 			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
 				switch (this.i) {
 					case 1:
@@ -653,11 +654,10 @@ class VGMPlay_js {
 						if (this.VGMTag[5] || this.VGMTag[7]) this.titleWindow.innerHTML += "<br/>";
 						break;
 					case 8:
-						if (this.VGMTag[9] || this.VGMTag[11]) this.titleWindow.innerHTML += "System: ";
-						if (this.VGMTag[9]) this.titleWindow.innerHTML += this.VGMTag[9];
-						else //if (this.VGMTag[9] && this.VGMTag[11]) this.titleWindow.innerHTML += ", ";
-							if (this.VGMTag[11]) this.titleWindow.innerHTML += this.VGMTag[11];
-						if (this.VGMTag[9] || this.VGMTag[11]) this.titleWindow.innerHTML += "<br/>";
+						if (this.VGMTag[9] && this.VGMTag[9].trim()) {
+							this.titleWindow.innerHTML += "System: " + this.VGMTag[9] + "<br/>";
+							systemShown = true;
+						}
 						break;
 					case 13:
 						if (this.VGMTag[13] || this.VGMTag[15]) this.titleWindow.innerHTML += "Author: ";
@@ -684,12 +684,15 @@ class VGMPlay_js {
 
 			}
 
-			// For PSF files, add System: Playstation as last info line
-			if (this.currentFileKey !== "" && this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
+			// For PSF files, add System fallback if not yet shown
+			if (!systemShown && this.currentFileKey !== "" && this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
 				const path = this.activeGame.playableList[this.currentFileKey].filepath || "";
 				const lower = path.toLowerCase();
 				if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
 					this.titleWindow.innerHTML += "System: Playstation<br/>";
+				}
+				if (lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
+					this.titleWindow.innerHTML += "System: Nintendo 64<br/>";
 				}
 			}
 
@@ -1110,7 +1113,7 @@ class VGMPlay_js {
 								const lower = job.data.toLowerCase();
 								if (lower.endsWith('.7z')) {
 									classContext.process7zBuffer(byteArray, job.name).then(next);
-								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
+								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
 									classContext.processPSFBuffer(byteArray, job.data).then(next);
 								} else if (lower.endsWith('.zip')) {
 									classContext.processZipBuffer(byteArray, job.name).then(next);
@@ -1132,7 +1135,7 @@ class VGMPlay_js {
 				const lower = (job.name || '').toLowerCase();
 				if (lower.endsWith('.7z')) {
 					classContext.process7zBuffer(job.data, job.name).then(next);
-				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
+				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
 					classContext.processPSFBuffer(job.data, job.name).then(next);
 				} else if (lower.endsWith('.zip')) {
 					classContext.processZipBuffer(job.data, job.name).then(next);
@@ -1213,10 +1216,10 @@ class VGMPlay_js {
 					} catch (e) {
 						console.error("Error creating file in FS:", e);
 					}
-				const lower = relPath.toLowerCase();
-				if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
-				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
-				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+					const lower = relPath.toLowerCase();
+					if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.endsWith(".txt") || lower.endsWith(".trackinfo")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 				}
 
 				var game = { files: entries.filter(e => e && e.filepath), m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
@@ -1247,7 +1250,7 @@ class VGMPlay_js {
 			};
 
 			const getRelPath = (relPath, gameKey) => {
-				if (relPath.startsWith(gameKey + '/')) return relPath.substring(gameKey.length + 1);
+				if (relPath.startsWith(gameKey + '/') && gameKey !== 'root') return relPath.substring(gameKey.length + 1);
 				return relPath;
 			};
 
@@ -1376,7 +1379,7 @@ class VGMPlay_js {
 		};
 
 		const getRelPath = (relPath, gameKey) => {
-			if (relPath.startsWith(gameKey + '/')) return relPath.substring(gameKey.length + 1);
+			if (relPath.startsWith(gameKey + '/') && gameKey !== 'root') return relPath.substring(gameKey.length + 1);
 			return relPath;
 		};
 
@@ -1507,7 +1510,7 @@ class VGMPlay_js {
 	addHarvestedTracks(urls) {
 		urls.forEach(url => {
 			const lower = url.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib')) {
 				this._queueURL(url, false, true);
 			} else if (this.isPlayable(lower)) {
 				// Handle direct links as single files
@@ -1559,15 +1562,9 @@ class VGMPlay_js {
 					}
 				}
 
-				if (!psfGame && files.length > 0) {
-					// Fallback to path name
-					const path = files[0].filepath;
-					const parts = path.split('/');
-					if (parts.length > 2) {
-						psfGame = parts[1].replace('game_', 'Game ');
-					}
+				if (psfGame && (psfGame.toLowerCase().endsWith('.usf') || psfGame.toLowerCase().endsWith('.miniusf'))) {
+					psfGame = ""; // Filter out bad data if it's just the filename
 				}
-
 				placeholder.textContent = psfGame || "Game " + gameIndex;
 				placeholder.classList.add('vgmplayGameToggle');
 				gameWrap.appendChild(placeholder);
@@ -1823,6 +1820,7 @@ class VGMPlay_js {
 		const p = path.toLowerCase().split('|track=')[0];
 		return p.endsWith('.vgm') || p.endsWith('.vgz') ||
 			p.endsWith('.psf') || p.endsWith('.minipsf') ||
+			p.endsWith('.usf') || p.endsWith('.miniusf') ||
 			p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
 			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
 			p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
@@ -2138,7 +2136,7 @@ class VGMPlay_js {
 			this.GetKSSTrackMaxDirect = Module.cwrap('GetKSSTrackMaxDirect', 'number', ['string']);
 			this.GetGMETrackNameDirect = Module.cwrap('GetGMETrackNameDirect', 'string', ['string', 'number']);
 			this.GetKSSTrackNameDirect = Module.cwrap('GetKSSTrackNameDirect', 'string', ['string', 'number']);
-			this._GetVGMTagDirectNative = Module.cwrap('GetVGMTagDirect', 'string', ['string', 'number']);
+			this.GetVGMTagDirect = Module.cwrap('GetVGMTagDirect', 'string', ['string', 'number']);
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
 			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);
 			this.SetSampleRate = Module.cwrap('SetSampleRate', 'number', ['number']);
@@ -2265,7 +2263,7 @@ class VGMPlay_js {
 	}
 
 	generateBuffer() {
-		const N = 4096; // Smaller batch size to reduce main-thread blocking
+		const N = 2048; // Even smaller batch size to reduce main-thread blocking
 		// Always create fresh views from Module.HEAPU8.buffer in case it was reallocated (detached)
 		this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
 
@@ -2319,7 +2317,7 @@ class VGMPlay_js {
 		}
 
 		// Generate and send a few buffers
-		for (let i = 0; i < 4; i++) {
+		for (let i = 0; i < 2; i++) {
 			const buf = this.generateBuffer();
 			this.workletNode.port.postMessage({
 				type: 'buffer',
@@ -2796,27 +2794,34 @@ VGMPlay_js.prototype._trackSupportsLoop = function () {
 			clean.endsWith('.mgs') || clean.endsWith('.bgm') || clean.endsWith('.opx') ||
 			clean.endsWith('.mpk') || clean.endsWith('.mbm');
 	};
+	const isPsfUsf = () => {
+		if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
+		const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
+		if (!path) return false;
+		const clean = path.toLowerCase().split('|track=')[0];
+		return clean.endsWith('.psf') || clean.endsWith('.minipsf') || clean.endsWith('.usf') || clean.endsWith('.miniusf');
+	};
 	if (this.GetLoopPoint) {
 		try {
 			if (this.GetLoopPoint() > 0) return true;
 		} catch (e) { }
 	}
-	// KSS doesn't expose loop points; allow software looping
-	return isKss();
+	// KSS and PSF/USF don't always expose loop points; allow software looping
+	return isKss() || isPsfUsf();
 };
 
-	VGMPlay_js.prototype._applyLoopMode = function () {
-		if (this.loopMode === 1) {
-			this._loopCount = 0;
-			if (this.SetLoopCount) this.SetLoopCount(0);
-			if (this.progressContainer) this.progressContainer.style.display = 'none';
-		} else {
-			this._loopCount = 1;
-			if (this.SetLoopCount) this.SetLoopCount(1);
-			if (this.progressContainer) this.progressContainer.style.display = '';
-		}
-		this._setLoopButtonState();
-	};
+VGMPlay_js.prototype._applyLoopMode = function () {
+	if (this.loopMode === 1) {
+		this._loopCount = 0;
+		if (this.SetLoopCount) this.SetLoopCount(0);
+		if (this.progressContainer) this.progressContainer.style.display = 'none';
+	} else {
+		this._loopCount = 1;
+		if (this.SetLoopCount) this.SetLoopCount(1);
+		if (this.progressContainer) this.progressContainer.style.display = '';
+	}
+	this._setLoopButtonState();
+};
 
 VGMPlay_js.prototype.toggleLoopMode = function () {
 	this.loopMode = (this.loopMode + 1) % 3;

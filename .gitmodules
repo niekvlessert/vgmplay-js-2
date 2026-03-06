@@ -7,3 +7,6 @@
 [submodule "modules/libkss"]
 	path = modules/libkss
 	url = https://github.com/digital-sound-antiques/libkss
+[submodule "modules/lazyusf"]
+	path = modules/lazyusf
+	url = https://github.com/kode54/lazyusf

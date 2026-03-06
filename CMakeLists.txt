@@ -20,13 +20,16 @@ set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
 set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
 add_subdirectory(modules/game-music-emu)
 add_subdirectory(modules/libkss)
+add_subdirectory(modules/lazyusf)
 
 # Main Executable
 add_executable(vgmplay-js src/vgmplay_glue.cpp)
 
 # Link against libvgm components and sexypsf
 # Note: vgm-player depends on vgm-emu and vgm-utils
-target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2")
+target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf)
 target_link_libraries(vgmplay-js gme::gme)
 target_link_libraries(vgmplay-js kss)
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
@@ -41,6 +44,9 @@ target_include_directories(vgmplay-js PRIVATE
     modules/libkss/src
     modules/libkss/src/kss
     modules/libkss/modules
+    modules/lazyusf
+    modules/lazyusf/rsp
+    modules/lazyusf/rsp_hle
 )
 
 # Exported functions
@@ -83,7 +89,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
     -s FORCE_FILESYSTEM=1 \
     -s TOTAL_MEMORY=134217728 \
     -s RESERVED_FUNCTION_POINTERS=100 \
-    -O3 \
+    -O2 \
     --preload-file ${PROJECT_SOURCE_DIR}/files@/ \
     -s EXPORTED_RUNTIME_METHODS=\"['cwrap','ccall','FS','HEAPU8','HEAP16']\" \
     -s WASM=1 \

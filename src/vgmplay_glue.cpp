@@ -11,21 +11,23 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include <zlib.h>
 
+#include "../modules/libkss/src/kss/kss.h"
+#include "../modules/libkss/src/kssplay.h"
 #include "../modules/libvgm/emu/EmuStructs.h"
 #include "../modules/libvgm/emu/Resampler.h"
 #include "../modules/libvgm/player/playerbase.hpp"
 #include "../modules/libvgm/player/vgmplayer.hpp"
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
-#include "../modules/libkss/src/kss/kss.h"
-#include "../modules/libkss/src/kssplay.h"
 
 extern "C" {
 #include "../modules/sexypsf/driver.h"
 void psxShutdown(void);
 }
 #include "../modules/game-music-emu/gme/gme.h"
+#include "../modules/lazyusf/usf.h"
 
 /* ---- globals ---- */
 static VGMPlayer *player = nullptr;
@@ -51,6 +53,11 @@ static KSS *gKss = nullptr;
 static KSSPLAY *gKssPlay = nullptr;
 static int gKssTrackIndex = 0;
 static uint64_t gKssSamplePos = 0;
+static bool isUSF = false;
+static usf_state_t *usfState = nullptr;
+static PSFINFO *usfInfo = nullptr;
+static std::vector<int16_t> usfBuffer;
+static int32_t usfSampleRate = 44100;
 
 static const char *kssSystemName(int mode) {
   switch (mode) {
@@ -83,6 +90,112 @@ int stop_sexy_execute = 0; // Declare stop_sexy_execute here
 
 /* ---- SexyPSF callbacks ---- */
 void SPUirq(void) {} // Dummy SPU IRQ for SexyPSF
+}
+
+/* ---- USF helper ---- */
+static int usf_load_psf(const char *path, void *state, int level) {
+  if (level > 10)
+    return -1;
+  FILE *f = fopen(path, "rb");
+  if (!f)
+    return -1;
+  fseek(f, 0, SEEK_END);
+  long size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  std::vector<uint8_t> data(size);
+  fread(data.data(), 1, size, f);
+  fclose(f);
+
+  if (data.size() < 16 || memcmp(data.data(), "PSF\x21", 4) != 0)
+    return -1;
+
+  uint32_t reservedSize = *(uint32_t *)(data.data() + 4);
+  uint32_t exeSize = *(uint32_t *)(data.data() + 8);
+
+  auto process_payload = [&](const uint8_t *payload, uint32_t pSize) {
+    if (pSize == 0)
+      return true;
+
+    // Try to see if it's raw SR64/SS64
+    bool isRaw = false;
+    if (pSize >= 8) {
+      uint32_t sig1 = *(uint32_t *)payload;
+      uint32_t sig2 = *(uint32_t *)(payload + 4);
+      if (sig1 == 0x34365253 || sig1 == 0x34365353 || sig2 == 0x34365253 ||
+          sig2 == 0x34365353) {
+        isRaw = true;
+      }
+    }
+
+    if (isRaw) {
+      // printf("USF: Loading raw section from %s (%u bytes)\n", path, pSize);
+      return usf_upload_section(state, payload, pSize) >= 0;
+    } else {
+      // Try decompressing
+      uLongf uncompressedSize = 1024 * 1024 * 64;
+      std::vector<uint8_t> uncompressedData(uncompressedSize);
+      if (uncompress(uncompressedData.data(), &uncompressedSize, payload,
+                     pSize) == Z_OK) {
+        /* printf("USF: Decompressed section from %s (%u -> %lu bytes)\n", path,
+               pSize, uncompressedSize); */
+        return usf_upload_section(state, uncompressedData.data(),
+                                  uncompressedSize) >= 0;
+      }
+    }
+    return false;
+  };
+
+  // Tag parsing for _lib - MUST BE DONE BEFORE process_payload
+  // so that the current file can patch the library data.
+  const uint8_t *tagStart = data.data() + 16 + reservedSize + exeSize;
+  if (data.size() > (size_t)(tagStart - data.data() + 5) &&
+      memcmp(tagStart, "[TAG]", 5) == 0) {
+    std::string tags((const char *)tagStart + 5,
+                     data.size() - (tagStart - data.data()) - 5);
+    size_t pos = 0;
+    while ((pos = tags.find("_lib", pos)) != std::string::npos) {
+      size_t eq = tags.find('=', pos);
+      if (eq != std::string::npos) {
+        size_t eol = tags.find_first_of("\r\n", eq);
+        std::string libName = tags.substr(eq + 1, eol - eq - 1);
+        // Trim
+        libName.erase(0, libName.find_first_not_of(" "));
+        libName.erase(libName.find_last_not_of(" ") + 1);
+
+        if (!libName.empty()) {
+          char libPath[1024];
+          const char *slash = strrchr(path, '/');
+          if (!slash)
+            slash = strrchr(path, '\\');
+          if (slash) {
+            int len = slash - path + 1;
+            strncpy(libPath, path, len);
+            libPath[len] = '\0';
+            strcat(libPath, libName.c_str());
+          } else {
+            strcpy(libPath, libName.c_str());
+          }
+          usf_load_psf(libPath, state, level + 1);
+        }
+        if (eol == std::string::npos)
+          break;
+        pos = eol;
+      } else
+        pos += 4;
+    }
+  }
+
+  if (!process_payload(data.data() + 16, reservedSize)) {
+    // Not a big deal if reserved fails, maybe it's in exe
+  }
+  if (!process_payload(data.data() + 16 + reservedSize, exeSize)) {
+    // If both fail, then it's an error
+  }
+
+  return 0;
+}
+
+extern "C" {
 void sexyd_update(unsigned char *p, long l) {
   short *pcm = (short *)p;
   int samples = l / 4; // 16-bit stereo = 4 bytes per sample
@@ -142,6 +255,19 @@ static void cleanup() {
     isPSF = false;
     psfBufferL.clear();
     psfBufferR.clear();
+  }
+  if (isUSF) {
+    if (usfInfo) {
+      sexy_freepsfinfo(usfInfo);
+      usfInfo = nullptr;
+    }
+    if (usfState) {
+      usf_shutdown(usfState);
+      free(usfState);
+      usfState = nullptr;
+    }
+    isUSF = false;
+    usfBuffer.clear();
   }
   if (player) {
     player->Stop();
@@ -284,6 +410,35 @@ int OpenVGMFile(const char *path) {
     return 1;
   }
 
+  if (sPath.size() > 4 && (sPath.substr(sPath.size() - 4) == ".usf" ||
+                           sPath.substr(sPath.size() - 4) == ".USF" ||
+                           sPath.substr(sPath.size() - 8) == ".miniusf" ||
+                           sPath.substr(sPath.size() - 8) == ".MINIUSF")) {
+    usfState = (usf_state_t *)malloc(usf_get_state_size());
+    if (!usfState)
+      return 0;
+    usf_clear(usfState);
+    usf_set_hle_audio(usfState, 1);
+
+    if (usf_load_psf(path, usfState, 0) < 0) {
+      printf("USF: Failed to load %s\n", path);
+      free(usfState);
+      usfState = nullptr;
+      return 0;
+    }
+    // printf("USF: Loaded %s successfully\n", path);
+
+    usfInfo = sexy_getpsfinfo((char *)path);
+    if (usfInfo && usfInfo->length == 0) {
+      usfInfo->length = 180000;
+    }
+
+    isUSF = true;
+    sampcount = 0;
+    usfBuffer.clear();
+    return 1;
+  }
+
   if (isKssFormatPath(lowerPath)) {
     DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
     if (!kssLoader) {
@@ -340,15 +495,14 @@ int OpenVGMFile(const char *path) {
     return 1;
   }
 
-  if (lowerPath.size() > 4 &&
-      (lowerPath.find(".spc") != std::string::npos ||
-       lowerPath.find(".nsf") != std::string::npos ||
-       lowerPath.find(".nsfe") != std::string::npos ||
-       lowerPath.find(".gbs") != std::string::npos ||
-       lowerPath.find(".gym") != std::string::npos ||
-       lowerPath.find(".hes") != std::string::npos ||
-       lowerPath.find(".sap") != std::string::npos ||
-       lowerPath.find(".ay") != std::string::npos)) {
+  if (lowerPath.size() > 4 && (lowerPath.find(".spc") != std::string::npos ||
+                               lowerPath.find(".nsf") != std::string::npos ||
+                               lowerPath.find(".nsfe") != std::string::npos ||
+                               lowerPath.find(".gbs") != std::string::npos ||
+                               lowerPath.find(".gym") != std::string::npos ||
+                               lowerPath.find(".hes") != std::string::npos ||
+                               lowerPath.find(".sap") != std::string::npos ||
+                               lowerPath.find(".ay") != std::string::npos)) {
     gme_err_t err = gme_open_file(basePath.c_str(), &gmeEmu, (int)gSampleRate);
     if (err) {
       gmeEmu = nullptr;
@@ -390,7 +544,8 @@ int OpenVGMFile(const char *path) {
   player->SetSampleRate(gSampleRate);
   player->SetFileReqCallback(RequestFileCallback, NULL);
 
-  /* 3. set player-specific options (playbackHz = 0 means "no speed correction")
+  /* 3. set player-specific options (playbackHz = 0 means "no speed
+   * correction")
    */
   VGM_PLAY_OPTIONS opts;
   memset(&opts, 0, sizeof(opts));
@@ -432,6 +587,9 @@ int VGMEnded(void) {
   if (isPSF) {
     return (psfInfo && sampcount >= psfInfo->length * 44.1) ? 1 : 0;
   }
+  if (isUSF) {
+    return (usfInfo && sampcount >= usfInfo->length * 44.1) ? 1 : 0;
+  }
   if (!player)
     return 1;
   return (player->GetState() & PLAYSTATE_END) ? 1 : 0;
@@ -455,6 +613,9 @@ int GetTrackLength(void) {
   if (isPSF) {
     return psfInfo ? (int)(psfInfo->length * 44.1) : 0;
   }
+  if (isUSF) {
+    return usfInfo ? (int)(usfInfo->length * 44.1) : 0;
+  }
   if (!player)
     return 0;
   return (int)player->Tick2Sample(player->GetTotalTicks());
@@ -472,18 +633,17 @@ int GetTrackLengthDirect(const char *path) {
   std::string lowerPath = basePath;
   for (auto &c : lowerPath)
     c = tolower(c);
-  if (lowerPath.find(".psflib") != std::string::npos)
-    return 0;
+
   if (lowerPath.find(".psf") != std::string::npos ||
-      lowerPath.find(".minipsf") != std::string::npos) {
+      lowerPath.find(".minipsf") != std::string::npos ||
+      lowerPath.find(".usf") != std::string::npos ||
+      lowerPath.find(".miniusf") != std::string::npos) {
     PSFINFO *info = sexy_getpsfinfo((char *)path);
-    if (!info) {
+    if (!info)
       return 0;
-    }
-    int length =
-        (int)((info->length / 1000.0) * 44100); // ms to samples at 44.1kHz
+    int len = (int)(info->length * 44.1);
     sexy_freepsfinfo(info);
-    return length;
+    return len;
   }
 
   if (lowerPath.find(".spc") != std::string::npos ||
@@ -496,21 +656,24 @@ int GetTrackLengthDirect(const char *path) {
       lowerPath.find(".ay") != std::string::npos) {
     Music_Emu *emu = nullptr;
     gme_err_t err = gme_open_file(basePath.c_str(), &emu, (int)gSampleRate);
-    if (err || !emu) {
+    if (err || !emu)
+      return 0;
+    gme_info_t *info = nullptr;
+    if (gme_track_info(emu, &info, trackIndex) != 0 || !info) {
+      gme_delete(emu);
       return 0;
     }
-    gme_info_t *info = nullptr;
-    int lengthMs = 180000;
-    if (!gme_track_info(emu, &info, trackIndex) && info) {
-      if (info->play_length > 0)
-        lengthMs = info->play_length;
-      else if (info->length > 0)
-        lengthMs = info->length;
-    }
-    if (info)
-      gme_free_info(info);
+    int len = 0;
+    if (info->play_length > 0)
+      len = info->play_length;
+    else if (info->length > 0)
+      len = info->length;
+    else
+      len = 180000;
+    int samples = (int)(len * 44.1);
+    gme_free_info(info);
     gme_delete(emu);
-    return (int)(lengthMs * 44.1);
+    return samples;
   }
 
   if (isKssFormatPath(lowerPath)) {
@@ -590,7 +753,9 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     return "";
 
   if (lowerPath.find(".psf") != std::string::npos ||
-      lowerPath.find(".minipsf") != std::string::npos) {
+      lowerPath.find(".minipsf") != std::string::npos ||
+      lowerPath.find(".usf") != std::string::npos ||
+      lowerPath.find(".miniusf") != std::string::npos) {
     PSFINFO *info = sexy_getpsfinfo((char *)path);
     if (!info)
       return "";
@@ -775,6 +940,39 @@ void FillBuffer2(float *left, float *right, int n) {
     return;
   }
 
+  if (isUSF) {
+    if (!usfState) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+
+    // Fill buffer if needed
+    while (usfBuffer.size() < (size_t)n * 2) {
+      int16_t render_buf[2048 * 2];
+      const char *err = usf_render(usfState, render_buf, 2048, &usfSampleRate);
+      if (err) {
+        printf("USF Error: %s\n", err);
+        break;
+      }
+      usfBuffer.insert(usfBuffer.end(), render_buf, render_buf + 2048 * 2);
+    }
+
+    for (int i = 0; i < n; i++) {
+      left[i] = (float)(usfBuffer[i * 2] / 32768.0f);
+      right[i] = (float)(usfBuffer[i * 2 + 1] / 32768.0f);
+    }
+
+    if (usfBuffer.size() >= (size_t)n * 2) {
+      usfBuffer.erase(usfBuffer.begin(), usfBuffer.begin() + n * 2);
+    } else {
+      usfBuffer.clear();
+    }
+
+    sampcount += (UINT32)n;
+    return;
+  }
+
   /* Use a temporary buffer for Rendering (static to avoid stack issues) */
   enum { MAX_N = 16384 };
   static WAVE_32BS buf[MAX_N];
@@ -790,7 +988,8 @@ void FillBuffer2(float *left, float *right, int n) {
   memset(buf, 0, count * sizeof(WAVE_32BS));
   player->Render(count, buf);
 
-  /* convert 24-bit internal (WAVE_32BS.L/R) -> Float32 output (-1.0 to 1.0) */
+  /* convert 24-bit internal (WAVE_32BS.L/R) -> Float32 output (-1.0 to 1.0)
+   */
   for (int i = 0; i < count; i++) {
     left[i] = (float)(buf[i].L / 8388608.0);
     right[i] = (float)(buf[i].R / 8388608.0);
@@ -838,8 +1037,9 @@ void FillBuffer2(float *left, float *right, int n) {
 /* format: "TrkE|||TrkJ|||GmE|||GmJ|||SysE|||SysJ|||AutE|||AutJ|||Cre|||Notes"
  */
 char *ShowTitle(void) {
-  if (isPSF) {
-    if (!psfInfo)
+  if (isPSF || isUSF) {
+    PSFINFO *info = isPSF ? psfInfo : usfInfo;
+    if (!info)
       return nullptr;
 
     // Map PSF tags to the positions expected by getVGMTag() in JS
@@ -857,7 +1057,7 @@ char *ShowTitle(void) {
     auto getTag = [&](const char *k) -> const char * {
       if (!k || !*k)
         return "";
-      PSFTAG *t = psfInfo->tags;
+      PSFTAG *t = info->tags;
       while (t) {
         if (strcasecmp(t->key, k) == 0)
           return t->value;
@@ -894,8 +1094,7 @@ char *ShowTitle(void) {
         s += (title ? title : "");
       } else if (i == 4) {
         s += kssSystemName(gKss->mode);
-      }
-      else
+      } else
         s += "";
       s += "|||";
     }

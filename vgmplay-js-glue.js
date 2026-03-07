@@ -577,7 +577,7 @@ class VGMPlay_js {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav')) {
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower)) {
 				const arrayBuffer = await file.arrayBuffer();
 				const byteArray = new Uint8Array(arrayBuffer);
 				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
@@ -1326,19 +1326,42 @@ class VGMPlay_js {
 
 	processSingleBuffer(byteArray, sourceName = '') {
 		return new Promise((resolve) => {
-			this.amountOfGamesLoaded++;
-			const gamePath = "/game_" + this.amountOfGamesLoaded;
-			this._makedirs(gamePath);
-			const fileName = sourceName || "track";
-			const fsPath = gamePath + "/" + fileName;
-			FS.createDataFile(gamePath, fileName, byteArray, true, true);
-			const fileList = [{ filepath: fsPath }];
-			var game = { files: fileList, path: gamePath };
-			this.games.push(game);
-			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
-			if (!hasPlayable) {
+			let game;
+			const miscGameName = "Misc";
+
+			// Find existing "Misc" game or create new one
+			game = this.games.find(g => g.name === miscGameName);
+
+			if (!game) {
+				this.amountOfGamesLoaded++;
+				const gamePath = "/game_" + this.amountOfGamesLoaded;
+				this._makedirs(gamePath);
+				game = { files: [], path: gamePath, name: miscGameName };
+				this.games.push(game);
+			}
+
+			const fileName = sourceName || "track_" + Date.now();
+			const fsPath = game.path + "/" + fileName;
+
+			// Overwrite if exists, but we use timestamps/unique names mostly
+			try {
+				FS.createDataFile(game.path, fileName, byteArray, true, true);
+			} catch (e) {
+				// If it already exists, overwrite
+				if (e.name === 'ErrnoError' && e.errno === 20) {
+					FS.unlink(fsPath);
+					FS.createDataFile(game.path, fileName, byteArray, true, true);
+				}
+			}
+
+			const track = { filepath: fsPath };
+			game.files.push(track);
+
+			const isPlayable = this.isPlayable(fsPath);
+			if (!isPlayable) {
 				this._addNoPlayableNotice(sourceName || 'File');
 			}
+
 			this.checkEverythingReady().then(() => {
 				this.showVGMFromZip(game);
 				resolve();
@@ -1524,66 +1547,80 @@ class VGMPlay_js {
 		const gameIndex = this.games.indexOf(game) + 1;
 
 		if (this.zipFileListWindow) {
-			const playableList = [];
-			game.playableList = playableList;
-			const fragment = document.createDocumentFragment();
-			const gameWrap = document.createElement('div');
-			gameWrap.className = 'vgmplayGame';
-			gameWrap.dataset.expanded = 'false';
-			gameWrap.classList.add('vgmplayGameCollapsed');
+			let gameWrap = game.uiElement;
+			let trackContainer;
+			let playableList = game.playableList;
 
-			if (game.png) {
-				const url = URL.createObjectURL(game.png);
-				const img = new Image();
-				img.src = url;
-				img.style.width = '256px';
-				img.style.height = 'auto';
-				img.style.objectFit = 'contain';
-				img.style.background = '#000';
-				img.style.maxHeight = '212px';
-				img.style.display = 'block';
-				img.className = 'vgmplayGameToggle';
-				gameWrap.appendChild(img);
-				gameWrap.appendChild(document.createElement("br"));
-			} else {
-				// No logo, add spacer and game name placeholder
-				// No spacer; keep spacing minimal for text-only entries
+			if (!gameWrap) {
+				playableList = [];
+				game.playableList = playableList;
+				game.lastRenderedCount = 0;
 
-				const placeholder = document.createElement("div");
-				placeholder.className = "game-name-placeholder";
+				gameWrap = document.createElement('div');
+				gameWrap.className = 'vgmplayGame';
+				gameWrap.dataset.expanded = 'false';
+				gameWrap.classList.add('vgmplayGameCollapsed');
+				game.uiElement = gameWrap;
 
-				// Try to get game name from first track if possible
-				let psfGame = "";
-				for (const f of files) {
-					const l = f.filepath.toLowerCase();
-					if (this.isPlayable(l)) {
-						psfGame = this.GetVGMTagDirect(f.filepath, 2); // Game tag
-						if (psfGame) break;
+				if (game.png) {
+					const url = URL.createObjectURL(game.png);
+					const img = new Image();
+					img.src = url;
+					img.style.width = '256px';
+					img.style.height = 'auto';
+					img.style.objectFit = 'contain';
+					img.style.background = '#000';
+					img.style.maxHeight = '212px';
+					img.style.display = 'block';
+					img.className = 'vgmplayGameToggle';
+					gameWrap.appendChild(img);
+					gameWrap.appendChild(document.createElement("br"));
+				} else {
+					// No logo, add spacer and game name placeholder
+					// No spacer; keep spacing minimal for text-only entries
+
+					const placeholder = document.createElement("div");
+					placeholder.className = "game-name-placeholder";
+
+					// Try to get game name from first track if possible
+					let psfGame = "";
+					for (const f of files) {
+						const l = f.filepath.toLowerCase();
+						if (this.isPlayable(l)) {
+							psfGame = this.GetVGMTagDirect(f.filepath, 2); // Game tag
+							if (psfGame) break;
+						}
 					}
+
+					if (psfGame && (psfGame.toLowerCase().endsWith('.usf') || psfGame.toLowerCase().endsWith('.miniusf'))) {
+						psfGame = ""; // Filter out bad data if it's just the filename
+					}
+					placeholder.textContent = game.name || psfGame || "Game " + gameIndex;
+					placeholder.classList.add('vgmplayGameToggle');
+					gameWrap.appendChild(placeholder);
 				}
 
-				if (psfGame && (psfGame.toLowerCase().endsWith('.usf') || psfGame.toLowerCase().endsWith('.miniusf'))) {
-					psfGame = ""; // Filter out bad data if it's just the filename
-				}
-				placeholder.textContent = psfGame || "Game " + gameIndex;
-				placeholder.classList.add('vgmplayGameToggle');
-				gameWrap.appendChild(placeholder);
+				trackContainer = document.createElement('div');
+				trackContainer.className = 'vgmplayGameTracks';
+				game.trackContainer = trackContainer;
+				gameWrap.appendChild(trackContainer);
+
+				gameWrap.addEventListener('click', (e) => {
+					const tgt = e.target;
+					if (!(tgt && tgt.classList && tgt.classList.contains('vgmplayGameToggle'))) return;
+					const expanded = gameWrap.dataset.expanded === 'true';
+					gameWrap.dataset.expanded = expanded ? 'false' : 'true';
+					gameWrap.classList.toggle('vgmplayGameExpanded', !expanded);
+					gameWrap.classList.toggle('vgmplayGameCollapsed', expanded);
+				});
+
+				this.zipFileListWindow.appendChild(gameWrap);
+			} else {
+				trackContainer = game.trackContainer;
 			}
 
-			const trackContainer = document.createElement('div');
-			trackContainer.className = 'vgmplayGameTracks';
-			gameWrap.appendChild(trackContainer);
-
-			gameWrap.addEventListener('click', (e) => {
-				const tgt = e.target;
-				if (!(tgt && tgt.classList && tgt.classList.contains('vgmplayGameToggle'))) return;
-				const expanded = gameWrap.dataset.expanded === 'true';
-				gameWrap.dataset.expanded = expanded ? 'false' : 'true';
-				gameWrap.classList.toggle('vgmplayGameExpanded', !expanded);
-				gameWrap.classList.toggle('vgmplayGameCollapsed', expanded);
-			});
-
-			for (let key = 0; key < files.length; key++) {
+			const startIndex = game.lastRenderedCount || 0;
+			for (let key = startIndex; key < files.length; key++) {
 				const fullPath = files[key].filepath;
 				const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 				const lower = fileName.toLowerCase();
@@ -1734,8 +1771,7 @@ class VGMPlay_js {
 					}
 				}
 			}
-			fragment.appendChild(gameWrap);
-			this.zipFileListWindow.appendChild(fragment);
+			game.lastRenderedCount = files.length;
 		}
 	}
 

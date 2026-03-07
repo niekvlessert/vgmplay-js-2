@@ -1,11 +1,13 @@
 chrome.action.onClicked.addListener((tab) => {
     chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        function: togglePlayer
+        world: 'MAIN',
+        func: togglePlayer,
+        args: [chrome.runtime.getURL('')]
     });
 });
 
-function togglePlayer() {
+function togglePlayer(extensionUrl) {
     if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
@@ -39,19 +41,15 @@ function togglePlayer() {
 
     const shadow = root.attachShadow({ mode: 'open' });
 
-    // Ensure Module exists in the page context before loading Emscripten bundle
-    const preInit = document.createElement('script');
-    preInit.textContent = `
-        window.Module = window.Module || {};
-        if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
-        if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
-    `;
-    document.head.appendChild(preInit);
+    // Initialize Module directly in the Main World
+    window.Module = window.Module || {};
+    if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
+    if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
 
     // Add styles
     const styleLink = document.createElement('link');
     styleLink.rel = 'stylesheet';
-    styleLink.href = chrome.runtime.getURL('css/style.css');
+    styleLink.href = extensionUrl + 'css/style.css';
     shadow.appendChild(styleLink);
 
     // Container for the player
@@ -61,23 +59,15 @@ function togglePlayer() {
 
     // Load the glue script
     const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('vgmplay-js-glue.js');
+    script.src = extensionUrl + 'vgmplay-js-glue.js';
     script.onload = () => {
-        // We need to trigger initialization in the Main World because VGMPlay_js is defined there.
-        // This runs in the Isolated World, so we inject another script tag.
-        const initScript = document.createElement('script');
-        initScript.textContent = `
-            if (!window.vgmPlayInstance) {
-                const root = document.getElementById('vgmplay-extension-root');
-                const container = root.shadowRoot.getElementById('vgmplay-container');
-                window.vgmPlayInstance = new VGMPlay_js({
-                    container: container,
-                    shadowRoot: root.shadowRoot,
-                    baseURL: '${chrome.runtime.getURL('')}'
-                });
-            }
-        `;
-        document.head.appendChild(initScript);
+        if (!window.vgmPlayInstance) {
+            window.vgmPlayInstance = new VGMPlay_js({
+                container: container,
+                shadowRoot: shadow,
+                baseURL: extensionUrl
+            });
+        }
     };
     document.head.appendChild(script);
 }

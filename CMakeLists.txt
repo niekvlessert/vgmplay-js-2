@@ -25,9 +25,9 @@ endif()
 
 # Main Executable
 if(BUILD_LIBVGM_ONLY)
-    add_executable(vgmplay-js src/vgmplay_minimal_glue.cpp)
+    add_executable(vgmplay-js src/vgmplay_minimal_glue.cpp src/miniaudio_impl.cpp)
 else()
-    add_executable(vgmplay-js src/vgmplay_glue.cpp)
+    add_executable(vgmplay-js src/vgmplay_glue.cpp src/miniaudio_impl.cpp)
 endif()
 
 # Link against libvgm components and others
@@ -49,6 +49,7 @@ target_include_directories(vgmplay-js PRIVATE
     modules/libvgm/player
     modules/libvgm/utils
     modules/libvgm/emu
+    modules/miniaudio
 )
 if(NOT BUILD_LIBVGM_ONLY)
     target_include_directories(vgmplay-js PRIVATE

@@ -19,6 +19,7 @@
 #include "../modules/libvgm/player/vgmplayer.hpp"
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
+#include "miniaudio.h"
 
 /* ---- globals ---- */
 static VGMPlayer *player = nullptr;
@@ -26,6 +27,10 @@ static DATA_LOADER *loader = nullptr;
 static char *titleBuf = nullptr;
 static char *chipBuf = nullptr;
 static UINT32 gSampleRate = 44100;
+
+static bool isMA = false;
+static ma_decoder gMaDecoder;
+static bool gMaInitialized = false;
 
 static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
                                         const char *fileName) {
@@ -44,6 +49,11 @@ static void cleanup() {
     delete player;
     player = nullptr;
   }
+  if (gMaInitialized) {
+    ma_decoder_uninit(&gMaDecoder);
+    gMaInitialized = false;
+  }
+  isMA = false;
   if (loader) {
     DataLoader_Deinit(loader);
     loader = nullptr;
@@ -112,6 +122,31 @@ int OpenVGMFile(const char *path) {
     return 0;
   }
 
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  std::string lowerPath = basePath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+
+  if (lowerPath.size() > 4 &&
+      (lowerPath.substr(lowerPath.size() - 4) == ".wav" ||
+       lowerPath.substr(lowerPath.size() - 4) == ".mp3" ||
+       lowerPath.substr(lowerPath.size() - 4) == ".ogg" ||
+       lowerPath.substr(lowerPath.size() - 5) == ".flac")) {
+    ma_decoder_config config =
+        ma_decoder_config_init(ma_format_f32, 2, gSampleRate);
+    ma_result result =
+        ma_decoder_init_file(basePath.c_str(), &config, &gMaDecoder);
+    if (result != MA_SUCCESS) {
+      printf("miniaudio: Failed to load %s (Error: %d)\n", basePath.c_str(),
+             result);
+      return 0;
+    }
+    isMA = true;
+    gMaInitialized = true;
+    return 1;
+  }
+
   /* 2. create player & set sample rate BEFORE LoadFile */
   player = new VGMPlayer();
 
@@ -156,6 +191,14 @@ int VGMEnded(void) {
 }
 
 int GetTrackLength(void) {
+  if (isMA && gMaInitialized) {
+    ma_uint64 lengthFrames;
+    if (ma_decoder_get_length_in_pcm_frames(&gMaDecoder, &lengthFrames) ==
+        MA_SUCCESS) {
+      return (int)lengthFrames;
+    }
+    return 180000;
+  }
   if (!player)
     return 0;
   return (int)player->Tick2Sample(player->GetTotalTicks());
@@ -300,7 +343,32 @@ int GetDeviceCount() {
 const char *GetVGMTag(int tagIndex) { return ""; }
 
 void FillBuffer2(float *left, float *right, int n) {
-  if (n <= 0 || !player) {
+  if (n <= 0)
+    return;
+
+  if (isMA) {
+    if (!gMaInitialized) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    std::vector<float> tmp(n * 2);
+    ma_uint64 framesRead;
+    ma_result result = ma_decoder_read_pcm_frames(&gMaDecoder, tmp.data(),
+                                                  (ma_uint64)n, &framesRead);
+
+    for (ma_uint64 i = 0; i < framesRead; i++) {
+      left[i] = tmp[i * 2];
+      right[i] = tmp[i * 2 + 1];
+    }
+    for (ma_uint64 i = framesRead; i < (ma_uint64)n; i++) {
+      left[i] = 0;
+      right[i] = 0;
+    }
+    return;
+  }
+
+  if (!player) {
     if (n > 0) {
       memset(left, 0, n * sizeof(float));
       memset(right, 0, n * sizeof(float));

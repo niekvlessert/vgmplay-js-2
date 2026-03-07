@@ -10,3 +10,6 @@
 [submodule "modules/lazyusf"]
 	path = modules/lazyusf
 	url = https://github.com/kode54/lazyusf
+[submodule "modules/miniaudio"]
+	path = modules/miniaudio
+	url = https://github.com/mackron/miniaudio

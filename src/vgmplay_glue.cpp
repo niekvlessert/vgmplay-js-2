@@ -28,6 +28,7 @@ void psxShutdown(void);
 }
 #include "../modules/game-music-emu/gme/gme.h"
 #include "../modules/lazyusf/usf.h"
+#include "miniaudio.h"
 
 /* ---- globals ---- */
 static VGMPlayer *player = nullptr;
@@ -58,6 +59,10 @@ static usf_state_t *usfState = nullptr;
 static PSFINFO *usfInfo = nullptr;
 static std::vector<int16_t> usfBuffer;
 static int32_t usfSampleRate = 44100;
+
+static bool isMA = false;
+static ma_decoder gMaDecoder;
+static bool gMaInitialized = false;
 
 static const char *kssSystemName(int mode) {
   switch (mode) {

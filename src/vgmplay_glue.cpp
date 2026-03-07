@@ -5,7 +5,9 @@
  * Replaces legacy src/main.c.
  */
 
+#ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -274,6 +276,13 @@ static void cleanup() {
     isUSF = false;
     usfBuffer.clear();
   }
+  if (isMA) {
+    if (gMaInitialized) {
+      ma_decoder_uninit(&gMaDecoder);
+      gMaInitialized = false;
+    }
+    isMA = false;
+  }
   if (player) {
     player->Stop();
     player->UnloadFile();
@@ -534,6 +543,33 @@ int OpenVGMFile(const char *path) {
     return 1;
   }
 
+  if (lowerPath.size() > 4 && (lowerPath.find(".mp3") != std::string::npos ||
+                               lowerPath.find(".flac") != std::string::npos ||
+                               lowerPath.find(".ogg") != std::string::npos ||
+                               lowerPath.find(".wav") != std::string::npos)) {
+    printf("DEBUG: Opening audio file: %s (sampleRate: %d)\n", path,
+           (int)gSampleRate);
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+      printf("DEBUG: Error: Could not fopen file: %s\n", path);
+      return 0;
+    }
+    fclose(f);
+
+    ma_decoder_config config =
+        ma_decoder_config_init(ma_format_f32, 2, gSampleRate);
+    ma_result res = ma_decoder_init_file(path, &config, &gMaDecoder);
+    if (res != MA_SUCCESS) {
+      printf("DEBUG: Error: ma_decoder_init_file failed with result: %d\n",
+             (int)res);
+      return 0;
+    }
+    printf("DEBUG: Successfully initialized miniaudio decoder for: %s\n", path);
+    isMA = true;
+    gMaInitialized = true;
+    return 1;
+  }
+
   /* 1. load file data via FileLoader */
   loader = FileLoader_Init(path);
   if (!loader) {
@@ -595,6 +631,15 @@ int VGMEnded(void) {
   if (isUSF) {
     return (usfInfo && sampcount >= usfInfo->length * 44.1) ? 1 : 0;
   }
+  if (isMA) {
+    if (!gMaInitialized)
+      return 1;
+    ma_uint64 cursor;
+    ma_uint64 length;
+    ma_decoder_get_cursor_in_pcm_frames(&gMaDecoder, &cursor);
+    ma_decoder_get_length_in_pcm_frames(&gMaDecoder, &length);
+    return (cursor >= length) ? 1 : 0;
+  }
   if (!player)
     return 1;
   return (player->GetState() & PLAYSTATE_END) ? 1 : 0;
@@ -620,6 +665,13 @@ int GetTrackLength(void) {
   }
   if (isUSF) {
     return usfInfo ? (int)(usfInfo->length * 44.1) : 0;
+  }
+  if (isMA) {
+    if (!gMaInitialized)
+      return 0;
+    ma_uint64 length;
+    ma_decoder_get_length_in_pcm_frames(&gMaDecoder, &length);
+    return (int)length;
   }
   if (!player)
     return 0;
@@ -679,6 +731,22 @@ int GetTrackLengthDirect(const char *path) {
     gme_free_info(info);
     gme_delete(emu);
     return samples;
+  }
+
+  if (lowerPath.find(".mp3") != std::string::npos ||
+      lowerPath.find(".flac") != std::string::npos ||
+      lowerPath.find(".ogg") != std::string::npos ||
+      lowerPath.find(".wav") != std::string::npos) {
+    ma_decoder tempDecoder;
+    ma_decoder_config config =
+        ma_decoder_config_init(ma_format_f32, 2, gSampleRate);
+    if (ma_decoder_init_file(path, &config, &tempDecoder) == MA_SUCCESS) {
+      ma_uint64 length;
+      ma_decoder_get_length_in_pcm_frames(&tempDecoder, &length);
+      ma_decoder_uninit(&tempDecoder);
+      return (int)length;
+    }
+    return 0;
   }
 
   if (isKssFormatPath(lowerPath)) {
@@ -941,6 +1009,26 @@ void FillBuffer2(float *left, float *right, int n) {
     if (toCopy > 0) {
       psfBufferL.erase(psfBufferL.begin(), psfBufferL.begin() + toCopy);
       psfBufferR.erase(psfBufferR.begin(), psfBufferR.begin() + toCopy);
+    }
+    return;
+  }
+
+  if (isMA) {
+    if (!gMaInitialized) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    std::vector<float> temp(n * 2);
+    ma_uint64 framesRead;
+    ma_decoder_read_pcm_frames(&gMaDecoder, temp.data(), n, &framesRead);
+    for (ma_uint64 i = 0; i < (int)framesRead; i++) {
+      left[i] = temp[i * 2];
+      right[i] = temp[i * 2 + 1];
+    }
+    for (int i = (int)framesRead; i < n; i++) {
+      left[i] = 0;
+      right[i] = 0;
     }
     return;
   }
@@ -1430,7 +1518,9 @@ const char *GetGMETrackNameDirect(const char *path, int trackIndex) {
 
 } /* extern "C" */
 
+#ifdef __EMSCRIPTEN__
 int main(int, char **) {
   // Initialization moved to JS to avoid CSP issues with EM_ASM
   return 0;
 }
+#endif

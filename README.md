@@ -8,6 +8,7 @@ Objectives:
 General:
 - libvgm
 - Playback through Audioworklet
+- Support for MP3, FLAC, OGG, and WAV via Miniaudio
 
 For the player:
 
@@ -87,8 +88,8 @@ Use the separate minimal library glue that talks directly to the engine (no UI):
 ```
 
 This library only supports:
-- Direct `.vgm`/`.vgz`
-- `.zip` containing `.vgm`/`.vgz`
+- Direct `.vgm`/`.vgz`, `.mp3`, `.flac`, `.ogg`, `.wav`
+- `.zip` containing the above formats
 
 ### API Reference
 Once initialized, you can access the instance via `window.vgmPlayInstance`.

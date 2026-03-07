@@ -210,7 +210,7 @@
 				if (!entry || !entry.filepath) continue;
 				const rel = entry.filepath;
 				const lower = rel.toLowerCase();
-				if (!lower.endsWith('.vgm') && !lower.endsWith('.vgz')) continue;
+				if (!lower.endsWith('.vgm') && !lower.endsWith('.vgz') && !lower.endsWith('.mp3') && !lower.endsWith('.flac') && !lower.endsWith('.ogg') && !lower.endsWith('.wav')) continue;
 				const data = mz.extract(rel);
 				const fsPath = gamePath + '/' + rel;
 				const lastSlash = fsPath.lastIndexOf('/');

@@ -31,7 +31,7 @@ target_link_libraries(VGMPlay PRIVATE ${COCOA_LIB} ${WEBKIT_LIB})
 target_compile_options(VGMPlay PRIVATE -Os)
 
 # ---- Extension assets to symlink into bundle ----
-set(EXT_DIR "${CMAKE_SOURCE_DIR}/../extension")
+set(ROOT_DIR "${CMAKE_SOURCE_DIR}/..")
 set(ASSET_FILES
     vgmplay-js-glue.js
     vgmplay-js.js
@@ -55,7 +55,7 @@ add_custom_command(TARGET VGMPlay POST_BUILD
 foreach(asset ${ASSET_FILES})
     add_custom_command(TARGET VGMPlay POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${EXT_DIR}/${asset}
+            ${ROOT_DIR}/${asset}
             $<TARGET_FILE_DIR:VGMPlay>/${asset}
         COMMENT "Symlinking ${asset}"
     )
@@ -64,7 +64,7 @@ endforeach()
 # CSS directory
 add_custom_command(TARGET VGMPlay POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${EXT_DIR}/css
+        ${ROOT_DIR}/css
         $<TARGET_FILE_DIR:VGMPlay>/css
     COMMENT "Symlinking css/"
 )
@@ -72,7 +72,7 @@ add_custom_command(TARGET VGMPlay POST_BUILD
 # Modules directory (if used)
 add_custom_command(TARGET VGMPlay POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${EXT_DIR}/modules
+        ${ROOT_DIR}/modules
         $<TARGET_FILE_DIR:VGMPlay>/modules
     COMMENT "Symlinking modules/"
 )

@@ -540,7 +540,7 @@ class VGMPlay_js {
 		this.uploader = document.createElement('div');
 		this.uploader.id = "vgmplayUploader";
 		this.uploader.className = "vgmplayUploader";
-		this.uploader.innerHTML = "Drop VGM .zip files here";
+		this.uploader.innerHTML = "Insert music files/archives!";
 		if (this.tracksContainer) {
 			this.tracksContainer.appendChild(this.uploader);
 		} else {
@@ -577,7 +577,7 @@ class VGMPlay_js {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav')) {
 				const arrayBuffer = await file.arrayBuffer();
 				const byteArray = new Uint8Array(arrayBuffer);
 				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
@@ -1510,7 +1510,7 @@ class VGMPlay_js {
 	addHarvestedTracks(urls) {
 		urls.forEach(url => {
 			const lower = url.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav')) {
 				this._queueURL(url, false, true);
 			} else if (this.isPlayable(lower)) {
 				// Handle direct links as single files
@@ -1826,7 +1826,8 @@ class VGMPlay_js {
 			p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
 			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
 			p.endsWith('.mpk') || p.endsWith('.mbm') ||
-			p.endsWith('.sap') || p.endsWith('.ay');
+			p.endsWith('.sap') || p.endsWith('.ay') ||
+			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav');
 	}
 
 	_isGmeFile(path) {

@@ -8,6 +8,7 @@ let gameFinished = false; // Victory state
 let gameState = 'NORMAL'; // NORMAL, BOSS_APPROACHING, BOSS_FIGHT
 let score = 0;
 let lastTime = 0;
+let lastVictoryTime = 0;
 
 let boss = null;
 const BOSS_SCORE_THRESHOLD = 2000; // Lowered to reach boss faster
@@ -87,7 +88,9 @@ document.addEventListener('keydown', (e) => {
             if (gameOver) resetGame();
             else startGame();
         } else if (gameFinished && window.vgmPlayInstance) {
-            resetGame();
+            if (performance.now() - lastVictoryTime > 5000) {
+                resetGame();
+            }
         } else {
             keys.Space = true;
         }
@@ -109,7 +112,12 @@ document.addEventListener('keyup', (e) => {
 
 canvas.addEventListener('click', () => {
     if (!gameActive && window.vgmPlayInstance) {
-        if (gameOver || gameFinished) resetGame();
+        if (gameOver) resetGame();
+        else if (gameFinished) {
+            if (performance.now() - lastVictoryTime > 5000) {
+                resetGame();
+            }
+        }
         else startGame();
     }
 });
@@ -167,7 +175,12 @@ function triggerGameOver() {
 function triggerVictory() {
     gameActive = false;
     gameFinished = true;
-    loadingText.innerText = "MISSION ACCOMPLISHED! Press Space to restart.";
+    lastVictoryTime = performance.now();
+    loadingText.innerText = "MISSION ACCOMPLISHED! Wait 5 seconds to play again...";
+
+    if (window.vgmPlayInstance && window.vgmPlayInstance.playZipTrack) {
+        window.vgmPlayInstance.playZipTrack('dist/02.zip', 52, 0).catch(console.error);
+    }
 }
 
 function update(dt) {
@@ -369,7 +382,12 @@ function draw() {
         ctx.fillText("VICTORY!", canvas.width / 2, canvas.height / 2 - 20);
         ctx.fillStyle = "white";
         ctx.font = "20px Arial";
-        ctx.fillText("PRESS SPACE TO PLAY AGAIN", canvas.width / 2, canvas.height / 2 + 20);
+        const remaining = Math.max(0, Math.ceil(5 - (performance.now() - lastVictoryTime) / 1000));
+        if (remaining > 0) {
+            ctx.fillText("WAIT " + remaining + " SECONDS...", canvas.width / 2, canvas.height / 2 + 20);
+        } else {
+            ctx.fillText("PRESS SPACE TO PLAY AGAIN", canvas.width / 2, canvas.height / 2 + 20);
+        }
     } else {
         // Draw Player (Space Manbow)
         const px = player.x, py = player.y;

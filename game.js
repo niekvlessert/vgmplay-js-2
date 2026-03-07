@@ -145,7 +145,7 @@ function startGame() {
     energyCapsules.length = 0;
     loadingText.innerText = "Playing SD Snatcher - Resistance...";
 
-    if (window.vgmPlayInstance) {
+    if (window.vgmPlayInstance && window.vgmPlayInstance.playZipTrack) {
         window.vgmPlayInstance.playZipTrack('dist/02.zip', 9, 0).catch(console.error);
     }
 }
@@ -159,7 +159,7 @@ function triggerGameOver() {
     gameOver = true;
     loadingText.innerText = "GAME OVER. Press Space to restart.";
 
-    if (window.vgmPlayInstance) {
+    if (window.vgmPlayInstance && window.vgmPlayInstance.playZipTrack) {
         window.vgmPlayInstance.playZipTrack('dist/02.zip', 41, 0).catch(console.error);
     }
 }
@@ -178,7 +178,7 @@ function update(dt) {
         gameState = 'BOSS_APPROACHING';
         loadingText.innerText = "WARNING! Boss Approaching!";
         enemies.length = 0;
-        if (window.vgmPlayInstance) {
+        if (window.vgmPlayInstance && window.vgmPlayInstance.playZipTrack) {
             window.vgmPlayInstance.playZipTrack('dist/02.zip', 11, 0).catch(console.error);
         }
 

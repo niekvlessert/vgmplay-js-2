@@ -6,48 +6,62 @@ if(NOT EMSCRIPTEN)
   message(FATAL_ERROR "This project requires the Emscripten toolchain")
 endif()
 
-# Configure libvgm options
-set(BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
-set(BUILD_PLAYER OFF CACHE BOOL "Build player app" FORCE)
-set(BUILD_VGM2WAV OFF CACHE BOOL "Build vgm2wav" FORCE)
-set(BUILD_LIBAUDIO OFF CACHE BOOL "Build audio lib" FORCE) # We handle audio output in JS
-# We need library output to be static
-set(LIBRARY_TYPE "STATIC" CACHE STRING "Library type" FORCE)
+# Libvgm Only Build Option
+option(BUILD_LIBVGM_ONLY "Build only libvgm components (VGM/VGZ support only)" OFF)
 
-add_subdirectory(modules/libvgm)
-add_subdirectory(modules/sexypsf)
-set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
-set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
-add_subdirectory(modules/game-music-emu)
-add_subdirectory(modules/libkss)
-add_subdirectory(modules/lazyusf)
+if(BUILD_LIBVGM_ONLY)
+    add_definitions(-DVGMPLAY_LIBVGM_ONLY)
+    add_subdirectory(modules/libvgm)
+    set(MINIMAL_LIBS vgm-player vgm-emu vgm-utils)
+else()
+    add_subdirectory(modules/libvgm)
+    add_subdirectory(modules/sexypsf)
+    set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
+    set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
+    add_subdirectory(modules/game-music-emu)
+    add_subdirectory(modules/libkss)
+    add_subdirectory(modules/lazyusf)
+endif()
 
 # Main Executable
-add_executable(vgmplay-js src/vgmplay_glue.cpp)
+if(BUILD_LIBVGM_ONLY)
+    add_executable(vgmplay-js src/vgmplay_minimal_glue.cpp)
+else()
+    add_executable(vgmplay-js src/vgmplay_glue.cpp)
+endif()
 
-# Link against libvgm components and sexypsf
-# Note: vgm-player depends on vgm-emu and vgm-utils
+# Link against libvgm components and others
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2")
-target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf)
-target_link_libraries(vgmplay-js gme::gme)
-target_link_libraries(vgmplay-js kss)
+
+if(BUILD_LIBVGM_ONLY)
+    target_link_libraries(vgmplay-js ${MINIMAL_LIBS})
+else()
+    target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf)
+    target_link_libraries(vgmplay-js gme::gme)
+    target_link_libraries(vgmplay-js kss)
+endif()
+
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
 
-# Include directories (glue code needs headers)
+# Include directories
 target_include_directories(vgmplay-js PRIVATE 
     modules/libvgm/player
     modules/libvgm/utils
     modules/libvgm/emu
-    modules/sexypsf
-    modules/game-music-emu/gme
-    modules/libkss/src
-    modules/libkss/src/kss
-    modules/libkss/modules
-    modules/lazyusf
-    modules/lazyusf/rsp
-    modules/lazyusf/rsp_hle
 )
+if(NOT BUILD_LIBVGM_ONLY)
+    target_include_directories(vgmplay-js PRIVATE
+        modules/sexypsf
+        modules/game-music-emu/gme
+        modules/libkss/src
+        modules/libkss/src/kss
+        modules/libkss/modules
+        modules/lazyusf
+        modules/lazyusf/rsp
+        modules/lazyusf/rsp_hle
+    )
+endif()
 
 # Exported functions
 set(VGMPLAY_EXPORTS 
@@ -61,12 +75,6 @@ set(VGMPLAY_EXPORTS
     "'_VGMEnded'"
     "'_GetTrackLength'"
     "'_GetTrackLengthDirect'"
-    "'_GetGMETrackCountDirect'"
-    "'_GetGMETrackNameDirect'"
-    "'_GetKSSTrackCountDirect'"
-    "'_GetKSSTrackMinDirect'"
-    "'_GetKSSTrackMaxDirect'"
-    "'_GetKSSTrackNameDirect'"
     "'_GetVGMTagDirect'"
     "'_GetLoopPoint'"
     "'_FillBuffer2'"
@@ -80,27 +88,52 @@ set(VGMPLAY_EXPORTS
     "'_malloc'"
     "'_free'"
 )
+
+if(NOT BUILD_LIBVGM_ONLY)
+    list(APPEND VGMPLAY_EXPORTS
+        "'_GetGMETrackCountDirect'"
+        "'_GetGMETrackNameDirect'"
+        "'_GetKSSTrackCountDirect'"
+        "'_GetKSSTrackMinDirect'"
+        "'_GetKSSTrackMaxDirect'"
+        "'_GetKSSTrackNameDirect'"
+    )
+endif()
 string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")
 
 # Emscripten Linker Flags
-# Removed SINGLE_FILE=1 to prevent corruption
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
+set(LINK_FLAGS "\
     -s USE_ZLIB=1 \
     -s FORCE_FILESYSTEM=1 \
     -s TOTAL_MEMORY=134217728 \
     -s RESERVED_FUNCTION_POINTERS=100 \
     -O2 \
-    --preload-file ${PROJECT_SOURCE_DIR}/files@/ \
     -s EXPORTED_RUNTIME_METHODS=\"['cwrap','ccall','FS','HEAPU8','HEAP16']\" \
     -s WASM=1 \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s EXPORTED_FUNCTIONS=\"[${EXPORT_STR}]\" \
 ")
 
+if(BUILD_LIBVGM_ONLY)
+    set(LINK_FLAGS "${LINK_FLAGS} -s MODULARIZE=1 -s EXPORT_NAME=\"VGMPlay\"")
+else()
+    set(LINK_FLAGS "${LINK_FLAGS} --preload-file ${PROJECT_SOURCE_DIR}/files@/")
+endif()
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LINK_FLAGS}")
+
 # Post-build copy
-add_custom_command(TARGET vgmplay-js POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.data ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.data
-  COMMENT "Copying build artifacts to project root"
-)
+if(BUILD_LIBVGM_ONLY)
+    add_custom_command(TARGET vgmplay-js POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
+      COMMENT "Copying minimal build artifacts to project root"
+    )
+else()
+    add_custom_command(TARGET vgmplay-js POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.data ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.data
+      COMMENT "Copying build artifacts to project root"
+    )
+endif()

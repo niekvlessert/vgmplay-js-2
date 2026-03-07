@@ -16,6 +16,10 @@
 		});
 	}
 
+	/**
+	 * Core library class for VGMPlay-JS.
+	 * Can load and play VGM/VGZ files from URLs or ZIP archives.
+	 */
 	class VGMPlayLibrary {
 		constructor() {
 			this.functionsWrapped = false;
@@ -37,6 +41,10 @@
 			return this._loadLock;
 		}
 
+		/**
+		 * Initializes the library, loads necessary scripts and WASM module.
+		 * @returns {Promise<void>}
+		 */
 		async init() {
 			if (!this._initPromise) {
 				this._initPromise = this._doInit();
@@ -56,16 +64,33 @@
 				return prefix + path;
 			};
 
-			await loadScript(baseURL + 'vgmplay-js.js');
+			// Check if we are using the modularized version (minimal build)
+			let modular = false;
+			try {
+				await loadScript(baseURL + 'vgmplay-js.js');
+				if (typeof VGMPlay === 'function') {
+					modular = true;
+				}
+			} catch (e) {
+				console.warn("Failed to load vgmplay-js.js from " + baseURL, e);
+				throw e;
+			}
+
 			await loadScript(baseURL + 'minizip-asm.min.js');
 
-			await new Promise(resolve => {
-				const check = () => {
-					if (typeof Module !== 'undefined' && Module.calledRun && typeof FS !== 'undefined') resolve();
-					else setTimeout(check, 50);
-				};
-				check();
-			});
+			if (modular) {
+				// Initialize modular Emscripten module
+				window.Module = await VGMPlay(window.Module);
+			} else {
+				// Wait for non-modular Emscripten module
+				await new Promise(resolve => {
+					const check = () => {
+						if (typeof Module !== 'undefined' && Module.calledRun && typeof FS !== 'undefined') resolve();
+						else setTimeout(check, 50);
+					};
+					check();
+				});
+			}
 
 			this._wrapFunctions();
 			await this._initAudio();
@@ -142,6 +167,11 @@
 			FS.createDataFile(parent, name, data, true, true);
 		}
 
+		/**
+		 * Fetches a VGM file from a URL and loads it into the virtual filesystem.
+		 * @param {string} url - The URL to the .vgm or .vgz file.
+		 * @returns {Promise<string|null>} The path in the virtual filesystem or null on failure.
+		 */
 		async loadVGMFromURL(url) {
 			const parts = url.split('/');
 			const filename = parts[parts.length - 1].split('?')[0].split('#')[0] || 'remote.vgm';
@@ -153,6 +183,11 @@
 			return destPath;
 		}
 
+		/**
+		 * Fetches and extracts a ZIP archive, loading all contained VGM/VGZ files into the virtual filesystem.
+		 * @param {string} url - The URL to the .zip archive.
+		 * @returns {Promise<Object|null>} An object containing the list of files or null on failure.
+		 */
 		async loadZip(url) {
 			if (this.zipCache.has(url)) return this.zipCache.get(url);
 			const resp = await fetch(url);
@@ -193,6 +228,11 @@
 			return game;
 		}
 
+		/**
+		 * Loads a specific file from the virtual filesystem into the player engine.
+		 * @param {string} fileName - The path to the file in the virtual filesystem.
+		 * @returns {boolean} True if successfully loaded.
+		 */
 		load(fileName) {
 			if (this.isVGMLoaded && this.StopVGM) this.StopVGM();
 			if (this.CloseVGMFile) this.CloseVGMFile();
@@ -201,6 +241,9 @@
 			return this.isVGMLoaded;
 		}
 
+		/**
+		 * Starts or resumes playback.
+		 */
 		play() {
 			this.isPlaybackPaused = false;
 			if (!this.isVGMPlaying) {
@@ -217,6 +260,9 @@
 			}
 		}
 
+		/**
+		 * Pauses playback.
+		 */
 		pause() {
 			this.isPlaybackPaused = true;
 			this.workletNode.port.postMessage({ type: 'pause' });
@@ -225,6 +271,9 @@
 			}
 		}
 
+		/**
+		 * Stops playback and unloads the current file.
+		 */
 		stop() {
 			this.workletNode.port.postMessage({ type: 'stop' });
 			if (this.StopVGM) this.StopVGM();
@@ -235,6 +284,12 @@
 			this.generatingAudio = false;
 		}
 
+		/**
+		 * High-level method to play a track from a URL (ZIP or direct VGM).
+		 * @param {string} url - The URL to the music file.
+		 * @param {number} [trackIndex=0] - The index of the track in the ZIP archive.
+		 * @param {number} [loopCount=0] - Number of times to loop (0 for infinite).
+		 */
 		async playTrack(url, trackIndex = 0, loopCount = 0) {
 			await this.init();
 			if (this.isVGMLoaded || this.isVGMPlaying) {

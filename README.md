@@ -58,6 +58,26 @@ Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatch
 
 A Chrome Extension is also included. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
 
+## Minimal Library Build
+
+A minimal build option is provided that only supports core `libvgm` formats (VGM/VGZ). This results in a significantly smaller binary (approx. 900KB WASM) compared to the full build which includes PSF, USF, GME, etc.
+
+### Building Separately
+To build ONLY the minimal library:
+```bash
+mkdir build_minimal
+cd build_minimal
+emcmake cmake .. -DBUILD_LIBVGM_ONLY=ON
+make
+```
+
+### Export for Game Development
+Use the provided export script to build the minimal library and bundle only the necessary files for your project:
+```bash
+./build_and_export_lib.sh <destination_directory>
+```
+This will copy `vgmplay-js.js`, `vgmplay-js.wasm`, and the glue library files to the target folder.
+
 ## Library Usage (Minimal Engine Glue)
 
 Use the separate minimal library glue that talks directly to the engine (no UI):

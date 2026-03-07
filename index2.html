@@ -35,8 +35,34 @@
     <div id="loading">Loading VGMPlay... click Canvas to Start!</div>
     <canvas id="gameCanvas" width="800" height="400"></canvas>
     <div id="instructions">Arrows: Move | Spacebar: Shoot | Music automatically plays</div>
-    <script src="vgmplay-js-glue-library.js"></script>
-    <script src="game.js"></script>
+    <script>
+        // Try to load from libvgm/ directory first (exported minimal version)
+        // Fall back to root version if not found
+        (function() {
+            const libPath = 'libvgm/vgmplay-js-glue-library.js';
+            const fallbackPath = 'vgmplay-js-glue-library.js';
+            
+            const script = document.createElement('script');
+            script.src = libPath;
+            script.onerror = () => {
+                console.log('Separate libvgm not found at ' + libPath + ', falling back to regular version.');
+                const fallback = document.createElement('script');
+                fallback.src = fallbackPath;
+                document.head.appendChild(fallback);
+                
+                const gameScript = document.createElement('script');
+                gameScript.src = 'game.js';
+                document.head.appendChild(gameScript);
+            };
+            script.onload = () => {
+                console.log('Using separate libvgm from ' + libPath);
+                const gameScript = document.createElement('script');
+                gameScript.src = 'game.js';
+                document.head.appendChild(gameScript);
+            };
+            document.head.appendChild(script);
+        })();
+    </script>
 </body>
 
 </html>

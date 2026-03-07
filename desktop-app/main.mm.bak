@@ -1,0 +1,297 @@
+#import <Cocoa/Cocoa.h>
+#import <WebKit/WebKit.h>
+
+// ---- Custom URL scheme handler to serve local files ----
+
+@interface LocalFileHandler : NSObject <WKURLSchemeHandler>
+@property(strong) NSString *baseDir;
+@end
+
+@implementation LocalFileHandler
+
+- (void)webView:(WKWebView *)webView
+    startURLSchemeTask:(id<WKURLSchemeTask>)task {
+  NSURL *url = task.request.URL;
+  NSString *urlPath = url.path;
+
+  // Try absolute path first (for user-selected files),
+  // then fall back to baseDir-relative (for app assets)
+  NSString *path = nil;
+  if ([[NSFileManager defaultManager] fileExistsAtPath:urlPath]) {
+    path = urlPath;
+  } else {
+    path = [self.baseDir stringByAppendingPathComponent:urlPath];
+    path = [path stringByResolvingSymlinksInPath];
+  }
+
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data) {
+    NSError *err = [NSError errorWithDomain:NSURLErrorDomain
+                                       code:NSURLErrorFileDoesNotExist
+                                   userInfo:nil];
+    [task didFailWithError:err];
+    return;
+  }
+
+  // Determine MIME type
+  NSString *mime = @"application/octet-stream";
+  if ([path hasSuffix:@".html"])
+    mime = @"text/html";
+  else if ([path hasSuffix:@".js"])
+    mime = @"application/javascript";
+  else if ([path hasSuffix:@".css"])
+    mime = @"text/css";
+  else if ([path hasSuffix:@".wasm"])
+    mime = @"application/wasm";
+  else if ([path hasSuffix:@".json"])
+    mime = @"application/json";
+  else if ([path hasSuffix:@".png"])
+    mime = @"image/png";
+  else if ([path hasSuffix:@".svg"])
+    mime = @"image/svg+xml";
+
+  NSDictionary *headers = @{
+    @"Content-Type" : mime,
+    @"Content-Length" :
+        [NSString stringWithFormat:@"%lu", (unsigned long)data.length],
+    @"Access-Control-Allow-Origin" : @"*"
+  };
+
+  NSHTTPURLResponse *response =
+      [[NSHTTPURLResponse alloc] initWithURL:url
+                                  statusCode:200
+                                 HTTPVersion:@"HTTP/1.1"
+                                headerFields:headers];
+  [task didReceiveResponse:response];
+  [task didReceiveData:data];
+  [task didFinish];
+}
+
+- (void)webView:(WKWebView *)webView
+    stopURLSchemeTask:(id<WKURLSchemeTask>)task {
+}
+
+@end
+
+// ---- App Delegate ----
+
+@interface AppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate,
+                                   WKUIDelegate, NSMenuItemValidation>
+@property(strong) NSWindow *window;
+@property(strong) WKWebView *webView;
+@end
+
+@implementation AppDelegate
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+  return YES;
+}
+
+- (void)applicationDidFinishLaunching:(NSNotification *)notification {
+  // Bring app to foreground
+  [NSApp activateIgnoringOtherApps:YES];
+
+  // Window
+  NSRect frame = NSMakeRect(0, 0, 1200, 800);
+  NSUInteger style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                     NSWindowStyleMaskMiniaturizable |
+                     NSWindowStyleMaskResizable;
+  self.window = [[NSWindow alloc] initWithContentRect:frame
+                                            styleMask:style
+                                              backing:NSBackingStoreBuffered
+                                                defer:NO];
+  [self.window setTitle:@"VGMPlay"];
+  [self.window center];
+
+  // Determine base directory
+  NSString *execPath = [[NSBundle mainBundle] executablePath];
+  NSString *execDir = [execPath stringByDeletingLastPathComponent];
+
+  // WebView configuration with custom scheme handler
+  WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+  [config.preferences setValue:@YES forKey:@"allowFileAccessFromFileURLs"];
+  [config setValue:@YES forKey:@"allowUniversalAccessFromFileURLs"];
+
+  LocalFileHandler *handler = [[LocalFileHandler alloc] init];
+  handler.baseDir = execDir;
+  [config setURLSchemeHandler:handler forURLScheme:@"vgmplay"];
+
+  self.webView = [[WKWebView alloc] initWithFrame:self.window.contentView.bounds
+                                    configuration:config];
+  self.webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  self.webView.navigationDelegate = self;
+  self.webView.UIDelegate = self;
+
+  // Enable Web Inspector (Safari → Develop → VGMPlay)
+  if ([self.webView respondsToSelector:@selector(setInspectable:)]) {
+    [self.webView setValue:@YES forKey:@"inspectable"];
+  }
+  [config.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+
+  [self.window.contentView addSubview:self.webView];
+
+  // Load via custom scheme
+  NSURL *url = [NSURL URLWithString:@"vgmplay:///index.html"];
+  [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
+
+  [self.window makeKeyAndOrderFront:nil];
+
+  // Dark title bar
+  self.window.appearance =
+      [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+  self.window.titlebarAppearsTransparent = YES;
+  self.window.backgroundColor = [NSColor colorWithRed:0.165
+                                                green:0.165
+                                                 blue:0.165
+                                                alpha:1.0];
+}
+
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:
+    (NSApplication *)sender {
+  return YES;
+}
+
+- (void)webView:(WKWebView *)webView
+    decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
+                    decisionHandler:
+                        (void (^)(WKNavigationActionPolicy))decisionHandler {
+  decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+// ---- Open File action ----
+- (void)openFile:(id)sender {
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  panel.canChooseDirectories = NO;
+  panel.canChooseFiles = YES;
+  panel.allowsMultipleSelection = YES;
+  panel.message = @"Select music files";
+
+  NSModalResponse result = [panel runModal];
+  if (result != NSModalResponseOK)
+    return;
+
+  NSMutableArray *jsArray = [NSMutableArray array];
+  for (NSURL *fileURL in panel.URLs) {
+    NSString *escapedPath =
+        [fileURL.path stringByAddingPercentEncodingWithAllowedCharacters:
+                          [NSCharacterSet URLPathAllowedCharacterSet]];
+    [jsArray
+        addObject:[NSString stringWithFormat:@"'vgmplay://%@'", escapedPath]];
+  }
+
+  if (jsArray.count > 0) {
+    NSString *js = [NSString
+        stringWithFormat:@"var files = [%@]; files.forEach(f => "
+                         @"window.vgmPlayInstance.loadZIPWithVGMFromURL(f));",
+                         [jsArray componentsJoinedByString:@","]];
+    [self.webView evaluateJavaScript:js completionHandler:nil];
+  }
+}
+
+// ---- Open Folder action ----
+- (void)openFolder:(id)sender {
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  panel.canChooseDirectories = YES;
+  panel.canChooseFiles = NO;
+  panel.allowsMultipleSelection = NO;
+  panel.message = @"Select a folder containing music files";
+
+  NSModalResponse result = [panel runModal];
+  if (result != NSModalResponseOK)
+    return;
+
+  NSURL *dirURL = panel.URL;
+  NSFileManager *fm = [NSFileManager defaultManager];
+  NSArray *contents = [fm contentsOfDirectoryAtPath:dirURL.path error:nil];
+  if (!contents)
+    return;
+
+  // Supported extensions
+  NSSet *extensions = [NSSet setWithArray:@[
+    @"zip",     @"7z",  @"rar",     @"vgm", @"vgz", @"spc",  @"nsf",
+    @"nsfe",    @"gbs", @"hes",     @"sap", @"ay",  @"kss",  @"psf",
+    @"minipsf", @"usf", @"miniusf", @"mp3", @"ogg", @"flac", @"wav"
+  ]];
+
+  NSMutableArray *files = [NSMutableArray array];
+  for (NSString *file in contents) {
+    NSString *ext = file.pathExtension.lowercaseString;
+    if ([extensions containsObject:ext]) {
+      NSString *fullPath = [dirURL.path stringByAppendingPathComponent:file];
+      [files addObject:fullPath];
+    }
+  }
+
+  [files sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+
+  NSMutableArray *jsArray = [NSMutableArray array];
+  for (NSString *filePath in files) {
+    NSString *escapedPath =
+        [filePath stringByAddingPercentEncodingWithAllowedCharacters:
+                      [NSCharacterSet URLPathAllowedCharacterSet]];
+    [jsArray
+        addObject:[NSString stringWithFormat:@"'vgmplay://%@'", escapedPath]];
+  }
+
+  if (jsArray.count > 0) {
+    NSString *js = [NSString
+        stringWithFormat:@"var files = [%@]; files.forEach(f => "
+                         @"window.vgmPlayInstance.loadZIPWithVGMFromURL(f));",
+                         [jsArray componentsJoinedByString:@","]];
+    [self.webView evaluateJavaScript:js completionHandler:nil];
+  }
+}
+
+@end
+
+// ---- Main ----
+
+// Keep a strong reference to the delegate so ARC doesn't deallocate
+// it immediately before [app run], which would disable all menu items!
+static AppDelegate *sharedDelegate;
+
+int main(int argc, const char *argv[]) {
+  @autoreleasepool {
+    NSApplication *app = [NSApplication sharedApplication];
+    [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+    AppDelegate *delegate = [[AppDelegate alloc] init];
+    sharedDelegate = delegate; // retain for the lifetime of the app
+    app.delegate = delegate;
+
+    // Menu bar
+    NSMenu *menuBar = [[NSMenu alloc] init];
+
+    // App menu
+    NSMenuItem *appMenuItem = [[NSMenuItem alloc] init];
+    [menuBar addItem:appMenuItem];
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"VGMPlay"];
+    [appMenu addItemWithTitle:@"Quit VGMPlay"
+                       action:@selector(terminate:)
+                keyEquivalent:@"q"];
+    appMenuItem.submenu = appMenu;
+
+    // File menu
+    NSMenuItem *fileMenuItem = [[NSMenuItem alloc] init];
+    [menuBar addItem:fileMenuItem];
+    NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+
+    NSMenuItem *openFileItem = [fileMenu addItemWithTitle:@"Open File\u2026"
+                                                   action:@selector(openFile:)
+                                            keyEquivalent:@"o"];
+    openFileItem.target = sharedDelegate;
+
+    NSMenuItem *openFolderItem =
+        [fileMenu addItemWithTitle:@"Open Folder\u2026"
+                            action:@selector(openFolder:)
+                     keyEquivalent:@"O"];
+    openFolderItem.target = sharedDelegate;
+    fileMenuItem.submenu = fileMenu;
+
+    [app setMainMenu:menuBar];
+
+    [app activateIgnoringOtherApps:YES];
+    [app run];
+  }
+  return 0;
+}

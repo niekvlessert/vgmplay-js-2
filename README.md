@@ -108,10 +108,25 @@ vgmPlayInstance.playTrack('music/game.zip', 0, 0);
 vgmPlayInstance.playTrack('music/track.vgm', 0, 0);
 ```
 
-#### Controls
-- `vgmPlayInstance.pause()`: Pauses playback.
-- `vgmPlayInstance.play()`: Resumes playback.
-- `vgmPlayInstance.stop()`: Stops playback and unloads the file.
+---
+
+## macOS Desktop App
+
+A native macOS wrapper using `WKWebView` is provided in the `desktop-app` directory. It features:
+- **Custom `vgmplay://` Scheme**: Seamlessly loads local music files.
+- **Native File/Folder Support**: Use the File menu to open individual songs or entire directories.
+- **Persistence**: Remembers your last used music folder and auto-loads it on startup.
+- **Standalone WASM**: Uses the same production-ready WASM engine as the extension.
+
+### Building the Desktop App
+Requires CMake and a Recent version of Xcode.
+```bash
+cd desktop-app
+mkdir build && cd build
+cmake ..
+make
+open VGMPlay.app
+```
 
 ---
 Underneath an older screenshot, but you'd better try the latest version on the right, it's hosted on github as well.

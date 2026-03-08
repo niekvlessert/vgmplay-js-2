@@ -15,19 +15,20 @@ reverse_patch() {
     local target_dir="$MODULES_DIR/$module_name"
     local patch_file="$PATCHES_DIR/$patch_name"
 
-    if [ -f "$patch_file" ]; then
-        echo "Checking if patch $patch_name is applied to $module_name..."
-        git -C "$target_dir" apply --reverse --check "$patch_file" &>/dev/null
-        if [ $? -eq 0 ]; then
-            echo "Reversing patch $patch_name..."
-            git -C "$target_dir" apply --reverse "$patch_file"
-            git -C "$target_dir" clean -f
-            echo "Patch $patch_name reversed successfully and module cleaned."
-        else
-            echo "Patch $patch_name is not applied. Skipping reversal."
-        fi
+    if [ -d "$target_dir" ]; then
+        echo "Cleaning $module_name..."
+        # Remove generated CMakeLists.txt specifically
+        rm -f "$target_dir/CMakeLists.txt"
+        # Revert any modified files, reset index, and remove untracked files
+        git -C "$target_dir" reset --hard HEAD
+        git -C "$target_dir" checkout .
+        git -C "$target_dir" clean -fd
+        # Clean sub-sub-modules if any
+        git -C "$target_dir" submodule foreach --recursive git reset --hard HEAD
+        git -C "$target_dir" submodule foreach --recursive git clean -fd
+        echo "$module_name cleaned successfully."
     else
-        echo "Warning: Patch file not found at $patch_file"
+        echo "Warning: Module directory not found at $target_dir"
     fi
 }
 

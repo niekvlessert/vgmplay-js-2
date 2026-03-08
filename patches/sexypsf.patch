@@ -1,39 +1,41 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 new file mode 100644
-index 0000000..67de606
+index 0000000..65eb19e
 --- /dev/null
 +++ b/CMakeLists.txt
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,32 @@
 +# CMakeLists.txt for SexyPSF
 +project(sexypsf)
 +
++# Define source files
 +set(SEXYPSF_SOURCES
 +    PsxBios.c
 +    PsxCounters.c
 +    PsxDma.c
-+    Spu.c
-+    PsxHw.c
-+    PsxMem.c
-+    Misc.c
-+    R3000A.c
-+    PsxInterpreter.c
 +    PsxHLE.c
++    PsxHw.c
++    PsxInterpreter.c
++    PsxMem.c
++    R3000A.c
++    Spu.c
++    Misc.c
 +    spu/spu.c
 +)
 +
++# Create library
 +add_library(sexypsf STATIC ${SEXYPSF_SOURCES})
 +
++# Definitions
 +target_compile_definitions(sexypsf PRIVATE
 +    PSS_STYLE=1
-+    SPSFVERSION="0.4.8"
 +    LSB_FIRST
 +)
 +
-+target_include_directories(sexypsf PUBLIC . spu)
-+
-+# SexyPSF needs zlib
-+find_package(ZLIB REQUIRED)
-+target_link_libraries(sexypsf PRIVATE ZLIB::ZLIB)
++# Include directories
++target_include_directories(sexypsf PUBLIC 
++    .
++    spu
++)
 diff --git a/Misc.c b/Misc.c
 index 4672558..0a3b5d7 100644
 --- a/Misc.c

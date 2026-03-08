@@ -24,5 +24,13 @@ ff_extension/7zz.wasm
 
 # Build & Dist
 build/
-dist/
+build_full/
+build_minimal/
 node_modules/
+
+# Mac stuff
+.DS_Store
+
+# Mac desktop app stuff
+desktop-app-mac/VGMPlay-macOS.dmg
+desktop-app-mac/build_standalone/

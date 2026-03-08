@@ -634,6 +634,44 @@ class VGMPlay_js {
 			this.VGMTag = titleStr.split("|||");
 			this.tagType = 0;
 			this.titleWindow.innerHTML = "";
+
+			// KSS gameinfo support (moved to top for visibility)
+			console.log("getVGMTag: checking gameinfo for", this.activeGame ? this.activeGame.name : "no active game");
+			if (this.activeGame && this.activeGame.gameinfo) {
+				console.log("getVGMTag: found gameinfo content:", this.activeGame.gameinfo.substring(0, 50) + "...");
+				const info = this.activeGame.gameinfo;
+				const fields = {};
+				info.split('\n').forEach(line => {
+					const colon = line.indexOf(':');
+					if (colon > 0) {
+						const key = line.substring(0, colon).trim().toLowerCase();
+						const val = line.substring(colon + 1).trim();
+						fields[key] = val;
+					}
+				});
+
+				let infoHtml = "<br/><b>Game Info:</b><br/>";
+				let hasFields = false;
+				if (fields.full_title || fields.title) {
+					infoHtml += "Full Title: " + (fields.full_title || fields.title) + "<br/>";
+					hasFields = true;
+				}
+				if (fields.year) {
+					infoHtml += "Release Year: " + fields.year + "<br/>";
+					hasFields = true;
+				}
+				if (fields.vendor) {
+					infoHtml += "Publisher: " + fields.vendor + "<br/>";
+					hasFields = true;
+				}
+
+				if (hasFields) {
+					this.titleWindow.innerHTML += infoHtml;
+				} else if (info.trim()) {
+					this.titleWindow.innerHTML += "<br/><b>Game Info:</b><br/>" + info.replace(/\n/g, '<br/>') + "<br/>";
+				}
+			}
+
 			let systemShown = false;
 			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
 				switch (this.i) {
@@ -708,7 +746,10 @@ class VGMPlay_js {
 					}
 				}
 			}
+		}
 
+
+		if (this.titleWindow) {
 			// Display chips with volume sliders as the last entry of the top frame
 			const chipCount = this.GetDeviceCount ? this.GetDeviceCount() : 0;
 			if (chipCount > 0) {
@@ -722,13 +763,13 @@ class VGMPlay_js {
 					chipControl.className = "vgmplayChipControl";
 					chipControl.title = name;
 					chipControl.innerHTML = `
-						<div class="vgmplayChipName">${name}</div>
-						<input type="range" min="0" max="512" value="${vol}" 
-							class="vgmplayChipVolume" 
-							oninput="vgmPlayInstance._setChipVolume(${i}, this.value)"
-							onmousedown="event.stopPropagation()"
-							onclick="event.stopPropagation()">
-					`;
+							<div class="vgmplayChipName">${name}</div>
+							<input type="range" min="0" max="512" value="${vol}" 
+								class="vgmplayChipVolume" 
+								oninput="vgmPlayInstance._setChipVolume(${i}, this.value)"
+								onmousedown="event.stopPropagation()"
+								onclick="event.stopPropagation()">
+						`;
 					chipStrip.appendChild(chipControl);
 				}
 				this.titleWindow.appendChild(chipStrip);
@@ -1218,18 +1259,33 @@ class VGMPlay_js {
 					}
 					const lower = relPath.toLowerCase();
 					if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
-					if (lower.endsWith(".txt") || lower.endsWith(".trackinfo")) txtFile = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
+						const txt = FS.readFile(fullPath, { encoding: "utf8" });
+						if (lower.includes("gameinfo")) {
+							console.log("processZipBuffer (Case 1): Found gameinfo in", relPath);
+							// Store it in a variable since 'game' object isn't created yet
+							this.tempGameInfo = txt;
+						} else {
+							txtFile = txt;
+						}
+					}
 					if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 				}
 
-				var game = { files: entries.filter(e => e && e.filepath), m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
+				var game = { files: entries.filter(e => e && e.filepath), m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo };
+				this.tempGameInfo = null;
 				this.games.push(game);
+				this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 				const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 				if (!hasPlayable) {
 					this._addNoPlayableNotice(sourceName || 'Archive');
 				}
 				this.checkEverythingReady().then(() => {
-					this.showVGMFromZip(game);
+					if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+					for (const g of this.games) {
+						g.uiElement = null;
+						this.showVGMFromZip(g);
+					}
 					resolve();
 				});
 				return;
@@ -1242,7 +1298,7 @@ class VGMPlay_js {
 				const parts = relPath.split('/');
 				if (parts.length > 1) return parts[0];
 				const lower = relPath.toLowerCase();
-				if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
+				if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo')) {
 					const dot = relPath.lastIndexOf('.');
 					return dot > 0 ? relPath.substring(0, dot) : relPath;
 				}
@@ -1291,11 +1347,23 @@ class VGMPlay_js {
 				game.files.push({ filepath: fullPath });
 
 				const lower = relPath.toLowerCase();
-				if (lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
-					const base = relPath.substring(relPath.lastIndexOf('/') + 1, relPath.lastIndexOf('.'));
-					const txt = FS.readFile(fullPath, { encoding: "utf8" });
-					game.kssTxtByBase[base] = txt;
-					game.kssTxtOrder.push(base);
+				const isInfoFile = lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo');
+				if (isInfoFile) {
+					const lastSlash = relPath.lastIndexOf('/');
+					const lastDot = relPath.lastIndexOf('.');
+					const base = relPath.substring(lastSlash + 1, lastDot > lastSlash ? lastDot : relPath.length);
+					try {
+						const txt = FS.readFile(fullPath, { encoding: "utf8" });
+						if (lower.includes('gameinfo')) {
+							console.log("processZipBuffer (Case 2): Found gameinfo in", relPath);
+							game.gameinfo = txt;
+						} else {
+							game.kssTxtByBase[base] = txt;
+							game.kssTxtOrder.push(base);
+						}
+					} catch (e) {
+						console.error("Failed to read info file:", fullPath, e);
+					}
 				}
 				if (lower.endsWith('.png') && !game.png) {
 					game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
@@ -1306,17 +1374,25 @@ class VGMPlay_js {
 			for (const game of gamesInOrder) {
 				const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 				if (hasPlayable) {
+					const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+					game.name = name;
 					this.games.push(game);
 					anyPlayable = true;
 				}
 			}
+
+			// Sort games alphabetically
+			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
 			if (!anyPlayable) {
 				this._addNoPlayableNotice(sourceName || 'Archive');
 			}
 
 			this.checkEverythingReady().then(() => {
-				for (const game of gamesInOrder) {
-					if (!this.games.includes(game)) continue;
+				// Clear and re-render all games to maintain sort order
+				if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+				for (const game of this.games) {
+					game.uiElement = null; // Reset UI element to force re-render
 					this.showVGMFromZip(game);
 				}
 				resolve();
@@ -1793,7 +1869,14 @@ class VGMPlay_js {
 
 	async playFileFromFS(href_object, file, game, key) {
 		return this._withLoadLock(async () => {
-			if (game) this.activeGame = this.games[game - 1];
+			if (game) {
+				this.activeGame = this.games[game - 1];
+				// Auto-expand active game
+				if (this.activeGame && this.activeGame.uiElement && this.activeGame.uiElement.dataset.expanded === 'false') {
+					const toggle = this.activeGame.uiElement.querySelector('.vgmplayGameToggle');
+					if (toggle) toggle.click();
+				}
+			}
 			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
 			await this.checkEverythingReady();
 
@@ -1863,7 +1946,8 @@ class VGMPlay_js {
 			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
 			p.endsWith('.mpk') || p.endsWith('.mbm') ||
 			p.endsWith('.sap') || p.endsWith('.ay') ||
-			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav');
+			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') ||
+			p.endsWith('.vigamup');
 	}
 
 	_isGmeFile(path) {
@@ -1881,7 +1965,7 @@ class VGMPlay_js {
 	}
 
 	_isArchiveUrl(lower) {
-		return lower.endsWith('.zip') || lower.endsWith('.7z');
+		return lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.vigamup');
 	}
 
 	_parseKssTxt(text) {

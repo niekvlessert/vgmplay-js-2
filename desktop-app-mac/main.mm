@@ -162,45 +162,6 @@
 
 #pragma mark Menu Actions
 
-- (void)openFile:(id)sender {
-  NSLog(@"File -> Open File clicked! Displaying panel...");
-  dispatch_async(dispatch_get_main_queue(), ^{
-    NSOpenPanel *panel = [NSOpenPanel openPanel];
-    panel.canChooseDirectories = NO;
-    panel.canChooseFiles = YES;
-    panel.allowsMultipleSelection = YES;
-    panel.message = @"Select music files";
-
-    [NSApp activateIgnoringOtherApps:YES];
-    [panel setLevel:NSStatusWindowLevel]; // Try to bring it way up
-
-    [panel beginWithCompletionHandler:^(NSModalResponse result) {
-      if (result != NSModalResponseOK) {
-        NSLog(@"Open File canceled by user. Code: %ld", (long)result);
-        return;
-      }
-
-      NSMutableArray *jsArray = [NSMutableArray array];
-      for (NSURL *fileURL in panel.URLs) {
-        NSString *escapedPath =
-            [fileURL.path stringByAddingPercentEncodingWithAllowedCharacters:
-                              [NSCharacterSet URLPathAllowedCharacterSet]];
-        [jsArray addObject:[NSString stringWithFormat:@"'vgmplay://%@'",
-                                                      escapedPath]];
-      }
-
-      if (jsArray.count > 0) {
-        NSString *js =
-            [NSString stringWithFormat:
-                          @"var files = [%@]; files.forEach(f => "
-                          @"window.vgmPlayInstance.loadZIPWithVGMFromURL(f));",
-                          [jsArray componentsJoinedByString:@","]];
-        [self.webView evaluateJavaScript:js completionHandler:nil];
-      }
-    }];
-  });
-}
-
 - (void)openFolder:(id)sender {
   NSLog(@"File -> Open Folder clicked! Displaying panel...");
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -337,10 +298,6 @@ int main(int argc, const char *argv[]) {
 
     // Ensure menu targets point *directly* to the persistent objects
     NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
-    [fileMenu addItemWithTitle:@"Open File\u2026"
-                        action:@selector(openFile:)
-                 keyEquivalent:@"o"]
-        .target = sharedWindowController;
     [fileMenu addItemWithTitle:@"Open Folder\u2026"
                         action:@selector(openFolder:)
                  keyEquivalent:@"O"]

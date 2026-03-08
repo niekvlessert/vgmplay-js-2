@@ -1869,11 +1869,16 @@ class VGMPlay_js {
 	async playFileFromFS(href_object, file, game, key) {
 		return this._withLoadLock(async () => {
 			if (game) {
+				const oldActiveGame = this.activeGame;
 				this.activeGame = this.games[game - 1];
 				// Auto-expand active game
 				if (this.activeGame && this.activeGame.uiElement && this.activeGame.uiElement.dataset.expanded === 'false') {
 					const toggle = this.activeGame.uiElement.querySelector('.vgmplayGameToggle');
 					if (toggle) toggle.click();
+				}
+				// If game changed, scroll it into view
+				if (this.activeGame && this.activeGame !== oldActiveGame && this.activeGame.uiElement) {
+					this.activeGame.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
 				}
 			}
 			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();

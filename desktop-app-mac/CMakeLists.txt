@@ -69,10 +69,3 @@ add_custom_command(TARGET VGMPlay POST_BUILD
     COMMENT "Symlinking css/"
 )
 
-# Modules directory (if used)
-add_custom_command(TARGET VGMPlay POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${ROOT_DIR}/modules
-        $<TARGET_FILE_DIR:VGMPlay>/modules
-    COMMENT "Symlinking modules/"
-)

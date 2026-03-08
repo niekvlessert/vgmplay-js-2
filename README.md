@@ -1,14 +1,14 @@
 # vgmplay-js-2
-VGMRips VGMPlay transpiled to Javascript, can be used as player or Chrome/Firefox Extension. A separate minimal library glue is provided.
+VGMRips VGMPlay transpiled to Javascript, can be used as library for libvgm, player, Chrome/Firefox Extension and standalone MacOS App.
 
 This is a newer version, once based on vgmplay-js. 
 
 Objectives:
 
 General:
-- libvgm
+- libvgm only at first, but others came...
+- Webbased
 - Playback through Audioworklet
-- Support for MP3, FLAC, OGG, and WAV via Miniaudio
 
 For the player:
 
@@ -27,25 +27,28 @@ Works on current Brave and Chrome now (feb 2026). Compilation works with Emscrip
 
 Lately a lot of additions using vibe coding.
 
-The compiled binaries are included. However if you want to build yourself use this. Prepare_for_usage.sh is required to make the extension feature work.
+The compiled binaries are included. However if you want to build yourself use this. 
+
+Prepare_for_usage.sh is required to make the extension feature work. Since 'binaries' are included, you can run that without compiling.
 
 Buildin: make sure you have cmake and Emscripten installed.
 ```
 cd /var/www/html/
 git clone --recursive https://github.com/niekvlessert/vgmplay-js-2.git
 cd vgmplay-js-2
-./prepare_for_usage.sh
 mkdir build
 cd build
 emcmake cmake ..
 make
+cd ..
+./prepare_for_usage.sh
 ```
 
-Then put it on your webserver or run a server with Python 3 or something. On localhost non-SSL javascript usage is working fine (at least during my tests).
+Then put it on your webserver or run a server with Python 3 or something. On localhost non-SSL javascript usage is working fine (at least during my tests). It has some great music included.
 
 By default a player is shown and the html file will be scanned for .zip files. If available they're unpacked into the Emscripten filesystem, then a player will be displayed.
 
-Loading vgmrips.net zip files is as easy as putting them on the webserver and offer them to download, then include the glue and the player will be pick them up:
+Loading vgmrips.net zip files is as easy as putting them on the webserver and offer them in the index.html, then include the glue and the player will be pick them up:
 
 ```html
 <html>
@@ -56,6 +59,20 @@ Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatch
 </body>
 </html>
 ```
+
+## Supported Libraries & Formats
+
+The full build of `vgmplay-js` includes the following libraries and supports their respective formats. Many thanks for the creators for their hard work it took to get those libraries this far!
+
+| Library | Supported Formats |
+| :--- | :--- |
+| **libvgm** | `.vgm`, `.vgz` (Core Support) |
+| **game-music-emu** | `.spc` (SNES), `.nsf`/`.nsfe` (NES), `.gbs` (GameBoy), `.gym` (Genesis), `.hes` (PC Engine), `.sap` (Atari XL), `.ay` (Spectrum/Amstrad) |
+| **libkss** | `.kss`, `.kssx`, `.kscc`, `.mgs`, `.bgm`, `.opx`, `.mpk`, `.mbm` (MSX & KSS variants) |
+| **sexypsf** | `.psf`, `.minipsf` (PlayStation) |
+| **lazyusf** | `.usf`, `.miniusf` (Nintendo 64) |
+| **miniaudio** | `.mp3`, `.flac`, `.ogg`, `.wav` (Modern Audio Formats) |
+| **Archives** | `.zip`, `.7z`, `.rar`, `.vigamup` (via 7zz, unrar, minizip) |
 
 A Chrome Extension is also included. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
 
@@ -88,7 +105,7 @@ Use the separate minimal library glue that talks directly to the engine (no UI):
 ```
 
 This library only supports:
-- Direct `.vgm`/`.vgz`, `.mp3`, `.flac`, `.ogg`, `.wav`
+- Direct `.vgm`/`.vgz`
 - `.zip` containing the above formats
 
 ### API Reference
@@ -113,7 +130,7 @@ vgmPlayInstance.playTrack('music/track.vgm', 0, 0);
 
 ## macOS Desktop App
 
-A native macOS wrapper using `WKWebView` is provided in the `desktop-app` directory. It features:
+A native macOS wrapper using `WKWebView` is provided in the `desktop-app-mac` directory. It features:
 - **Custom `vgmplay://` Scheme**: Seamlessly loads local music files.
 - **Native File/Folder Support**: Use the File menu to open individual songs or entire directories.
 - **Persistence**: Remembers your last used music folder and auto-loads it on startup.
@@ -122,7 +139,7 @@ A native macOS wrapper using `WKWebView` is provided in the `desktop-app` direct
 ### Building the Desktop App
 Requires CMake and a Recent version of Xcode.
 ```bash
-cd desktop-app
+cd desktop-app-mac
 mkdir build && cd build
 cmake ..
 make

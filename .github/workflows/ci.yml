@@ -1,0 +1,113 @@
+name: CI/CD Build & Release
+
+on:
+  push:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "ci"
+  cancel-in-progress: true
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Build WASM
+        run: |
+          mkdir -p build
+          cd build
+          emcmake cmake ..
+          emmake make -j4
+
+      - name: Upload WASM Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: |
+            vgmplay-js.js
+            vgmplay-js.wasm
+            vgmplay-js.data
+
+  deploy-pages:
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Download WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: .
+
+      - name: Disable Jekyll
+        run: touch .nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  build-mac:
+    needs: build-wasm
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Download WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: .
+          
+      - name: Build DMG
+        run: |
+          cd desktop-app-mac
+          chmod +x build_dmg.sh
+          ./build_dmg.sh
+
+      - name: Upload DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VGMPlay-macOS.dmg
+          path: desktop-app-mac/VGMPlay-macOS.dmg
+          
+      - name: Release Note Payload
+        run: |
+          echo "Automated CI build from commit ${{ github.sha }}" > release_notes.txt
+          
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/master'
+        with:
+          tag_name: latest
+          name: "VGMPlay Latest Nightly"
+          body_path: release_notes.txt
+          files: desktop-app-mac/VGMPlay-macOS.dmg
+          draft: false
+          prerelease: true

@@ -84,14 +84,17 @@ class VGMPlay_js {
 		this.dragStart = this.dragStart.bind(this);
 
 		// Determine base URL
-		this.baseURL = options.baseURL || 'https://niekvlessert.github.io/vgmplay-js-2/';
-		if (!options.baseURL) {
+		this.baseURL = options.baseURL || '';
+		if (!this.baseURL) {
 			try {
 				const currentScript = document.currentScript;
 				if (currentScript && currentScript.src) {
 					this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
 				}
 			} catch (e) { }
+			if (!this.baseURL) {
+				this.baseURL = 'https://niekvlessert.github.io/vgmplay-js-2/';
+			}
 		}
 
 		// Define Emscripten Module object before loading vgmplay-js.js
@@ -636,9 +639,7 @@ class VGMPlay_js {
 			this.titleWindow.innerHTML = "";
 
 			// KSS gameinfo support (moved to top for visibility)
-			console.log("getVGMTag: checking gameinfo for", this.activeGame ? this.activeGame.name : "no active game");
 			if (this.activeGame && this.activeGame.gameinfo) {
-				console.log("getVGMTag: found gameinfo content:", this.activeGame.gameinfo.substring(0, 50) + "...");
 				const info = this.activeGame.gameinfo;
 				const fields = {};
 				info.split('\n').forEach(line => {
@@ -1262,7 +1263,6 @@ class VGMPlay_js {
 					if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
 						const txt = FS.readFile(fullPath, { encoding: "utf8" });
 						if (lower.includes("gameinfo")) {
-							console.log("processZipBuffer (Case 1): Found gameinfo in", relPath);
 							// Store it in a variable since 'game' object isn't created yet
 							this.tempGameInfo = txt;
 						} else {
@@ -1355,7 +1355,6 @@ class VGMPlay_js {
 					try {
 						const txt = FS.readFile(fullPath, { encoding: "utf8" });
 						if (lower.includes('gameinfo')) {
-							console.log("processZipBuffer (Case 2): Found gameinfo in", relPath);
 							game.gameinfo = txt;
 						} else {
 							game.kssTxtByBase[base] = txt;

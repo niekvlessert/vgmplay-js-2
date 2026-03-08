@@ -30,6 +30,7 @@ void psxShutdown(void);
 }
 #include "../modules/game-music-emu/gme/gme.h"
 #include "../modules/lazyusf/usf.h"
+#include "../modules/libmusdoom/src/libmusdoom.h"
 #include "miniaudio.h"
 
 /* ---- globals ---- */
@@ -41,6 +42,7 @@ static UINT32 gSampleRate = 44100;
 
 /* ---- SexyPSF globals ---- */
 static bool isPSF = false;
+static std::string currentPsfPath;
 static PSFINFO *psfInfo = nullptr;
 static std::vector<float> psfBufferL;
 static std::vector<float> psfBufferR;
@@ -61,6 +63,11 @@ static usf_state_t *usfState = nullptr;
 static PSFINFO *usfInfo = nullptr;
 static std::vector<int16_t> usfBuffer;
 static int32_t usfSampleRate = 44100;
+
+static bool isMUS = false;
+static musdoom_emulator_t *musEmu = nullptr;
+static std::vector<uint8_t> genmidiData;
+static std::vector<uint8_t> musData;
 
 static bool isMA = false;
 static ma_decoder gMaDecoder;
@@ -94,6 +101,17 @@ static const char *kssTrackTitle(KSS *kss, int trackNum) {
 
 extern "C" {
 int stop_sexy_execute = 0; // Declare stop_sexy_execute here
+
+EMSCRIPTEN_KEEPALIVE
+void LoadGENMIDI(const uint8_t *data, size_t size) {
+  genmidiData.assign(data, data + size);
+  if (isMUS && musEmu) {
+    musdoom_load_genmidi(musEmu, genmidiData.data(), genmidiData.size());
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE
+int MUSPlaying() { return isMUS ? 1 : 0; }
 
 /* ---- SexyPSF callbacks ---- */
 void SPUirq(void) {} // Dummy SPU IRQ for SexyPSF
@@ -269,6 +287,7 @@ static void cleanup() {
     sexy_stop();
     psxShutdown(); // Free memory allocated by psxInit()
     isPSF = false;
+    currentPsfPath.clear();
     psfBufferL.clear();
     psfBufferR.clear();
   }
@@ -284,6 +303,16 @@ static void cleanup() {
     }
     isUSF = false;
     usfBuffer.clear();
+  }
+  if (isMUS) {
+    if (musEmu) {
+      musdoom_stop(musEmu);
+      musdoom_unload(musEmu);
+      musdoom_destroy(musEmu);
+      musEmu = nullptr;
+    }
+    isMUS = false;
+    musData.clear();
   }
   if (isMA) {
     if (gMaInitialized) {
@@ -386,9 +415,10 @@ void SetLoopCount(unsigned int loops) {
 }
 
 void Seek(unsigned int sec, unsigned int ms) {
+  UINT64 totalMs = (UINT64)sec * 1000 + (UINT64)ms;
+  UINT32 sample = (UINT32)((totalMs * gSampleRate) / 1000);
+
   if (isKSS && gKssPlay) {
-    UINT64 totalMs = (UINT64)sec * 1000 + (UINT64)ms;
-    UINT32 sample = (UINT32)((totalMs * gSampleRate) / 1000);
     KSSPLAY_reset(gKssPlay, gKssTrackIndex, 0);
     const UINT32 CHUNK = 4096;
     UINT32 remaining = sample;
@@ -400,9 +430,42 @@ void Seek(unsigned int sec, unsigned int ms) {
     gKssSamplePos = sample;
     return;
   }
+  if (isGME && gmeEmu) {
+    gme_seek(gmeEmu, (int)totalMs);
+    return;
+  }
+  if (isMA && gMaInitialized) {
+    ma_decoder_seek_to_pcm_frame(&gMaDecoder, (ma_uint64)sample);
+    return;
+  }
+  if (isMUS && musEmu) {
+    musdoom_seek_ms(musEmu, (uint32_t)totalMs);
+    return;
+  }
+  if (isPSF) {
+    psfBufferL.clear();
+    psfBufferR.clear();
+    if (!sexy_seek((u32)totalMs)) {
+      // Backward seek requires reloading the file
+      if (!currentPsfPath.empty()) {
+        sexy_stop();
+        psxShutdown();
+        psfInfo = sexy_load(const_cast<char *>(currentPsfPath.c_str()));
+        sampcount = 0;
+        if (psfInfo && psfInfo->length == 0) {
+          psfInfo->length = 180000;
+        }
+        sexy_seek((u32)totalMs);
+      }
+    }
+    return;
+  }
+  // USF does not expose a seek function in lazyusf.
+
   if (!player)
     return;
-  player->Seek(sec, ms);
+  // libvgm expects unit=PLAYPOS_SAMPLE (0x02) and a sample count
+  player->Seek(0x02, sample);
 }
 
 int OpenVGMFile(const char *path) {
@@ -424,6 +487,7 @@ int OpenVGMFile(const char *path) {
       return 0;
     }
     isPSF = true;
+    currentPsfPath = path;
     sampcount = 0;
     psfBufferL.clear();
     psfBufferR.clear();
@@ -556,11 +620,8 @@ int OpenVGMFile(const char *path) {
                                lowerPath.find(".flac") != std::string::npos ||
                                lowerPath.find(".ogg") != std::string::npos ||
                                lowerPath.find(".wav") != std::string::npos)) {
-    printf("DEBUG: Opening audio file: %s (sampleRate: %d)\n", path,
-           (int)gSampleRate);
     FILE *f = fopen(path, "rb");
     if (!f) {
-      printf("DEBUG: Error: Could not fopen file: %s\n", path);
       return 0;
     }
     fclose(f);
@@ -569,17 +630,55 @@ int OpenVGMFile(const char *path) {
         ma_decoder_config_init(ma_format_f32, 2, gSampleRate);
     ma_result res = ma_decoder_init_file(path, &config, &gMaDecoder);
     if (res != MA_SUCCESS) {
-      printf("DEBUG: Error: ma_decoder_init_file failed with result: %d\n",
-             (int)res);
       return 0;
     }
-    printf("DEBUG: Successfully initialized miniaudio decoder for: %s\n", path);
     isMA = true;
     gMaInitialized = true;
     return 1;
   }
 
   /* 1. load file data via FileLoader */
+  if (lowerPath.size() > 4 &&
+      (lowerPath.substr(lowerPath.size() - 4) == ".mus" ||
+       lowerPath.substr(lowerPath.size() - 4) == ".lmp")) {
+    FILE *f = fopen(path, "rb");
+    if (f) {
+      cleanup();
+      fseek(f, 0, SEEK_END);
+      long size = ftell(f);
+      fseek(f, 0, SEEK_SET);
+      musData.resize(size);
+      fread(musData.data(), 1, size, f);
+      fclose(f);
+
+      // Verify MUS header
+      if (musData.size() >= 4 && memcmp(musData.data(), "MUS\x1a", 4) == 0) {
+        isMUS = true;
+        musdoom_config_t config;
+        musdoom_config_init(&config);
+        config.sample_rate = gSampleRate;
+        config.opl_type = MUSDOOM_OPL3;
+
+        musEmu = musdoom_create(&config);
+        if (musEmu) {
+          if (!genmidiData.empty()) {
+            musdoom_load_genmidi(musEmu, genmidiData.data(),
+                                 genmidiData.size());
+          }
+          if (musdoom_load(musEmu, musData.data(), musData.size()) ==
+              MUSDOOM_OK) {
+            musdoom_start(musEmu, 1);
+            return 1;
+          }
+          musdoom_destroy(musEmu);
+          musEmu = nullptr;
+        }
+        isMUS = false;
+        musData.clear();
+      }
+    }
+  }
+
   loader = FileLoader_Init(path);
   if (!loader) {
     return 0;
@@ -649,6 +748,9 @@ int VGMEnded(void) {
     ma_decoder_get_length_in_pcm_frames(&gMaDecoder, &length);
     return (cursor >= length) ? 1 : 0;
   }
+  if (isMUS) {
+    return musEmu ? (musdoom_is_playing(musEmu) ? 0 : 1) : 1;
+  }
   if (!player)
     return 1;
   return (player->GetState() & PLAYSTATE_END) ? 1 : 0;
@@ -671,6 +773,9 @@ int GetTrackLength(void) {
   }
   if (isPSF) {
     return psfInfo ? (int)(psfInfo->length * 44.1) : 0;
+  }
+  if (isMUS) {
+    return musEmu ? (int)(musdoom_get_length_ms(musEmu) * 44.1) : 0;
   }
   if (isUSF) {
     return usfInfo ? (int)(usfInfo->length * 44.1) : 0;
@@ -739,6 +844,31 @@ int GetTrackLengthDirect(const char *path) {
     int samples = (int)(len * 44.1);
     gme_free_info(info);
     gme_delete(emu);
+    return samples;
+  }
+
+  if (lowerPath.find(".mus") != std::string::npos ||
+      lowerPath.find(".lmp") != std::string::npos) {
+    FILE *f = fopen(path, "rb");
+    if (!f)
+      return 0;
+    fseek(f, 0, SEEK_END);
+    size_t size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    std::vector<uint8_t> data(size);
+    fread(data.data(), 1, size, f);
+    fclose(f);
+
+    musdoom_config_t config;
+    musdoom_config_init(&config);
+    musdoom_emulator_t *emu = musdoom_create(&config);
+    if (!emu)
+      return 0;
+    int samples = 0;
+    if (musdoom_load(emu, data.data(), data.size()) == MUSDOOM_OK) {
+      samples = (int)(musdoom_get_length_ms(emu) * 44.1);
+    }
+    musdoom_destroy(emu);
     return samples;
   }
 
@@ -945,6 +1075,20 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     return tagResult;
   }
 
+  if (lowerPath.find(".mus") != std::string::npos ||
+      lowerPath.find(".lmp") != std::string::npos) {
+    if (tagIndex == 2) {
+      // Return filename as game name for MUS
+      static char tagResult[256];
+      const char *filename = strrchr(basePath.c_str(), '/');
+      filename = filename ? filename + 1 : basePath.c_str();
+      strncpy(tagResult, filename, 255);
+      tagResult[255] = '\0';
+      return tagResult;
+    }
+    return "";
+  }
+
   // For non-PSF, we'd need to load the file and use VGMPlayer::GetTags.
   // This is heavier but possible. For now, focus on PSF.
   return "";
@@ -953,6 +1097,21 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;
+
+  if (isMUS) {
+    if (musEmu && musdoom_is_playing(musEmu)) {
+      std::vector<int16_t> musBuf(n * 2);
+      musdoom_generate_samples(musEmu, musBuf.data(), n);
+      for (int i = 0; i < n; i++) {
+        left[i] = (float)musBuf[i * 2] / 32768.0f;
+        right[i] = (float)musBuf[i * 2 + 1] / 32768.0f;
+      }
+    } else {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+    }
+    return;
+  }
 
   if (isKSS) {
     if (!gKssPlay) {

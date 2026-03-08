@@ -32,6 +32,7 @@ else()
     add_subdirectory(modules/game-music-emu)
     add_subdirectory(modules/libkss)
     add_subdirectory(modules/lazyusf)
+    add_subdirectory(modules/libmusdoom)
 endif()
 
 # Main Executable
@@ -51,6 +52,7 @@ else()
     target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf)
     target_link_libraries(vgmplay-js gme::gme)
     target_link_libraries(vgmplay-js kss)
+    target_link_libraries(vgmplay-js musdoom)
 endif()
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
@@ -72,6 +74,7 @@ if(NOT BUILD_LIBVGM_ONLY)
         modules/lazyusf
         modules/lazyusf/rsp
         modules/lazyusf/rsp_hle
+        modules/libmusdoom/src
     )
 endif()
 
@@ -109,6 +112,8 @@ if(NOT BUILD_LIBVGM_ONLY)
         "'_GetKSSTrackMinDirect'"
         "'_GetKSSTrackMaxDirect'"
         "'_GetKSSTrackNameDirect'"
+        "'_LoadGENMIDI'"
+        "'_MUSPlaying'"
     )
 endif()
 string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")

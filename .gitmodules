@@ -16,3 +16,6 @@
 [submodule "modules/sexypsf"]
 	path = modules/sexypsf
 	url = https://github.com/CoreDumpling/sexypsf
+[submodule "modules/libMusDoom"]
+	path = modules/libMusDoom
+	url = https://github.com/niekvlessert/libMusDoom.git

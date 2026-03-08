@@ -403,7 +403,7 @@ class VGMPlay_js {
 		this.len = this.elms.length;
 		for (var ii = 0; ii < this.len; ii++) {
 			const lower = this.elms[ii].href.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 				this._queueURL(this.elms[ii].href, false, true);
 			}
 		}
@@ -727,7 +727,7 @@ class VGMPlay_js {
 			if (!systemShown && this.currentFileKey !== "" && this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
 				const path = this.activeGame.playableList[this.currentFileKey].filepath || "";
 				const lower = path.toLowerCase();
-				if (lower.endsWith('.psf') || lower.endsWith('.minipsf')) {
+				if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 					this.titleWindow.innerHTML += "System: Playstation<br/>";
 				}
 				if (lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
@@ -957,7 +957,7 @@ class VGMPlay_js {
 
 	_loadSkippedDownload(url) {
 		const lower = url.toLowerCase();
-		if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib')) {
+		if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 			this.loadZIPWithVGMFromURL(url, true);
 		} else if (this.isPlayable(lower)) {
 			this._queueURL(url, true);
@@ -1155,7 +1155,7 @@ class VGMPlay_js {
 								const lower = job.data.toLowerCase();
 								if (lower.endsWith('.7z')) {
 									classContext.process7zBuffer(byteArray, job.name).then(next);
-								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
+								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 									classContext.processPSFBuffer(byteArray, job.data).then(next);
 								} else if (lower.endsWith('.zip')) {
 									classContext.processZipBuffer(byteArray, job.name).then(next);
@@ -1177,7 +1177,7 @@ class VGMPlay_js {
 				const lower = (job.name || '').toLowerCase();
 				if (lower.endsWith('.7z')) {
 					classContext.process7zBuffer(job.data, job.name).then(next);
-				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
+				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 					classContext.processPSFBuffer(job.data, job.name).then(next);
 				} else if (lower.endsWith('.zip')) {
 					classContext.processZipBuffer(job.data, job.name).then(next);
@@ -1272,7 +1272,20 @@ class VGMPlay_js {
 					if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 				}
 
-				var game = { files: entries.filter(e => e && e.filepath), m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo };
+				const filteredFiles = entries.filter(e => e && e.filepath);
+				const hasMusLmp = filteredFiles.some(f => {
+					const l = (f.filepath || "").toLowerCase();
+					return l.endsWith('.mus') || l.endsWith('.lmp');
+				});
+				if (hasMusLmp) {
+					filteredFiles.sort((a, b) => {
+						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+						return nameA.localeCompare(nameB);
+					});
+				}
+
+				var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo };
 				this.tempGameInfo = null;
 				this.games.push(game);
 				this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -1373,6 +1386,19 @@ class VGMPlay_js {
 			for (const game of gamesInOrder) {
 				const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 				if (hasPlayable) {
+					// Alphabetical sorting for DOOM MUS/LMP archives
+					const hasMusLmp = game.files.some(f => {
+						const l = (f.filepath || "").toLowerCase();
+						return l.endsWith('.mus') || l.endsWith('.lmp');
+					});
+					if (hasMusLmp) {
+						game.files.sort((a, b) => {
+							const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+							const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+							return nameA.localeCompare(nameB);
+						});
+					}
+
 					const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
 					game.name = name;
 					this.games.push(game);
@@ -1597,6 +1623,20 @@ class VGMPlay_js {
 			}
 
 			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
+
+			// Alphabetical sorting for DOOM MUS/LMP archives
+			const hasMusLmp = fileList.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mus') || l.endsWith('.lmp');
+			});
+			if (hasMusLmp) {
+				fileList.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					return nameA.localeCompare(nameB);
+				});
+			}
+
 			this.games.push(game);
 			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
 			if (!hasPlayable) {
@@ -1611,6 +1651,19 @@ class VGMPlay_js {
 		for (const game of gamesInOrder) {
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 			if (hasPlayable) {
+				// Alphabetical sorting for DOOM MUS/LMP archives
+				const hasMusLmp = game.files.some(f => {
+					const l = (f.filepath || "").toLowerCase();
+					return l.endsWith('.mus') || l.endsWith('.lmp');
+				});
+				if (hasMusLmp) {
+					game.files.sort((a, b) => {
+						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+						return nameA.localeCompare(nameB);
+					});
+				}
+
 				this.games.push(game);
 				anyPlayable = true;
 			}
@@ -1643,7 +1696,7 @@ class VGMPlay_js {
 	addHarvestedTracks(urls) {
 		urls.forEach(url => {
 			const lower = url.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav')) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 				this._queueURL(url, false, true);
 			} else if (this.isPlayable(lower)) {
 				// Handle direct links as single files
@@ -1923,6 +1976,28 @@ class VGMPlay_js {
 				return;
 			}
 
+			// On-demand GENMIDI loading for DOOM MUS files
+			const lowerFile = file.toLowerCase().split('|track=')[0];
+			if (lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp')) {
+				if (game) {
+					const activeGame = this.games[game - 1];
+					if (activeGame && activeGame.files) {
+						const genmidi = activeGame.files.find(f => f.filepath.toLowerCase().endsWith('genmidi.lmp'));
+						if (genmidi) {
+							try {
+								const data = FS.readFile(genmidi.filepath);
+								const ptr = Module._malloc(data.length);
+								Module.HEAPU8.set(data, ptr);
+								this.LoadGENMIDI(ptr, data.length);
+								Module._free(ptr);
+							} catch (e) {
+								console.error("Error loading GENMIDI.lmp from FS:", e);
+							}
+						}
+					}
+				}
+			}
+
 			this._isLoadingFile = true;
 			try {
 				const ok = this.load(file);
@@ -1986,6 +2061,7 @@ class VGMPlay_js {
 			p.endsWith('.mpk') || p.endsWith('.mbm') ||
 			p.endsWith('.sap') || p.endsWith('.ay') ||
 			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') ||
+			p.endsWith('.mus') || (p.endsWith('.lmp') && !p.endsWith('genmidi.lmp')) ||
 			p.endsWith('.vigamup');
 	}
 
@@ -2284,6 +2360,8 @@ class VGMPlay_js {
 		if (!this.functionsWrapped) {
 			this.FillBuffer = Module.cwrap('FillBuffer2', 'void', ['number', 'number', 'number']);
 			this.OpenVGMFile = Module.cwrap('OpenVGMFile', 'number', ['string']);
+			this.LoadGENMIDI = Module.cwrap('LoadGENMIDI', 'void', ['number', 'number']);
+			this.MUSPlaying = Module.cwrap('MUSPlaying', 'number');
 			this.CloseVGMFile = Module.cwrap('CloseVGMFile');
 			this.PlayVGM = Module.cwrap('PlayVGM');
 			this.StopVGM = Module.cwrap('StopVGM');
@@ -2959,7 +3037,7 @@ VGMPlay_js.prototype._trackSupportsLoop = function () {
 		const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
 		if (!path) return false;
 		const clean = path.toLowerCase().split('|track=')[0];
-		return clean.endsWith('.psf') || clean.endsWith('.minipsf') || clean.endsWith('.usf') || clean.endsWith('.miniusf');
+		return clean.endsWith('.psf') || clean.endsWith('.minipsf') || clean.endsWith('.usf') || clean.endsWith('.miniusf') || clean.endsWith('.mus') || clean.endsWith('.lmp');
 	};
 	if (this.GetLoopPoint) {
 		try {

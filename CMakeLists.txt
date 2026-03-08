@@ -11,7 +11,7 @@ else()
   
   # Trick libvgm's find_package(ZLIB) so it doesn't fail under CI
   set(ZLIB_FOUND TRUE CACHE BOOL "ZLIB found")
-  set(ZLIB_INCLUDE_DIR "dummy" CACHE PATH "ZLIB Include")
+  set(ZLIB_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}" CACHE PATH "ZLIB Include")
   set(ZLIB_LIBRARY "z" CACHE STRING "ZLIB Library")
 endif()
 

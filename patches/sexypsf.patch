@@ -1,0 +1,3801 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+new file mode 100644
+index 0000000..67de606
+--- /dev/null
++++ b/CMakeLists.txt
+@@ -0,0 +1,30 @@
++# CMakeLists.txt for SexyPSF
++project(sexypsf)
++
++set(SEXYPSF_SOURCES
++    PsxBios.c
++    PsxCounters.c
++    PsxDma.c
++    Spu.c
++    PsxHw.c
++    PsxMem.c
++    Misc.c
++    R3000A.c
++    PsxInterpreter.c
++    PsxHLE.c
++    spu/spu.c
++)
++
++add_library(sexypsf STATIC ${SEXYPSF_SOURCES})
++
++target_compile_definitions(sexypsf PRIVATE
++    PSS_STYLE=1
++    SPSFVERSION="0.4.8"
++    LSB_FIRST
++)
++
++target_include_directories(sexypsf PUBLIC . spu)
++
++# SexyPSF needs zlib
++find_package(ZLIB REQUIRED)
++target_link_libraries(sexypsf PRIVATE ZLIB::ZLIB)
+diff --git a/Misc.c b/Misc.c
+index 4672558..0a3b5d7 100644
+--- a/Misc.c
++++ b/Misc.c
+@@ -16,10 +16,10 @@
+  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  */
+ 
++#include <stdarg.h>
+ #include <stdio.h>
+-#include <string.h>
+ #include <stdlib.h>
+-#include <stdarg.h>
++#include <string.h>
+ 
+ #include "PsxCommon.h"
+ #include "driver.h"
+@@ -27,442 +27,465 @@
+ // LOAD STUFF
+ 
+ typedef struct {
+-    unsigned char id[8];
+-    u32 text;                   
+-    u32 data;                    
+-    u32 pc0;
+-    u32 gp0;                     
+-    u32 t_addr;
+-    u32 t_size;
+-    u32 d_addr;                  
+-    u32 d_size;                  
+-    u32 b_addr;                  
+-    u32 b_size;                  
+-    u32 S_addr;//normal must a s not a S but error (???)
+-    u32 s_size;
+-    u32 SavedSP;
+-    u32 SavedFP;
+-    u32 SavedGP;
+-    u32 SavedRA;
+-    u32 SavedS0;
++  unsigned char id[8];
++  u32 text;
++  u32 data;
++  u32 pc0;
++  u32 gp0;
++  u32 t_addr;
++  u32 t_size;
++  u32 d_addr;
++  u32 d_size;
++  u32 b_addr;
++  u32 b_size;
++  u32 S_addr; // normal must a s not a S but error (???)
++  u32 s_size;
++  u32 SavedSP;
++  u32 SavedFP;
++  u32 SavedGP;
++  u32 SavedRA;
++  u32 SavedS0;
+ } PACKSTRUCT EXE_HEADER;
+ 
+-static long TimeToMS(const char *str)
+-{
+-             int x,c=0;
+-             int acc=0;
+-	     char s[100];
+-
+-	     strncpy(s,str,100);
+-	     s[99]=0;
+-
+-             for(x=strlen(s);x>=0;x--)
+-              if(s[x]=='.' || s[x]==',')
+-              {
+-               acc=atoi(s+x+1);
+-               s[x]=0;
+-              }
+-              else if(s[x]==':')
+-              {
+-               if(c==0) acc+=atoi(s+x+1)*10;
+-               else if(c==1) acc+=atoi(s+x+(x?1:0))*10*60;
+-               c++;
+-               s[x]=0;
+-              }
+-              else if(x==0)
+-	      {
+-               if(c==0) acc+=atoi(s+x)*10;
+-               else if(c==1) acc+=atoi(s+x)*10*60;
+-               else if(c==2) acc+=atoi(s+x)*10*60*60;
+-	      }
+-             acc*=100;  // To milliseconds.
+-	    return(acc);
++static long TimeToMS(const char *str) {
++  int x, c = 0;
++  int acc = 0;
++  char s[100];
++
++  strncpy(s, str, 100);
++  s[99] = 0;
++
++  for (x = strlen(s); x >= 0; x--)
++    if (s[x] == '.' || s[x] == ',') {
++      acc = atoi(s + x + 1);
++      s[x] = 0;
++    } else if (s[x] == ':') {
++      if (c == 0)
++        acc += atoi(s + x + 1) * 10;
++      else if (c == 1)
++        acc += atoi(s + x + (x ? 1 : 0)) * 10 * 60;
++      c++;
++      s[x] = 0;
++    } else if (x == 0) {
++      if (c == 0)
++        acc += atoi(s + x) * 10;
++      else if (c == 1)
++        acc += atoi(s + x) * 10 * 60;
++      else if (c == 2)
++        acc += atoi(s + x) * 10 * 60 * 60;
++    }
++  acc *= 100; // To milliseconds.
++  return (acc);
+ }
+ 
+-char *GetFileWithBase(char *f, char *newfile)
+-{
++char *GetFileWithBase(char *f, char *newfile) {
+   static char *ret;
+   char *tp1;
+-                       
+- #if PSS_STYLE==1
+-     tp1=((char *)strrchr(f,'/'));
+- #else
+-     tp1=((char *)strrchr(f,'\\'));
+-  #if PSS_STYLE!=3
++
++#if PSS_STYLE == 1
++  tp1 = ((char *)strrchr(f, '/'));
++#else
++  tp1 = ((char *)strrchr(f, '\\'));
++#if PSS_STYLE != 3
+   {
+-     char *tp3;
++    char *tp3;
+ 
+-     tp3=((char *)strrchr(f,'/'));
+-     if(tp1<tp3) tp1=tp3;
++    tp3 = ((char *)strrchr(f, '/'));
++    if (tp1 < tp3)
++      tp1 = tp3;
++  }
++#endif
++#endif
++  if (!tp1) {
++    ret = malloc(strlen(newfile) + 1);
++    strcpy(ret, newfile);
++  } else {
++    ret = malloc(tp1 - f + 2 + strlen(newfile)); // 1(NULL), 1(/).
++    memcpy(ret, f, tp1 - f);
++    ret[tp1 - f] = '/';
++    ret[tp1 - f + 1] = 0;
++    strcat(ret, newfile);
+   }
+-  #endif
+- #endif
+-     if(!tp1)
+-     {
+-      ret=malloc(strlen(newfile)+1);
+-      strcpy(ret,newfile);
+-     }
+-     else              
+-     {
+-      ret=malloc(tp1-f+2+strlen(newfile));	// 1(NULL), 1(/).
+-      memcpy(ret,f,tp1-f);
+-      ret[tp1-f]='/';
+-      ret[tp1-f+1]=0;
+-      strcat(ret,newfile);
+-     }
+-    return(ret);
++  return (ret);
+ }
+ 
+-static int GetKeyVal(char *buf, char **key, char **val)
+-{
+- char *tmp;
+-
+- tmp=buf;
+-
+- /* First, convert any weirdo ASCII characters to spaces. */
+- while(*tmp++) if(*tmp>0 && *tmp<0x20) *tmp=0x20;
+-
+- /* Strip off white space off end of string(which should be the "value"). */
+- for(tmp=buf+strlen(buf)-1;tmp>=buf;tmp--)
+- {
+-  if(*tmp != 0x20) break;
+-  *tmp=0;
+- }
+-
+- /* Now, search for the first non-whitespace character. */
+- while(*buf == 0x20) buf++; 
+-
+- tmp=buf;
+- while((*buf != 0x20) && (*buf != '=')) 
+- {
+-  if(!*buf) return(0);	/* Null character. */
+-  buf++;
+- }
+-
+- /* Allocate memory, copy string, and terminate string. */
+- if(!(*key=malloc(buf-tmp+1))) return(0);
+- strncpy(*key,tmp,buf-tmp);
+- (*key)[(buf-tmp)]=0;
+-
+- /* Search for "=" character. */
+- while(*buf != '=')
+- {
+-  if(!*buf) return(0);  /* Null character. */
+-  buf++;
+- }
+-
+- buf++;	/* Skip over equals character. */
+-
+- /* Remove leading whitespace on value. */
+- while(*buf == 0x20)
+- {
+-  if(!*buf) return(0);  /* Null character. */
+-  buf++;
+- }
+-
+- /* Allocate memory, and copy string over.  Trailing whitespace was eliminated
+-    earlier.
+- */
++static int GetKeyVal(char *buf, char **key, char **val) {
++  char *tmp;
+ 
+- if(!(*val=malloc(strlen(buf)+1))) return(0);
+- strcpy(*val,buf);
++  tmp = buf;
+ 
+- //puts(*key);
+- //puts(*val);
++  /* First, convert any weirdo ASCII characters to spaces. */
++  while (*tmp++)
++    if (*tmp > 0 && *tmp < 0x20)
++      *tmp = 0x20;
+ 
+- return(1);
+-}
++  /* Strip off white space off end of string(which should be the "value"). */
++  for (tmp = buf + strlen(buf) - 1; tmp >= buf; tmp--) {
++    if (*tmp != 0x20)
++      break;
++    *tmp = 0;
++  }
+ 
+-static void FreeTags(PSFTAG *tags)
+-{
+- while(tags)
+- {
+-  PSFTAG *tmp=tags->next;
++  /* Now, search for the first non-whitespace character. */
++  while (*buf == 0x20)
++    buf++;
+ 
+-  free(tags->key);
+-  free(tags->value);
+-  free(tags);
++  tmp = buf;
++  while ((*buf != 0x20) && (*buf != '=')) {
++    if (!*buf)
++      return (0); /* Null character. */
++    buf++;
++  }
+ 
+-  tags=tmp;
+- }
++  /* Allocate memory, copy string, and terminate string. */
++  if (!(*key = malloc(buf - tmp + 1)))
++    return (0);
++  strncpy(*key, tmp, buf - tmp);
++  (*key)[(buf - tmp)] = 0;
++
++  /* Search for "=" character. */
++  while (*buf != '=') {
++    if (!*buf)
++      return (0); /* Null character. */
++    buf++;
++  }
++
++  buf++; /* Skip over equals character. */
++
++  /* Remove leading whitespace on value. */
++  while (*buf == 0x20) {
++    if (!*buf)
++      return (0); /* Null character. */
++    buf++;
++  }
++
++  /* Allocate memory, and copy string over.  Trailing whitespace was eliminated
++     earlier.
++  */
++
++  if (!(*val = malloc(strlen(buf) + 1)))
++    return (0);
++  strcpy(*val, buf);
++
++  // puts(*key);
++  // puts(*val);
++
++  return (1);
+ }
+ 
+-static void AddKV(PSFTAG **tag, char *key, char *val)
+-{
+- PSFTAG *tmp;
++static void FreeTags(PSFTAG *tags) {
++  while (tags) {
++    PSFTAG *tmp = tags->next;
++
++    free(tags->key);
++    free(tags->value);
++    free(tags);
+ 
+- tmp=malloc(sizeof(PSFTAG));
+- memset(tmp,0,sizeof(PSFTAG));
++    tags = tmp;
++  }
++}
+ 
+- tmp->key=key;
+- tmp->value=val;
+- tmp->next=0;
++static void AddKV(PSFTAG **tag, char *key, char *val) {
++  PSFTAG *tmp;
+ 
+- if(!*tag) *tag=tmp;
+- else 
+- {
+-  PSFTAG *rec;
+-  rec=*tag;
+-  while(rec->next) rec=rec->next;
+-  rec->next=tmp;
+- }
++  tmp = malloc(sizeof(PSFTAG));
++  memset(tmp, 0, sizeof(PSFTAG));
+ 
++  tmp->key = key;
++  tmp->value = val;
++  tmp->next = 0;
++
++  if (!*tag)
++    *tag = tmp;
++  else {
++    PSFTAG *rec;
++    rec = *tag;
++    while (rec->next)
++      rec = rec->next;
++    rec->next = tmp;
++  }
+ }
+ 
+ typedef struct {
+-	int num;
+-	char *value;
++  int num;
++  char *value;
+ } LIBNCACHE;
+ 
+-static int ccomp(const void *v1, const void *v2)
+-{
+- const LIBNCACHE *a1,*a2;
+- a1=v1; a2=v2;
++static int ccomp(const void *v1, const void *v2) {
++  const LIBNCACHE *a1, *a2;
++  a1 = v1;
++  a2 = v2;
+ 
+- return(a1->num - a2->num);
++  return (a1->num - a2->num);
+ }
+ 
+-static PSFINFO *LoadPSF(char *path, int level, int type) // Type==1 for just info load.
++static void MergeTags(PSFTAG **dest, PSFTAG *src) {
++  PSFTAG *s = src;
++  while (s) {
++    PSFTAG *d = *dest;
++    int found = 0;
++    while (d) {
++      if (!strcasecmp(d->key, s->key)) {
++        found = 1;
++        break;
++      }
++      d = d->next;
++    }
++    if (!found)
++      AddKV(dest, strdup(s->key), strdup(s->value));
++    s = s->next;
++  }
++}
++
++static PSFINFO *LoadPSF(char *path, int level,
++                        int type) // Type==1 for just info load.
+ {
+-        FILE *fp;
+-        EXE_HEADER tmpHead;
+-        char *in,*out=0;
+-	u8 head[4];
+-        u32 reserved;
+-        u32 complen;
+-        u32 crc32; 
+-        uLongf outlen;
+-	PSFINFO *psfi;
+-	PSFINFO *tmpi;
+-
+-	//printf("Loading: %s\n",path);
+-        if(!(fp=fopen(path,"rb")))
+- 	{
+-	 return(0);
+-	}
+- 
+-	fread(head,1,4,fp);
+-	if(memcmp(head,"PSF\x01",4)) return(0);
+-
+-	psfi=malloc(sizeof(PSFINFO));
+-	memset(psfi,0,sizeof(PSFINFO));
+-        psfi->stop=~0;
+-        psfi->fade=0; 
+-
+-        fread(&reserved,1,4,fp);
+-        fread(&complen,1,4,fp);
+-	complen=BFLIP32(complen);
+-
+-        fread(&crc32,1,4,fp);
+-	crc32=BFLIP32(crc32);
+-
+-        fseek(fp,reserved,SEEK_CUR);
+-
+-        if(type)
+-	 fseek(fp,complen,SEEK_CUR);
+-        else
+-        {
+-         in=malloc(complen);
+-         out=malloc(1024*1024*2+0x800);
+-         fread(in,1,complen,fp);
+-         outlen=1024*1024*2;
+-         uncompress(out,&outlen,in,complen);
+-         free(in);
+-         memcpy(&tmpHead,out,sizeof(EXE_HEADER));
+-         psxRegs.pc = BFLIP32(tmpHead.pc0);
+-         psxRegs.GPR.n.gp = BFLIP32(tmpHead.gp0);
+-         psxRegs.GPR.n.sp = BFLIP32(tmpHead.S_addr);
+-         if (psxRegs.GPR.n.sp == 0) psxRegs.GPR.n.sp = 0x801fff00;
+-
+- 	 if(level)
+- 	 {
+-	  LoadPSXMem(BFLIP32(tmpHead.t_addr),BFLIP32(tmpHead.t_size),out+0x800);
+-          free(out);
+-	 }
+-        }
++  FILE *fp;
++  EXE_HEADER tmpHead;
++  char *in, *out = 0;
++  u8 head[4];
++  u32 reserved;
++  u32 complen;
++  u32 crc32;
++  uLongf outlen;
++  PSFINFO *psfi;
++  PSFINFO *tmpi;
++
++  // printf("Loading: %s\n",path);
++  if (!(fp = fopen(path, "rb"))) {
++    return (0);
++  }
+ 
+-        {
+-         u8 tagdata[5];
+-         if(fread(tagdata,1,5,fp)==5)
+-         {
+-          if(!memcmp(tagdata,"[TAG]",5))
+-          {
+-           char linebuf[1024];
+-
+-           while(fgets(linebuf,1024,fp)>0)
+-           {
+-            int x;
+-	    char *key=0,*value=0;
+-
+-	    if(!GetKeyVal(linebuf,&key,&value))
+-	    { 
+-	     if(key) free(key);
+-	     if(value) free(value);
+-	     continue;
+-            }
++  fread(head, 1, 4, fp);
++  // Accept PSF\x01 (PSF1) and PSF\x21 (USF/N64) formats
++  if (memcmp(head, "PSF\x01", 4) && memcmp(head, "PSF\x21", 4))
++    return (0);
++
++  psfi = malloc(sizeof(PSFINFO));
++  memset(psfi, 0, sizeof(PSFINFO));
++  psfi->stop = ~0;
++  psfi->fade = 0;
++
++  fread(&reserved, 1, 4, fp);
++  fread(&complen, 1, 4, fp);
++  complen = BFLIP32(complen);
++
++  fread(&crc32, 1, 4, fp);
++  crc32 = BFLIP32(crc32);
++
++  fseek(fp, reserved, SEEK_CUR);
++
++  if (type)
++    fseek(fp, complen, SEEK_CUR);
++  else {
++    in = malloc(complen);
++    out = malloc(1024 * 1024 * 2 + 0x800);
++    fread(in, 1, complen, fp);
++    outlen = 1024 * 1024 * 2;
++    uncompress(out, &outlen, in, complen);
++    free(in);
++    memcpy(&tmpHead, out, sizeof(EXE_HEADER));
++    psxRegs.pc = BFLIP32(tmpHead.pc0);
++    psxRegs.GPR.n.gp = BFLIP32(tmpHead.gp0);
++    psxRegs.GPR.n.sp = BFLIP32(tmpHead.S_addr);
++    if (psxRegs.GPR.n.sp == 0)
++      psxRegs.GPR.n.sp = 0x801fff00;
++
++    if (level) {
++      LoadPSXMem(BFLIP32(tmpHead.t_addr), BFLIP32(tmpHead.t_size), out + 0x800);
++      free(out);
++    }
++  }
+ 
+-	    AddKV(&psfi->tags,key,value);
+-
+-	    if(!level)
+-	    {
+-       	     static char *yoinks[8]={"title","artist","game","year","genre",
+-                                  "copyright","psfby","comment"};
+-	     char **yoinks2[8]={&psfi->title,&psfi->artist,&psfi->game,&psfi->year,&psfi->genre,
+-                                    &psfi->copyright,&psfi->psfby,&psfi->comment};
+-	     for(x=0;x<8;x++)
+-	      if(!strcasecmp(key,yoinks[x]))
+-		*yoinks2[x]=value;
+-	     if(!strcasecmp(key,"length"))
+-	      psfi->stop=TimeToMS(value);
+-	     else if(!strcasecmp(key,"fade"))
+-	      psfi->fade=TimeToMS(value);
+-	    }
+-
+-	    if(!strcasecmp(key,"_lib") && !type)
+-	    {
+-	     char *tmpfn;
+-	     /* Load file name "value" from the directory specified in
+-		the full path(directory + file name) "path"
+-	     */
+-	     tmpfn=GetFileWithBase(path,value);
+-	     if(!(tmpi=LoadPSF(tmpfn,level+1,0))) 
+-	     {
+-	      fprintf(stderr, "Unable to load psflib: %s\n", tmpfn);
+-	      free(tmpfn);
+- 	      if(!level) free(out);
+-	      fclose(fp);
+-	      FreeTags(psfi->tags);
+-	      free(psfi);
+-	      return(0);
+-	     }
+-	     FreeTags(tmpi->tags);
+-	     free(tmpi);
+-	     free(tmpfn);
+-	    }
+-           }
++  {
++    u8 tagdata[5];
++    if (fread(tagdata, 1, 5, fp) == 5) {
++      if (!memcmp(tagdata, "[TAG]", 5)) {
++        char linebuf[1024];
++
++        while (fgets(linebuf, 1024, fp) > 0) {
++          int x;
++          char *key = 0, *value = 0;
++
++          if (!GetKeyVal(linebuf, &key, &value)) {
++            if (key)
++              free(key);
++            if (value)
++              free(value);
++            continue;
+           }
+-         }
+-        }  
+ 
+-        fclose(fp);
++          AddKV(&psfi->tags, key, value);
++
++          if (!level) {
++            static char *yoinks[8] = {"title", "artist",    "game",  "year",
++                                      "genre", "copyright", "psfby", "comment"};
++            char **yoinks2[8] = {&psfi->title, &psfi->artist, &psfi->game,
++                                 &psfi->year,  &psfi->genre,  &psfi->copyright,
++                                 &psfi->psfby, &psfi->comment};
++            for (x = 0; x < 8; x++)
++              if (!strcasecmp(key, yoinks[x]))
++                *yoinks2[x] = strdup(value);
++            if (!strcasecmp(key, "length"))
++              psfi->stop = TimeToMS(value);
++            else if (!strcasecmp(key, "fade"))
++              psfi->fade = TimeToMS(value);
++          }
+ 
+-	/* Now, if we're at level 0(main PSF), load the main executable, and any libN stuff */
+-        if(!level && !type)
+-        {
+-         LoadPSXMem(BFLIP32(tmpHead.t_addr),BFLIP32(tmpHead.t_size),out+0x800);
+-	 free(out);
++          if (!strcasecmp(key, "_lib") && !type) {
++            char *tmpfn;
++            /* Load file name "value" from the directory specified in
++               the full path(directory + file name) "path"
++            */
++            tmpfn = GetFileWithBase(path, value);
++            if (!(tmpi = LoadPSF(tmpfn, level + 1, 0))) {
++              fprintf(stderr, "Unable to load psflib: %s\n", tmpfn);
++              free(tmpfn);
++              if (!level)
++                free(out);
++              fclose(fp);
++              FreeTags(psfi->tags);
++              free(psfi);
++              return (0);
++            }
++            MergeTags(&psfi->tags, tmpi->tags);
++            if (!level) {
++              if (!psfi->title && tmpi->title)
++                psfi->title = strdup(tmpi->title);
++              if (!psfi->artist && tmpi->artist)
++                psfi->artist = strdup(tmpi->artist);
++              if (!psfi->game && tmpi->game)
++                psfi->game = strdup(tmpi->game);
++              if (!psfi->year && tmpi->year)
++                psfi->year = strdup(tmpi->year);
++              if (!psfi->genre && tmpi->genre)
++                psfi->genre = strdup(tmpi->genre);
++              if (!psfi->copyright && tmpi->copyright)
++                psfi->copyright = strdup(tmpi->copyright);
++              if (!psfi->psfby && tmpi->psfby)
++                psfi->psfby = strdup(tmpi->psfby);
++              if (!psfi->comment && tmpi->comment)
++                psfi->comment = strdup(tmpi->comment);
++            }
++            FreeTags(tmpi->tags);
++            free(tmpi);
++            free(tmpfn);
++          }
+         }
++      }
++    }
++  }
++
++  fclose(fp);
+ 
+-	if(!type)	/* Load libN */
+-	{
+-	 LIBNCACHE *cache;
+-	 PSFTAG *tag;
+-	 unsigned int libncount=0;
+-	 unsigned int cur=0;
+-
+-	 tag=psfi->tags;
+-	 while(tag)
+-	 {
+-	  if(!strncasecmp(tag->key,"_lib",4) && tag->key[4])
+-	   libncount++;
+-	  tag=tag->next;
+-	 }
+-
+-	 if(libncount)
+-	 {
+-	  cache=malloc(sizeof(LIBNCACHE)*libncount);
+-
+-	  tag=psfi->tags;
+-	  while(tag)
+-	  {
+-	   if(!strncasecmp(tag->key,"_lib",4) && tag->key[4])
+-	   {
+-	    cache[cur].num=atoi(&tag->key[4]);
+-	    cache[cur].value=tag->value;
+-	    cur++;
+-	   }
+-	   tag=tag->next;
+-	  }
+-	  qsort(cache, libncount, sizeof(LIBNCACHE), ccomp);
+-	  for(cur=0;cur<libncount;cur++)
+-	  {
+-	   u32 ba[3];
+-	   char *tmpfn;
+-
+- 	   if(cache[cur].num < 2) continue;
+-
+-	   ba[0]=psxRegs.pc;
+-	   ba[1]=psxRegs.GPR.n.gp;
+-	   ba[2]=psxRegs.GPR.n.sp;
+-
+-           /* Load file name "value" from the directory specified in
+-                the full path(directory + file name) "path"
+-             */
+-           tmpfn=GetFileWithBase(path,cache[cur].value);
+-           if(!(tmpi=LoadPSF(tmpfn,level+1,0)))
+-           {
+-            //free(key);
+-            //free(value);
+-            //free(tmpfn);
+-            //fclose(fp);
+-            //return(0);
+-           }
+-           free(tmpfn);
+-	   FreeTags(tmpi->tags);
+-	   free(tmpi);
+-
+-	   psxRegs.pc=ba[0];
+-       	   psxRegs.GPR.n.gp=ba[1];
+-	   psxRegs.GPR.n.sp=ba[2];
+-	  }
+-	  free(cache);
+-
+-	 }	// if(libncount)
+-
+-	}	// if(!type)
+-
+-	return(psfi);
++  /* Now, if we're at level 0(main PSF), load the main executable, and any libN
++   * stuff */
++  if (!level && !type) {
++    LoadPSXMem(BFLIP32(tmpHead.t_addr), BFLIP32(tmpHead.t_size), out + 0x800);
++    free(out);
++  }
++
++  if (!type) /* Load libN */
++  {
++    LIBNCACHE *cache;
++    PSFTAG *tag;
++    unsigned int libncount = 0;
++    unsigned int cur = 0;
++
++    tag = psfi->tags;
++    while (tag) {
++      if (!strncasecmp(tag->key, "_lib", 4) && tag->key[4])
++        libncount++;
++      tag = tag->next;
++    }
++
++    if (libncount) {
++      cache = malloc(sizeof(LIBNCACHE) * libncount);
++
++      tag = psfi->tags;
++      while (tag) {
++        if (!strncasecmp(tag->key, "_lib", 4) && tag->key[4]) {
++          cache[cur].num = atoi(&tag->key[4]);
++          cache[cur].value = tag->value;
++          cur++;
++        }
++        tag = tag->next;
++      }
++      qsort(cache, libncount, sizeof(LIBNCACHE), ccomp);
++      for (cur = 0; cur < libncount; cur++) {
++        u32 ba[3];
++        char *tmpfn;
++
++        if (cache[cur].num < 2)
++          continue;
++
++        ba[0] = psxRegs.pc;
++        ba[1] = psxRegs.GPR.n.gp;
++        ba[2] = psxRegs.GPR.n.sp;
++
++        /* Load file name "value" from the directory specified in
++             the full path(directory + file name) "path"
++          */
++        tmpfn = GetFileWithBase(path, cache[cur].value);
++        if (!(tmpi = LoadPSF(tmpfn, level + 1, 0))) {
++          // free(key);
++          // free(value);
++          // free(tmpfn);
++          // fclose(fp);
++          // return(0);
++        }
++        free(tmpfn);
++        FreeTags(tmpi->tags);
++        free(tmpi);
++
++        psxRegs.pc = ba[0];
++        psxRegs.GPR.n.gp = ba[1];
++        psxRegs.GPR.n.sp = ba[2];
++      }
++      free(cache);
++
++    } // if(libncount)
++
++  } // if(!type)
++
++  return (psfi);
+ }
+ 
+-void sexy_freepsfinfo(PSFINFO *info)
+-{
+- FreeTags(info->tags);
+- free(info);
++void sexy_freepsfinfo(PSFINFO *info) {
++  FreeTags(info->tags);
++  free(info);
+ }
+ 
+-PSFINFO *sexy_getpsfinfo(char *path)
+-{
+-	PSFINFO *ret;
+-        if(!(ret=LoadPSF(path,0,1))) return(0);
+-        if(ret->stop==~0) ret->fade=0;
+-        ret->length=ret->stop+ret->fade;
+-        return(ret);	
++PSFINFO *sexy_getpsfinfo(char *path) {
++  PSFINFO *ret;
++  if (!(ret = LoadPSF(path, 0, 1)))
++    return (0);
++  if (ret->stop == ~0)
++    ret->fade = 0;
++  ret->length = ret->stop + ret->fade;
++  return (ret);
+ }
+ 
+-PSFINFO *sexy_load(char *path) 
+-{
+-	PSFINFO *ret;
++PSFINFO *sexy_load(char *path) {
++  PSFINFO *ret;
+ 
+-        psxInit();
+-        psxReset();
++  psxInit();
++  psxReset();
+ 
+-        SPUinit();
+-        SPUopen();
++  SPUinit();
++  SPUopen();
+ 
+-	if(!(ret=LoadPSF(path,0,0)))
+-	{
+-	 psxShutdown();
+-	 return(0);
+-	}
++  if (!(ret = LoadPSF(path, 0, 0))) {
++    psxShutdown();
++    return (0);
++  }
+ 
+-	if(ret->stop==~0) ret->fade=0; // Infinity+anything is still infinity...or is it?
+-	SPUsetlength(ret->stop,ret->fade);
+-	ret->length=ret->stop+ret->fade;
++  if (ret->stop == ~0)
++    ret->fade = 0; // Infinity+anything is still infinity...or is it?
++  SPUsetlength(ret->stop, ret->fade);
++  ret->length = ret->stop + ret->fade;
+ 
+-        return(ret);
++  return (ret);
+ }
+ 
+-void sexy_execute(void)
+-{
+- psxCpu->Execute();
+-}
++void sexy_execute(void) { psxCpu->Execute(); }
+diff --git a/PsxInterpreter.c b/PsxInterpreter.c
+index 150dd5a..3303528 100644
+--- a/PsxInterpreter.c
++++ b/PsxInterpreter.c
+@@ -26,17 +26,19 @@ static u32 branchPC;
+ 
+ // These macros are used to assemble the repassembler functions
+ 
+-//        if(!PSXM(psxRegs.pc)) puts("Whoops");   
++//        if(!PSXM(psxRegs.pc)) puts("Whoops");
+ //	  Fix this...
+ 
+ //        printf("%08x ", psxRegs.pc);
+ 
+-#define execI() { \
+-	psxRegs.code = BFLIP32(PSXMu32(psxRegs.pc)); \
+-        	\
+-	psxRegs.pc+= 4; psxRegs.cycle++; \
+-	psxBSC[psxRegs.code >> 26](); \
+-}
++#define execI()                                                                \
++  {                                                                            \
++    psxRegs.code = BFLIP32(PSXMu32(psxRegs.pc));                               \
++                                                                               \
++    psxRegs.pc += 4;                                                           \
++    psxRegs.cycle++;                                                           \
++    psxBSC[psxRegs.code >> 26]();                                              \
++  }
+ 
+ // Subsets
+ static void (*psxBSC[64])();
+@@ -45,703 +47,884 @@ static void (*psxREG[32])();
+ static void (*psxCP0[32])();
+ 
+ static void delayRead(int reg, u32 bpc) {
+-	u32 rold, rnew;
++  u32 rold, rnew;
+ 
+-//	SysPrintf("delayRead at %x!\n", psxRegs.pc);
++  //	SysPrintf("delayRead at %x!\n", psxRegs.pc);
+ 
+-	rold = psxRegs.GPR.r[reg];
+-	psxBSC[psxRegs.code >> 26](); // branch delay load
+-	rnew = psxRegs.GPR.r[reg];
++  rold = psxRegs.GPR.r[reg];
++  psxBSC[psxRegs.code >> 26](); // branch delay load
++  rnew = psxRegs.GPR.r[reg];
+ 
+-	psxRegs.pc = bpc;
++  psxRegs.pc = bpc;
+ 
+-	psxBranchTest();
++  psxBranchTest();
+ 
+-	psxRegs.GPR.r[reg] = rold;
+-	execI(); // first branch opcode
+-	psxRegs.GPR.r[reg] = rnew;
++  psxRegs.GPR.r[reg] = rold;
++  execI(); // first branch opcode
++  psxRegs.GPR.r[reg] = rnew;
+ 
+-	branch = 0;
++  branch = 0;
+ }
+ 
+ static void delayWrite(int reg, u32 bpc) {
+ 
+-/*	SysPrintf("delayWrite at %x!\n", psxRegs.pc);
++  /*	SysPrintf("delayWrite at %x!\n", psxRegs.pc);
+ 
+-//	SysPrintf("%s\n", disR3000AF(psxRegs.code, psxRegs.pc-4));
+-//	SysPrintf("%s\n", disR3000AF(PSXMu32(bpc), bpc));*/
++  //	SysPrintf("%s\n", disR3000AF(psxRegs.code, psxRegs.pc-4));
++  //	SysPrintf("%s\n", disR3000AF(PSXMu32(bpc), bpc));*/
+ 
+-	// no changes from normal behavior
++  // no changes from normal behavior
+ 
+-	psxBSC[psxRegs.code >> 26]();
++  psxBSC[psxRegs.code >> 26]();
+ 
+-	branch = 0;
+-	psxRegs.pc = bpc;
++  branch = 0;
++  psxRegs.pc = bpc;
+ 
+-	psxBranchTest();
++  psxBranchTest();
+ }
+ 
+ static void delayReadWrite(int reg, u32 bpc) {
+ 
+-//	SysPrintf("delayReadWrite at %x!\n", psxRegs.pc);
++  //	SysPrintf("delayReadWrite at %x!\n", psxRegs.pc);
+ 
+-	// the branch delay load is skipped
++  // the branch delay load is skipped
+ 
+-	branch = 0;
+-	psxRegs.pc = bpc;
++  branch = 0;
++  psxRegs.pc = bpc;
+ 
+-	psxBranchTest();
++  psxBranchTest();
+ }
+ 
+-// this defines shall be used with the tmp 
++// this defines shall be used with the tmp
+ // of the next func (instead of _Funct_...)
+-#define _tFunct_  ((tmp      ) & 0x3F)  // The funct part of the instruction register 
+-#define _tRd_     ((tmp >> 11) & 0x1F)  // The rd part of the instruction register 
+-#define _tRt_     ((tmp >> 16) & 0x1F)  // The rt part of the instruction register 
+-#define _tRs_     ((tmp >> 21) & 0x1F)  // The rs part of the instruction register 
+-#define _tSa_     ((tmp >>  6) & 0x1F)  // The sa part of the instruction register
++#define _tFunct_ ((tmp) & 0x3F)    // The funct part of the instruction register
++#define _tRd_ ((tmp >> 11) & 0x1F) // The rd part of the instruction register
++#define _tRt_ ((tmp >> 16) & 0x1F) // The rt part of the instruction register
++#define _tRs_ ((tmp >> 21) & 0x1F) // The rs part of the instruction register
++#define _tSa_ ((tmp >> 6) & 0x1F)  // The sa part of the instruction register
+ 
+ static void psxDelayTest(u32 reg, u32 bpc) {
+-	u32 tmp;
+-
+-	tmp = BFLIP32(PSXMu32(bpc));
+-	branch = 1;
+-
+-	switch (tmp >> 26) {
+-		case 0x00: // SPECIAL
+-			switch (_tFunct_) {
+-				case 0x00: // SLL
+-					if (!tmp) break; // NOP
+-				case 0x02: case 0x03: // SRL/SRA
+-					if (_tRd_ == reg && _tRt_ == reg) {
+-						delayReadWrite(reg, bpc); return;
+-					} else if (_tRt_ == reg) {
+-						delayRead(reg, bpc); return;
+-					} else if (_tRd_ == reg) {
+-						delayWrite(reg, bpc); return;
+-					}
+-					break;
+-
+-				case 0x08: // JR
+-					if (_tRs_ == reg) {
+-						delayRead(reg, bpc); return;
+-					}
+-					break;
+-				case 0x09: // JALR
+-					if (_tRd_ == reg && _tRs_ == reg) {
+-						delayReadWrite(reg, bpc); return;
+-					} else if (_tRs_ == reg) {
+-						delayRead(reg, bpc); return;
+-					} else if (_tRd_ == reg) {
+-						delayWrite(reg, bpc); return;
+-					}
+-					break;
+-
+-				// SYSCALL/BREAK just a break;
+-
+-				case 0x20: case 0x21: case 0x22: case 0x23:
+-				case 0x24: case 0x25: case 0x26: case 0x27: 
+-				case 0x2a: case 0x2b: // ADD/ADDU...
+-				case 0x04: case 0x06: case 0x07: // SLLV...
+-					if (_tRd_ == reg && (_tRt_ == reg || _tRs_ == reg)) {
+-						delayReadWrite(reg, bpc); return;
+-					} else if (_tRt_ == reg || _tRs_ == reg) {
+-						delayRead(reg, bpc); return;
+-					} else if (_tRd_ == reg) {
+-						delayWrite(reg, bpc); return;
+-					}
+-					break;
+-
+-				case 0x10: case 0x12: // MFHI/MFLO
+-					if (_tRd_ == reg) {
+-						delayWrite(reg, bpc); return;
+-					}
+-					break;
+-				case 0x11: case 0x13: // MTHI/MTLO
+-					if (_tRs_ == reg) {
+-						delayRead(reg, bpc); return;
+-					}
+-					break;
+-
+-				case 0x18: case 0x19:
+-				case 0x1a: case 0x1b: // MULT/DIV...
+-					if (_tRt_ == reg || _tRs_ == reg) {
+-						delayRead(reg, bpc); return;
+-					}
+-					break;
+-			}
+-			break;
+-
+-		case 0x01: // REGIMM
+-			switch (_tRt_) {
+-				case 0x00: case 0x02:
+-				case 0x10: case 0x12: // BLTZ/BGEZ...
+-					if (_tRs_ == reg) {
+-						delayRead(reg, bpc); return;
+-					}
+-					break;
+-			}
+-			break;
+-
+-		// J would be just a break;
+-		case 0x03: // JAL
+-			if (31 == reg) {
+-				delayWrite(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x04: case 0x05: // BEQ/BNE
+-			if (_tRs_ == reg || _tRt_ == reg) {
+-				delayRead(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x06: case 0x07: // BLEZ/BGTZ
+-			if (_tRs_ == reg) {
+-				delayRead(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x08: case 0x09: case 0x0a: case 0x0b:
+-		case 0x0c: case 0x0d: case 0x0e: // ADDI/ADDIU...
+-			if (_tRt_ == reg && _tRs_ == reg) {
+-				delayReadWrite(reg, bpc); return;
+-			} else if (_tRs_ == reg) {
+-				delayRead(reg, bpc); return;
+-			} else if (_tRt_ == reg) {
+-				delayWrite(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x0f: // LUI
+-			if (_tRt_ == reg) {
+-				delayWrite(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x10: // COP0
+-			switch (_tFunct_) {
+-				case 0x00: // MFC0
+-					if (_tRt_ == reg) { delayWrite(reg, bpc); return; }
+-					break;
+-				case 0x02: // CFC0
+-					if (_tRt_ == reg) { delayWrite(reg, bpc); return; }
+-					break;
+-				case 0x04: // MTC0
+-					if (_tRt_ == reg) { delayRead(reg, bpc); return; }
+-					break;
+-				case 0x06: // CTC0
+-					if (_tRt_ == reg) { delayRead(reg, bpc); return; }
+-					break;
+-				// RFE just a break;
+-			}
+-			break;
+-
+-		case 0x22: case 0x26: // LWL/LWR
+-			if (_tRt_ == reg) {
+-				delayReadWrite(reg, bpc); return;
+-			} else if (_tRs_ == reg) {
+-				delayRead(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x20: case 0x21: case 0x23:
+-		case 0x24: case 0x25: // LB/LH/LW/LBU/LHU
+-			if (_tRt_ == reg && _tRs_ == reg) {
+-				delayReadWrite(reg, bpc); return;
+-			} else if (_tRs_ == reg) {
+-				delayRead(reg, bpc); return;
+-			} else if (_tRt_ == reg) {
+-				delayWrite(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x28: case 0x29: case 0x2a:
+-		case 0x2b: case 0x2e: // SB/SH/SWL/SW/SWR
+-			if (_tRt_ == reg || _tRs_ == reg) {
+-				delayRead(reg, bpc); return;
+-			}
+-			break;
+-
+-		case 0x32: case 0x3a: // LWC2/SWC2
+-			if (_tRs_ == reg) {
+-				delayRead(reg, bpc); return;
+-			}
+-			break;
+-	}
+-	psxBSC[psxRegs.code >> 26]();
+-
+-	branch = 0;
+-	psxRegs.pc = bpc;
+-
+-	psxBranchTest();
++  u32 tmp;
++
++  tmp = BFLIP32(PSXMu32(bpc));
++  branch = 1;
++
++  switch (tmp >> 26) {
++  case 0x00: // SPECIAL
++    switch (_tFunct_) {
++    case 0x00: // SLL
++      if (!tmp)
++        break; // NOP
++    case 0x02:
++    case 0x03: // SRL/SRA
++      if (_tRd_ == reg && _tRt_ == reg) {
++        delayReadWrite(reg, bpc);
++        return;
++      } else if (_tRt_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      } else if (_tRd_ == reg) {
++        delayWrite(reg, bpc);
++        return;
++      }
++      break;
++
++    case 0x08: // JR
++      if (_tRs_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      }
++      break;
++    case 0x09: // JALR
++      if (_tRd_ == reg && _tRs_ == reg) {
++        delayReadWrite(reg, bpc);
++        return;
++      } else if (_tRs_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      } else if (_tRd_ == reg) {
++        delayWrite(reg, bpc);
++        return;
++      }
++      break;
++
++      // SYSCALL/BREAK just a break;
++
++    case 0x20:
++    case 0x21:
++    case 0x22:
++    case 0x23:
++    case 0x24:
++    case 0x25:
++    case 0x26:
++    case 0x27:
++    case 0x2a:
++    case 0x2b: // ADD/ADDU...
++    case 0x04:
++    case 0x06:
++    case 0x07: // SLLV...
++      if (_tRd_ == reg && (_tRt_ == reg || _tRs_ == reg)) {
++        delayReadWrite(reg, bpc);
++        return;
++      } else if (_tRt_ == reg || _tRs_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      } else if (_tRd_ == reg) {
++        delayWrite(reg, bpc);
++        return;
++      }
++      break;
++
++    case 0x10:
++    case 0x12: // MFHI/MFLO
++      if (_tRd_ == reg) {
++        delayWrite(reg, bpc);
++        return;
++      }
++      break;
++    case 0x11:
++    case 0x13: // MTHI/MTLO
++      if (_tRs_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      }
++      break;
++
++    case 0x18:
++    case 0x19:
++    case 0x1a:
++    case 0x1b: // MULT/DIV...
++      if (_tRt_ == reg || _tRs_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      }
++      break;
++    }
++    break;
++
++  case 0x01: // REGIMM
++    switch (_tRt_) {
++    case 0x00:
++    case 0x02:
++    case 0x10:
++    case 0x12: // BLTZ/BGEZ...
++      if (_tRs_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      }
++      break;
++    }
++    break;
++
++  // J would be just a break;
++  case 0x03: // JAL
++    if (31 == reg) {
++      delayWrite(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x04:
++  case 0x05: // BEQ/BNE
++    if (_tRs_ == reg || _tRt_ == reg) {
++      delayRead(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x06:
++  case 0x07: // BLEZ/BGTZ
++    if (_tRs_ == reg) {
++      delayRead(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x08:
++  case 0x09:
++  case 0x0a:
++  case 0x0b:
++  case 0x0c:
++  case 0x0d:
++  case 0x0e: // ADDI/ADDIU...
++    if (_tRt_ == reg && _tRs_ == reg) {
++      delayReadWrite(reg, bpc);
++      return;
++    } else if (_tRs_ == reg) {
++      delayRead(reg, bpc);
++      return;
++    } else if (_tRt_ == reg) {
++      delayWrite(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x0f: // LUI
++    if (_tRt_ == reg) {
++      delayWrite(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x10: // COP0
++    switch (_tFunct_) {
++    case 0x00: // MFC0
++      if (_tRt_ == reg) {
++        delayWrite(reg, bpc);
++        return;
++      }
++      break;
++    case 0x02: // CFC0
++      if (_tRt_ == reg) {
++        delayWrite(reg, bpc);
++        return;
++      }
++      break;
++    case 0x04: // MTC0
++      if (_tRt_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      }
++      break;
++    case 0x06: // CTC0
++      if (_tRt_ == reg) {
++        delayRead(reg, bpc);
++        return;
++      }
++      break;
++      // RFE just a break;
++    }
++    break;
++
++  case 0x22:
++  case 0x26: // LWL/LWR
++    if (_tRt_ == reg) {
++      delayReadWrite(reg, bpc);
++      return;
++    } else if (_tRs_ == reg) {
++      delayRead(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x20:
++  case 0x21:
++  case 0x23:
++  case 0x24:
++  case 0x25: // LB/LH/LW/LBU/LHU
++    if (_tRt_ == reg && _tRs_ == reg) {
++      delayReadWrite(reg, bpc);
++      return;
++    } else if (_tRs_ == reg) {
++      delayRead(reg, bpc);
++      return;
++    } else if (_tRt_ == reg) {
++      delayWrite(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x28:
++  case 0x29:
++  case 0x2a:
++  case 0x2b:
++  case 0x2e: // SB/SH/SWL/SW/SWR
++    if (_tRt_ == reg || _tRs_ == reg) {
++      delayRead(reg, bpc);
++      return;
++    }
++    break;
++
++  case 0x32:
++  case 0x3a: // LWC2/SWC2
++    if (_tRs_ == reg) {
++      delayRead(reg, bpc);
++      return;
++    }
++    break;
++  }
++  psxBSC[psxRegs.code >> 26]();
++
++  branch = 0;
++  psxRegs.pc = bpc;
++
++  psxBranchTest();
+ }
+ 
+ static void psxNULL(void);
+ 
+ static INLINE void doBranch(u32 tar) {
+-	u32 tmp;
+-
+-	branch2 = branch = 1;
+-	branchPC = tar;
+-
+-	psxRegs.code = BFLIP32(PSXMu32(psxRegs.pc));
+-
+-	psxRegs.pc+= 4; psxRegs.cycle++;
+-
+-	// check for load delay
+-	tmp = psxRegs.code >> 26;
+-	switch (tmp) {
+-		case 0x10: // COP0
+-			switch (_Rs_) {
+-				case 0x00: // MFC0
+-				case 0x02: // CFC0
+-					psxDelayTest(_Rt_, branchPC);
+-					return;
+-			}
+-			break;
+-		case 0x32: // LWC2
+-			psxDelayTest(_Rt_, branchPC);
+-			return;
+-		default:
+-			if (tmp >= 0x20 && tmp <= 0x26) { // LB/LH/LWL/LW/LBU/LHU/LWR
+-				psxDelayTest(_Rt_, branchPC);
+-				return;
+-			}
+-			break;
+-	}
+-
+-	psxBSC[psxRegs.code >> 26]();
+-
+-        if((psxRegs.pc-8)==branchPC && !(psxRegs.code>>26)) 
+-        {
+-	 //printf("%08x\n",psxRegs.code>>26);
+-	 CounterDeadLoopSkip();
+-	}
+-	branch = 0;
+-	psxRegs.pc = branchPC;
+-
+-	psxBranchTest();
++  u32 tmp;
++
++  branch2 = branch = 1;
++  branchPC = tar;
++
++  psxRegs.code = BFLIP32(PSXMu32(psxRegs.pc));
++
++  psxRegs.pc += 4;
++  psxRegs.cycle++;
++
++  // check for load delay
++  tmp = psxRegs.code >> 26;
++  switch (tmp) {
++  case 0x10: // COP0
++    switch (_Rs_) {
++    case 0x00: // MFC0
++    case 0x02: // CFC0
++      psxDelayTest(_Rt_, branchPC);
++      return;
++    }
++    break;
++  case 0x32: // LWC2
++    psxDelayTest(_Rt_, branchPC);
++    return;
++  default:
++    if (tmp >= 0x20 && tmp <= 0x26) { // LB/LH/LWL/LW/LBU/LHU/LWR
++      psxDelayTest(_Rt_, branchPC);
++      return;
++    }
++    break;
++  }
++
++  psxBSC[psxRegs.code >> 26]();
++
++  if ((psxRegs.pc - 8) == branchPC && !(psxRegs.code >> 26)) {
++    // printf("%08x\n",psxRegs.code>>26);
++    CounterDeadLoopSkip();
++  }
++  branch = 0;
++  psxRegs.pc = branchPC;
++
++  psxBranchTest();
+ }
+ 
+ /*********************************************************
+-* Arithmetic with immediate operand                      *
+-* Format:  OP rt, rs, immediate                          *
+-*********************************************************/
+-static void psxADDI() 	{ if (!_Rt_) return; _rRt_ = _u32(_rRs_) + _Imm_ ; }		// Rt = Rs + Im 	(Exception on Integer Overflow)
+-static void psxADDIU() { if (!_Rt_) return; _rRt_ = _u32(_rRs_) + _Imm_ ; }		// Rt = Rs + Im
+-static void psxANDI() 	{ if (!_Rt_) return; _rRt_ = _u32(_rRs_) & _ImmU_; }		// Rt = Rs And Im
+-static void psxORI() 	{ if (!_Rt_) return; _rRt_ = _u32(_rRs_) | _ImmU_; }		// Rt = Rs Or  Im
+-static void psxXORI() 	{ if (!_Rt_) return; _rRt_ = _u32(_rRs_) ^ _ImmU_; }		// Rt = Rs Xor Im
+-static void psxSLTI() 	{ if (!_Rt_) return; _rRt_ = _i32(_rRs_) < _Imm_ ; }		// Rt = Rs < Im		(Signed)
+-static void psxSLTIU() { if (!_Rt_) return; _rRt_ = _u32(_rRs_) < ((u32)_ImmU_); }		// Rt = Rs < Im		(Unsigned)
++ * Arithmetic with immediate operand                      *
++ * Format:  OP rt, rs, immediate                          *
++ *********************************************************/
++static void psxADDI() {
++  if (!_Rt_)
++    return;
++  _rRt_ = _u32(_rRs_) + _Imm_;
++} // Rt = Rs + Im 	(Exception on Integer Overflow)
++static void psxADDIU() {
++  if (!_Rt_)
++    return;
++  _rRt_ = _u32(_rRs_) + _Imm_;
++} // Rt = Rs + Im
++static void psxANDI() {
++  if (!_Rt_)
++    return;
++  _rRt_ = _u32(_rRs_) & _ImmU_;
++} // Rt = Rs And Im
++static void psxORI() {
++  if (!_Rt_)
++    return;
++  _rRt_ = _u32(_rRs_) | _ImmU_;
++} // Rt = Rs Or  Im
++static void psxXORI() {
++  if (!_Rt_)
++    return;
++  _rRt_ = _u32(_rRs_) ^ _ImmU_;
++} // Rt = Rs Xor Im
++static void psxSLTI() {
++  if (!_Rt_)
++    return;
++  _rRt_ = _i32(_rRs_) < _Imm_;
++} // Rt = Rs < Im		(Signed)
++static void psxSLTIU() {
++  if (!_Rt_)
++    return;
++  _rRt_ = _u32(_rRs_) < ((u32)_ImmU_);
++} // Rt = Rs < Im		(Unsigned)
+ 
+ /*********************************************************
+-* Register arithmetic                                    *
+-* Format:  OP rd, rs, rt                                 *
+-*********************************************************/
+-static void psxADD()	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) + _u32(_rRt_); }	// Rd = Rs + Rt		(Exception on Integer Overflow)
+-static void psxADDU() 	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) + _u32(_rRt_); }	// Rd = Rs + Rt
+-static void psxSUB() 	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) - _u32(_rRt_); }	// Rd = Rs - Rt		(Exception on Integer Overflow)
+-static void psxSUBU() 	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) - _u32(_rRt_); }	// Rd = Rs - Rt
+-static void psxAND() 	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) & _u32(_rRt_); }	// Rd = Rs And Rt
+-static void psxOR() 	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) | _u32(_rRt_); }	// Rd = Rs Or  Rt
+-static void psxXOR() 	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) ^ _u32(_rRt_); }	// Rd = Rs Xor Rt
+-static void psxNOR() 	{ if (!_Rd_) return; _rRd_ =~(_u32(_rRs_) | _u32(_rRt_)); }// Rd = Rs Nor Rt
+-static void psxSLT() 	{ if (!_Rd_) return; _rRd_ = _i32(_rRs_) < _i32(_rRt_); }	// Rd = Rs < Rt		(Signed)
+-static void psxSLTU() 	{ if (!_Rd_) return; _rRd_ = _u32(_rRs_) < _u32(_rRt_); }	// Rd = Rs < Rt		(Unsigned)
++ * Register arithmetic                                    *
++ * Format:  OP rd, rs, rt                                 *
++ *********************************************************/
++static void psxADD() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) + _u32(_rRt_);
++} // Rd = Rs + Rt		(Exception on Integer Overflow)
++static void psxADDU() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) + _u32(_rRt_);
++} // Rd = Rs + Rt
++static void psxSUB() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) - _u32(_rRt_);
++} // Rd = Rs - Rt		(Exception on Integer Overflow)
++static void psxSUBU() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) - _u32(_rRt_);
++} // Rd = Rs - Rt
++static void psxAND() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) & _u32(_rRt_);
++} // Rd = Rs And Rt
++static void psxOR() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) | _u32(_rRt_);
++} // Rd = Rs Or  Rt
++static void psxXOR() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) ^ _u32(_rRt_);
++} // Rd = Rs Xor Rt
++static void psxNOR() {
++  if (!_Rd_)
++    return;
++  _rRd_ = ~(_u32(_rRs_) | _u32(_rRt_));
++} // Rd = Rs Nor Rt
++static void psxSLT() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _i32(_rRs_) < _i32(_rRt_);
++} // Rd = Rs < Rt		(Signed)
++static void psxSLTU() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRs_) < _u32(_rRt_);
++} // Rd = Rs < Rt		(Unsigned)
+ 
+ /*********************************************************
+-* Register mult/div & Register trap logic                *
+-* Format:  OP rs, rt                                     *
+-*********************************************************/
++ * Register mult/div & Register trap logic                *
++ * Format:  OP rs, rt                                     *
++ *********************************************************/
+ static void psxDIV() {
+-	if (_i32(_rRt_) != 0) {
+-		_rLo_ = _i32(_rRs_) / _i32(_rRt_);
+-		_rHi_ = _i32(_rRs_) % _i32(_rRt_);
+-	}
++  if (_i32(_rRt_) != 0) {
++    _rLo_ = _i32(_rRs_) / _i32(_rRt_);
++    _rHi_ = _i32(_rRs_) % _i32(_rRt_);
++  }
+ }
+ 
+ static void psxDIVU() {
+-	if (_rRt_ != 0) {
+-		_rLo_ = _rRs_ / _rRt_;
+-		_rHi_ = _rRs_ % _rRt_;
+-	}
++  if (_rRt_ != 0) {
++    _rLo_ = _rRs_ / _rRt_;
++    _rHi_ = _rRs_ % _rRt_;
++  }
+ }
+ 
+ static void psxMULT() {
+-	u64 res = (s64)((s64)_i32(_rRs_) * (s64)_i32(_rRt_));
++  u64 res = (s64)((s64)_i32(_rRs_) * (s64)_i32(_rRt_));
+ 
+-	psxRegs.GPR.n.lo = (u32)(res & 0xffffffff);
+-	psxRegs.GPR.n.hi = (u32)((res >> 32) & 0xffffffff);
++  psxRegs.GPR.n.lo = (u32)(res & 0xffffffff);
++  psxRegs.GPR.n.hi = (u32)((res >> 32) & 0xffffffff);
+ }
+ 
+ static void psxMULTU() {
+-	u64 res = (u64)((u64)_u32(_rRs_) * (u64)_u32(_rRt_));
++  u64 res = (u64)((u64)_u32(_rRs_) * (u64)_u32(_rRt_));
+ 
+-	psxRegs.GPR.n.lo = (u32)(res & 0xffffffff);
+-	psxRegs.GPR.n.hi = (u32)((res >> 32) & 0xffffffff);
++  psxRegs.GPR.n.lo = (u32)(res & 0xffffffff);
++  psxRegs.GPR.n.hi = (u32)((res >> 32) & 0xffffffff);
+ }
+ 
+ /*********************************************************
+-* Register branch logic                                  *
+-* Format:  OP rs, offset                                 *
+-*********************************************************/
+-#define RepZBranchi32(op)      if(_i32(_rRs_) op 0) doBranch(_BranchTarget_);
+-#define RepZBranchLinki32(op)  if(_i32(_rRs_) op 0) { _SetLink(31); doBranch(_BranchTarget_); }
+-
+-static void psxBGEZ()   { RepZBranchi32(>=) }      // Branch if Rs >= 0
+-static void psxBGEZAL() { RepZBranchLinki32(>=) }  // Branch if Rs >= 0 and link
+-static void psxBGTZ()   { RepZBranchi32(>) }       // Branch if Rs >  0
+-static void psxBLEZ()   { RepZBranchi32(<=) }      // Branch if Rs <= 0
+-static void psxBLTZ()   { RepZBranchi32(<) }       // Branch if Rs <  0
+-static void psxBLTZAL() { RepZBranchLinki32(<) }   // Branch if Rs <  0 and link
++ * Register branch logic                                  *
++ * Format:  OP rs, offset                                 *
++ *********************************************************/
++#define RepZBranchi32(op)                                                      \
++  if (_i32(_rRs_) op 0)                                                        \
++    doBranch(_BranchTarget_);
++#define RepZBranchLinki32(op)                                                  \
++  if (_i32(_rRs_) op 0) {                                                      \
++    _SetLink(31);                                                              \
++    doBranch(_BranchTarget_);                                                  \
++  }
++
++static void psxBGEZ() { RepZBranchi32(>=) }       // Branch if Rs >= 0
++static void psxBGEZAL() { RepZBranchLinki32(>=) } // Branch if Rs >= 0 and link
++static void psxBGTZ() { RepZBranchi32(>) }        // Branch if Rs >  0
++static void psxBLEZ() { RepZBranchi32(<=) }       // Branch if Rs <= 0
++static void psxBLTZ() { RepZBranchi32(<) }        // Branch if Rs <  0
++static void psxBLTZAL() { RepZBranchLinki32(<) }  // Branch if Rs <  0 and link
+ 
+ /*********************************************************
+-* Shift arithmetic with constant shift                   *
+-* Format:  OP rd, rt, sa                                 *
+-*********************************************************/
+-static void psxSLL() { if (!_Rd_) return; _rRd_ = _u32(_rRt_) << _Sa_; } // Rd = Rt << sa
+-static void psxSRA() { if (!_Rd_) return; _rRd_ = _i32(_rRt_) >> _Sa_; } // Rd = Rt >> sa (arithmetic)
+-static void psxSRL() { if (!_Rd_) return; _rRd_ = _u32(_rRt_) >> _Sa_; } // Rd = Rt >> sa (logical)
++ * Shift arithmetic with constant shift                   *
++ * Format:  OP rd, rt, sa                                 *
++ *********************************************************/
++static void psxSLL() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRt_) << _Sa_;
++} // Rd = Rt << sa
++static void psxSRA() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _i32(_rRt_) >> _Sa_;
++} // Rd = Rt >> sa (arithmetic)
++static void psxSRL() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRt_) >> _Sa_;
++} // Rd = Rt >> sa (logical)
+ 
+ /*********************************************************
+-* Shift arithmetic with variant register shift           *
+-* Format:  OP rd, rt, rs                                 *
+-*********************************************************/
+-static void psxSLLV() { if (!_Rd_) return; _rRd_ = _u32(_rRt_) << _u32(_rRs_); } // Rd = Rt << rs
+-static void psxSRAV() { if (!_Rd_) return; _rRd_ = _i32(_rRt_) >> _u32(_rRs_); } // Rd = Rt >> rs (arithmetic)
+-static void psxSRLV() { if (!_Rd_) return; _rRd_ = _u32(_rRt_) >> _u32(_rRs_); } // Rd = Rt >> rs (logical)
++ * Shift arithmetic with variant register shift           *
++ * Format:  OP rd, rt, rs                                 *
++ *********************************************************/
++static void psxSLLV() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRt_) << _u32(_rRs_);
++} // Rd = Rt << rs
++static void psxSRAV() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _i32(_rRt_) >> _u32(_rRs_);
++} // Rd = Rt >> rs (arithmetic)
++static void psxSRLV() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _u32(_rRt_) >> _u32(_rRs_);
++} // Rd = Rt >> rs (logical)
+ 
+ /*********************************************************
+-* Load higher 16 bits of the first word in GPR with imm  *
+-* Format:  OP rt, immediate                              *
+-*********************************************************/
+-static void psxLUI() { if (!_Rt_) return; _rRt_ = psxRegs.code << 16; } // Upper halfword of Rt = Im
++ * Load higher 16 bits of the first word in GPR with imm  *
++ * Format:  OP rt, immediate                              *
++ *********************************************************/
++static void psxLUI() {
++  if (!_Rt_)
++    return;
++  _rRt_ = psxRegs.code << 16;
++} // Upper halfword of Rt = Im
+ 
+ /*********************************************************
+-* Move from HI/LO to GPR                                 *
+-* Format:  OP rd                                         *
+-*********************************************************/
+-static void psxMFHI() { if (!_Rd_) return; _rRd_ = _rHi_; } // Rd = Hi
+-static void psxMFLO() { if (!_Rd_) return; _rRd_ = _rLo_; } // Rd = Lo
++ * Move from HI/LO to GPR                                 *
++ * Format:  OP rd                                         *
++ *********************************************************/
++static void psxMFHI() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _rHi_;
++} // Rd = Hi
++static void psxMFLO() {
++  if (!_Rd_)
++    return;
++  _rRd_ = _rLo_;
++} // Rd = Lo
+ 
+ /*********************************************************
+-* Move to GPR to HI/LO & Register jump                   *
+-* Format:  OP rs                                         *
+-*********************************************************/
++ * Move to GPR to HI/LO & Register jump                   *
++ * Format:  OP rs                                         *
++ *********************************************************/
+ static void psxMTHI() { _rHi_ = _rRs_; } // Hi = Rs
+ static void psxMTLO() { _rLo_ = _rRs_; } // Lo = Rs
+ 
+ /*********************************************************
+-* Special purpose instructions                           *
+-* Format:  OP                                            *
+-*********************************************************/
++ * Special purpose instructions                           *
++ * Format:  OP                                            *
++ *********************************************************/
+ static void psxBREAK() {
+-	// Break exception - psx rom doens't handles this
++  // Break exception - psx rom doens't handles this
+ }
+ 
+ static void psxSYSCALL() {
+-	psxRegs.pc -= 4;
+-	psxException(0x20, branch);
++  psxRegs.pc -= 4;
++  psxException(0x20, branch);
+ }
+ 
+ static void psxRFE() {
+-	psxRegs.CP0.n.Status = (psxRegs.CP0.n.Status & 0xfffffff0) |
+-						  ((psxRegs.CP0.n.Status & 0x3c) >> 2);
++  psxRegs.CP0.n.Status = (psxRegs.CP0.n.Status & 0xfffffff0) |
++                         ((psxRegs.CP0.n.Status & 0x3c) >> 2);
+ }
+ 
+ /*********************************************************
+-* Register branch logic                                  *
+-* Format:  OP rs, rt, offset                             *
+-*********************************************************/
+-#define RepBranchi32(op)      if(_i32(_rRs_) op _i32(_rRt_)) { doBranch(_BranchTarget_); }
++ * Register branch logic                                  *
++ * Format:  OP rs, rt, offset                             *
++ *********************************************************/
++#define RepBranchi32(op)                                                       \
++  if (_i32(_rRs_) op _i32(_rRt_)) {                                            \
++    doBranch(_BranchTarget_);                                                  \
++  }
+ 
+-static void psxBEQ() {	RepBranchi32(==) }  // Branch if Rs == Rt
+-static void psxBNE() {	RepBranchi32(!=) }  // Branch if Rs != Rt
++static void psxBEQ() { RepBranchi32(==) } // Branch if Rs == Rt
++static void psxBNE() { RepBranchi32(!=) } // Branch if Rs != Rt
+ 
+ /*********************************************************
+-* Jump to target                                         *
+-* Format:  OP target                                     *
+-*********************************************************/
+-static void psxJ()   { doBranch(_JumpTarget_); }
+-static void psxJAL() {	_SetLink(31); doBranch(_JumpTarget_); }
++ * Jump to target                                         *
++ * Format:  OP target                                     *
++ *********************************************************/
++static void psxJ() { doBranch(_JumpTarget_); }
++static void psxJAL() {
++  _SetLink(31);
++  doBranch(_JumpTarget_);
++}
+ 
+ /*********************************************************
+-* Register jump                                          *
+-* Format:  OP rs, rd                                     *
+-*********************************************************/
+-static void psxJR()   {                 doBranch(_u32(_rRs_)); }
+-static void psxJALR() { if (_Rd_) { _SetLink(_Rd_); } doBranch(_u32(_rRs_)); }
++ * Register jump                                          *
++ * Format:  OP rs, rd                                     *
++ *********************************************************/
++static void psxJR() { doBranch(_u32(_rRs_)); }
++static void psxJALR() {
++  if (_Rd_) {
++    _SetLink(_Rd_);
++  }
++  doBranch(_u32(_rRs_));
++}
+ 
+ /*********************************************************
+-* Load and store for GPR                                 *
+-* Format:  OP rt, offset(base)                           *
+-*********************************************************/
++ * Load and store for GPR                                 *
++ * Format:  OP rt, offset(base)                           *
++ *********************************************************/
+ 
+ #define _oB_ (_u32(_rRs_) + _Imm_)
+ 
+ static void psxLB() {
+-	if (_Rt_) {
+-		_rRt_ = (s8)psxMemRead8(_oB_); 
+-	} else {
+-		psxMemRead8(_oB_); 
+-	}
++  if (_Rt_) {
++    _rRt_ = (s8)psxMemRead8(_oB_);
++  } else {
++    psxMemRead8(_oB_);
++  }
+ }
+ 
+ static void psxLBU() {
+-	if (_Rt_) {
+-		_rRt_ = psxMemRead8(_oB_);
+-	} else {
+-		psxMemRead8(_oB_); 
+-	}
++  if (_Rt_) {
++    _rRt_ = psxMemRead8(_oB_);
++  } else {
++    psxMemRead8(_oB_);
++  }
+ }
+ 
+ static void psxLH() {
+-	if (_Rt_) {
+-		_rRt_ = (s16)psxMemRead16(_oB_);
+-	} else {
+-		psxMemRead16(_oB_);
+-	}
++  if (_Rt_) {
++    _rRt_ = (s16)psxMemRead16(_oB_);
++  } else {
++    psxMemRead16(_oB_);
++  }
+ }
+ 
+ static void psxLHU() {
+-	if (_Rt_) {
+-		_rRt_ = psxMemRead16(_oB_);
+-	} else {
+-		psxMemRead16(_oB_);
+-	}
++  if (_Rt_) {
++    _rRt_ = psxMemRead16(_oB_);
++  } else {
++    psxMemRead16(_oB_);
++  }
+ }
+ 
+ static void psxLW() {
+-	if (_Rt_) {
+-		_rRt_ = psxMemRead32(_oB_);
+-	} else {
+-		psxMemRead32(_oB_);
+-	}
++  if (_Rt_) {
++    _rRt_ = psxMemRead32(_oB_);
++  } else {
++    psxMemRead32(_oB_);
++  }
+ }
+ 
+-static u32 LWL_MASK[4] = { 0xffffff, 0xffff, 0xff, 0 };
+-static u32 LWL_SHIFT[4] = { 24, 16, 8, 0 };
++static u32 LWL_MASK[4] = {0xffffff, 0xffff, 0xff, 0};
++static u32 LWL_SHIFT[4] = {24, 16, 8, 0};
+ 
+ static void psxLWL() {
+-	u32 addr = _oB_;
+-	u32 shift = addr & 3;
+-	u32 mem = psxMemRead32(addr & ~3);
+-
+-	if (!_Rt_) return;
+-	_rRt_ =	( _u32(_rRt_) & LWL_MASK[shift]) | 
+-					( mem << LWL_SHIFT[shift]);
+-
+-	/*
+-	Mem = 1234.  Reg = abcd
+-
+-	0   4bcd   (mem << 24) | (reg & 0x00ffffff)
+-	1   34cd   (mem << 16) | (reg & 0x0000ffff)
+-	2   234d   (mem <<  8) | (reg & 0x000000ff)
+-	3   1234   (mem      ) | (reg & 0x00000000)
+-	*/
++  u32 addr = _oB_;
++  u32 shift = addr & 3;
++  u32 mem = psxMemRead32(addr & ~3);
++
++  if (!_Rt_)
++    return;
++  _rRt_ = (_u32(_rRt_) & LWL_MASK[shift]) | (mem << LWL_SHIFT[shift]);
++
++  /*
++  Mem = 1234.  Reg = abcd
++
++  0   4bcd   (mem << 24) | (reg & 0x00ffffff)
++  1   34cd   (mem << 16) | (reg & 0x0000ffff)
++  2   234d   (mem <<  8) | (reg & 0x000000ff)
++  3   1234   (mem      ) | (reg & 0x00000000)
++  */
+ }
+ 
+-static u32 LWR_MASK[4] = { 0, 0xff000000, 0xffff0000, 0xffffff00 };
+-static u32 LWR_SHIFT[4] = { 0, 8, 16, 24 };
++static u32 LWR_MASK[4] = {0, 0xff000000, 0xffff0000, 0xffffff00};
++static u32 LWR_SHIFT[4] = {0, 8, 16, 24};
+ 
+ static void psxLWR() {
+-	u32 addr = _oB_;
+-	u32 shift = addr & 3;
+-	u32 mem = psxMemRead32(addr & ~3);
+-
+-	if (!_Rt_) return;
+-	_rRt_ =	( _u32(_rRt_) & LWR_MASK[shift]) | 
+-					( mem >> LWR_SHIFT[shift]);
+-
+-	/*
+-	Mem = 1234.  Reg = abcd
+-
+-	0   1234   (mem      ) | (reg & 0x00000000)
+-	1   a123   (mem >>  8) | (reg & 0xff000000)
+-	2   ab12   (mem >> 16) | (reg & 0xffff0000)
+-	3   abc1   (mem >> 24) | (reg & 0xffffff00)
+-	*/
++  u32 addr = _oB_;
++  u32 shift = addr & 3;
++  u32 mem = psxMemRead32(addr & ~3);
++
++  if (!_Rt_)
++    return;
++  _rRt_ = (_u32(_rRt_) & LWR_MASK[shift]) | (mem >> LWR_SHIFT[shift]);
++
++  /*
++  Mem = 1234.  Reg = abcd
++
++  0   1234   (mem      ) | (reg & 0x00000000)
++  1   a123   (mem >>  8) | (reg & 0xff000000)
++  2   ab12   (mem >> 16) | (reg & 0xffff0000)
++  3   abc1   (mem >> 24) | (reg & 0xffffff00)
++  */
+ }
+ 
+-static void psxSB() { psxMemWrite8 (_oB_, _u8 (_rRt_)); }
++static void psxSB() { psxMemWrite8(_oB_, _u8(_rRt_)); }
+ static void psxSH() { psxMemWrite16(_oB_, _u16(_rRt_)); }
+ static void psxSW() { psxMemWrite32(_oB_, _u32(_rRt_)); }
+ 
+-static const u32 SWL_MASK[4] = { 0xffffff00, 0xffff0000, 0xff000000, 0 };
+-static const u32 SWL_SHIFT[4] = { 24, 16, 8, 0 };
++static const u32 SWL_MASK[4] = {0xffffff00, 0xffff0000, 0xff000000, 0};
++static const u32 SWL_SHIFT[4] = {24, 16, 8, 0};
+ 
+ static void psxSWL() {
+-	u32 addr = _oB_;
+-	u32 shift = addr & 3;
+-	u32 mem = psxMemRead32(addr & ~3);
+-
+-	psxMemWrite32(addr & ~3,  (_u32(_rRt_) >> SWL_SHIFT[shift]) |
+-			     (  mem & SWL_MASK[shift]) );
+-	/*
+-	Mem = 1234.  Reg = abcd
+-
+-	0   123a   (reg >> 24) | (mem & 0xffffff00)
+-	1   12ab   (reg >> 16) | (mem & 0xffff0000)
+-	2   1abc   (reg >>  8) | (mem & 0xff000000)
+-	3   abcd   (reg      ) | (mem & 0x00000000)
+-	*/
++  u32 addr = _oB_;
++  u32 shift = addr & 3;
++  u32 mem = psxMemRead32(addr & ~3);
++
++  psxMemWrite32(addr & ~3,
++                (_u32(_rRt_) >> SWL_SHIFT[shift]) | (mem & SWL_MASK[shift]));
++  /*
++  Mem = 1234.  Reg = abcd
++
++  0   123a   (reg >> 24) | (mem & 0xffffff00)
++  1   12ab   (reg >> 16) | (mem & 0xffff0000)
++  2   1abc   (reg >>  8) | (mem & 0xff000000)
++  3   abcd   (reg      ) | (mem & 0x00000000)
++  */
+ }
+ 
+-static const u32 SWR_MASK[4] = { 0, 0xff, 0xffff, 0xffffff };
+-static const u32 SWR_SHIFT[4] = { 0, 8, 16, 24 };
++static const u32 SWR_MASK[4] = {0, 0xff, 0xffff, 0xffffff};
++static const u32 SWR_SHIFT[4] = {0, 8, 16, 24};
+ 
+ static void psxSWR() {
+-	u32 addr = _oB_;
+-	u32 shift = addr & 3;
+-	u32 mem = psxMemRead32(addr & ~3);
++  u32 addr = _oB_;
++  u32 shift = addr & 3;
++  u32 mem = psxMemRead32(addr & ~3);
+ 
+-	psxMemWrite32(addr & ~3,  (_u32(_rRt_) << SWR_SHIFT[shift]) |
+-			     (  mem & SWR_MASK[shift]) );
++  psxMemWrite32(addr & ~3,
++                (_u32(_rRt_) << SWR_SHIFT[shift]) | (mem & SWR_MASK[shift]));
+ 
+-	/*
+-	Mem = 1234.  Reg = abcd
++  /*
++  Mem = 1234.  Reg = abcd
+ 
+-	0   abcd   (reg      ) | (mem & 0x00000000)
+-	1   bcd4   (reg <<  8) | (mem & 0x000000ff)
+-	2   cd34   (reg << 16) | (mem & 0x0000ffff)
+-	3   d234   (reg << 24) | (mem & 0x00ffffff)
+-	*/
++  0   abcd   (reg      ) | (mem & 0x00000000)
++  1   bcd4   (reg <<  8) | (mem & 0x000000ff)
++  2   cd34   (reg << 16) | (mem & 0x0000ffff)
++  3   d234   (reg << 24) | (mem & 0x00ffffff)
++  */
+ }
+ 
+ /*********************************************************
+-* Moves between GPR and COPx                             *
+-* Format:  OP rt, fs                                     *
+-*********************************************************/
+-static void psxMFC0() { if (!_Rt_) return; _rRt_ = (int)_rFs_; }
+-static void psxCFC0() { if (!_Rt_) return; _rRt_ = (int)_rFs_; }
++ * Moves between GPR and COPx                             *
++ * Format:  OP rt, fs                                     *
++ *********************************************************/
++static void psxMFC0() {
++  if (!_Rt_)
++    return;
++  _rRt_ = (int)_rFs_;
++}
++static void psxCFC0() {
++  if (!_Rt_)
++    return;
++  _rRt_ = (int)_rFs_;
++}
+ 
+ static INLINE void MTC0(int reg, u32 val) {
+-	switch (reg) {
+-		case 13: // Cause
+-			psxRegs.CP0.n.Cause = val & ~(0xfc00);
+-
+-			// the next code is untested, if u know please
+-			// tell me if it works ok or not (linuzappz)
+-			if (psxRegs.CP0.n.Cause & psxRegs.CP0.n.Status & 0x0300 &&
+-				psxRegs.CP0.n.Status & 0x1) {
+-				psxException(psxRegs.CP0.n.Cause, 0);
+-			}
+-			break;
+-
+-		default:
+-			psxRegs.CP0.r[reg] = val;
+-			break;
+-	}
++  switch (reg) {
++  case 13: // Cause
++    psxRegs.CP0.n.Cause = val & ~(0xfc00);
++
++    // the next code is untested, if u know please
++    // tell me if it works ok or not (linuzappz)
++    if (psxRegs.CP0.n.Cause & psxRegs.CP0.n.Status & 0x0300 &&
++        psxRegs.CP0.n.Status & 0x1) {
++      psxException(psxRegs.CP0.n.Cause, 0);
++    }
++    break;
++
++  default:
++    psxRegs.CP0.r[reg] = val;
++    break;
++  }
+ }
+ 
+ static void psxMTC0() { MTC0(_Rd_, _u32(_rRt_)); }
+ static void psxCTC0() { MTC0(_Rd_, _u32(_rRt_)); }
+ 
+ /*********************************************************
+-* Unknow instruction (would generate an exception)       *
+-* Format:  ?                                             *
+-*********************************************************/
+-static void psxNULL() { 
++ * Unknow instruction (would generate an exception)       *
++ * Format:  ?                                             *
++ *********************************************************/
++static void psxNULL() {
+ #ifdef PSXCPU_LOG
+-	PSXCPU_LOG("psx: Unimplemented op %x\n", psxRegs.code);
++  PSXCPU_LOG("psx: Unimplemented op %x\n", psxRegs.code);
+ #endif
+ }
+ 
+-static void psxSPECIAL() {
+-	psxSPC[_Funct_]();
+-}
++static void psxSPECIAL() { psxSPC[_Funct_](); }
+ 
+-static void psxREGIMM() {
+-	psxREG[_Rt_]();
+-}
++static void psxREGIMM() { psxREG[_Rt_](); }
+ 
+-static void psxCOP0() {
+-	psxCP0[_Rs_]();
+-}
++static void psxCOP0() { psxCP0[_Rs_](); }
+ 
+-static void psxHLE() {
+-	psxHLEt[psxRegs.code & 0xff]();
+-}
++static void psxHLE() { psxHLEt[psxRegs.code & 0xff](); }
+ 
+ static void (*psxBSC[64])() = {
+-	psxSPECIAL, psxREGIMM, psxJ   , psxJAL  , psxBEQ , psxBNE , psxBLEZ, psxBGTZ,
+-	psxADDI   , psxADDIU , psxSLTI, psxSLTIU, psxANDI, psxORI , psxXORI, psxLUI ,
+-	psxCOP0   , psxNULL  , psxNULL, psxNULL , psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxNULL   , psxNULL  , psxNULL, psxNULL , psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxLB     , psxLH    , psxLWL , psxLW   , psxLBU , psxLHU , psxLWR , psxNULL,
+-	psxSB     , psxSH    , psxSWL , psxSW   , psxNULL, psxNULL, psxSWR , psxNULL, 
+-	psxNULL   , psxNULL  , psxNULL, psxNULL , psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxNULL   , psxNULL  , psxNULL, psxHLE  , psxNULL, psxNULL, psxNULL, psxNULL 
+-};
+-
++    psxSPECIAL, psxREGIMM, psxJ,     psxJAL,  psxBEQ,   psxBNE,  psxBLEZ,
++    psxBGTZ,    psxADDI,   psxADDIU, psxSLTI, psxSLTIU, psxANDI, psxORI,
++    psxXORI,    psxLUI,    psxCOP0,  psxNULL, psxNULL,  psxNULL, psxNULL,
++    psxNULL,    psxNULL,   psxNULL,  psxNULL, psxNULL,  psxNULL, psxNULL,
++    psxNULL,    psxNULL,   psxNULL,  psxNULL, psxLB,    psxLH,   psxLWL,
++    psxLW,      psxLBU,    psxLHU,   psxLWR,  psxNULL,  psxSB,   psxSH,
++    psxSWL,     psxSW,     psxNULL,  psxNULL, psxSWR,   psxNULL, psxNULL,
++    psxNULL,    psxNULL,   psxNULL,  psxNULL, psxNULL,  psxNULL, psxNULL,
++    psxNULL,    psxNULL,   psxNULL,  psxHLE,  psxNULL,  psxNULL, psxNULL,
++    psxNULL};
+ 
+ static void (*psxSPC[64])() = {
+-	psxSLL , psxNULL , psxSRL , psxSRA , psxSLLV   , psxNULL , psxSRLV, psxSRAV,
+-	psxJR  , psxJALR , psxNULL, psxNULL, psxSYSCALL, psxBREAK, psxNULL, psxNULL,
+-	psxMFHI, psxMTHI , psxMFLO, psxMTLO, psxNULL   , psxNULL , psxNULL, psxNULL,
+-	psxMULT, psxMULTU, psxDIV , psxDIVU, psxNULL   , psxNULL , psxNULL, psxNULL,
+-	psxADD , psxADDU , psxSUB , psxSUBU, psxAND    , psxOR   , psxXOR , psxNOR ,
+-	psxNULL, psxNULL , psxSLT , psxSLTU, psxNULL   , psxNULL , psxNULL, psxNULL,
+-	psxNULL, psxNULL , psxNULL, psxNULL, psxNULL   , psxNULL , psxNULL, psxNULL,
+-	psxNULL, psxNULL , psxNULL, psxNULL, psxNULL   , psxNULL , psxNULL, psxNULL
+-};
++    psxSLL,  psxNULL, psxSRL,  psxSRA,  psxSLLV,  psxNULL,    psxSRLV,
++    psxSRAV, psxJR,   psxJALR, psxNULL, psxNULL,  psxSYSCALL, psxBREAK,
++    psxNULL, psxNULL, psxMFHI, psxMTHI, psxMFLO,  psxMTLO,    psxNULL,
++    psxNULL, psxNULL, psxNULL, psxMULT, psxMULTU, psxDIV,     psxDIVU,
++    psxNULL, psxNULL, psxNULL, psxNULL, psxADD,   psxADDU,    psxSUB,
++    psxSUBU, psxAND,  psxOR,   psxXOR,  psxNOR,   psxNULL,    psxNULL,
++    psxSLT,  psxSLTU, psxNULL, psxNULL, psxNULL,  psxNULL,    psxNULL,
++    psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,  psxNULL,    psxNULL,
++    psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,  psxNULL,    psxNULL,
++    psxNULL};
+ 
+ static void (*psxREG[32])() = {
+-	psxBLTZ  , psxBGEZ  , psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxNULL  , psxNULL  , psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxBLTZAL, psxBGEZAL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxNULL  , psxNULL  , psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL
+-};
++    psxBLTZ,   psxBGEZ,   psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
++    psxNULL,   psxNULL,   psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
++    psxBLTZAL, psxBGEZAL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
++    psxNULL,   psxNULL,   psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL};
+ 
+ static void (*psxCP0[32])() = {
+-	psxMFC0, psxNULL, psxCFC0, psxNULL, psxMTC0, psxNULL, psxCTC0, psxNULL,
+-	psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxRFE , psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
+-	psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL
+-};
+-
++    psxMFC0, psxNULL, psxCFC0, psxNULL, psxMTC0, psxNULL, psxCTC0, psxNULL,
++    psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
++    psxRFE,  psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL,
++    psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL, psxNULL};
+ 
+ ///////////////////////////////////////////
+ 
+-static int intInit() {
+-	return 0;
+-}
++static int intInit() { return 0; }
+ 
+-static void intReset() {
+- branch=branch2=0;
+-}
++static void intReset() { branch = branch2 = 0; }
+ 
+ static void intExecute() {
+-	for (;;) 
+-	{
+-	 if(!CounterSPURun()) 
+-	 {
+-	  psxShutdown();
+-	  return;
+-	 }
+-	 SPUendflush();
+-	 execI();
+-	}
++  extern int stop_sexy_execute;
++  for (;;) {
++    if (stop_sexy_execute)
++      return;
++    if (!CounterSPURun()) {
++      psxShutdown();
++      return;
++    }
++    SPUendflush();
++    execI();
++  }
+ }
+ 
+ static void intExecuteBlock() {
+-	branch2 = 0;
+-	while (!branch2) execI();
++  branch2 = 0;
++  while (!branch2)
++    execI();
+ }
+ 
+-static void intClear(u32 Addr, u32 Size) {
+-}
++static void intClear(u32 Addr, u32 Size) {}
+ 
+-static void intShutdown() {
+-}
++static void intShutdown() {}
+ 
+-R3000Acpu psxInt = {
+-	intInit,
+-	intReset,
+-	intExecute,
+-	intExecuteBlock,
+-	intClear,
+-	intShutdown
+-};
++R3000Acpu psxInt = {intInit,         intReset, intExecute,
++                    intExecuteBlock, intClear, intShutdown};
+diff --git a/PsxMem.c b/PsxMem.c
+index 4bcad25..929302c 100644
+--- a/PsxMem.c
++++ b/PsxMem.c
+@@ -16,221 +16,231 @@
+  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+  */
+ 
+-#include <string.h>
+ #include <stdlib.h>
++#include <string.h>
+ 
+ #include "PsxCommon.h"
+ 
+-void LoadPSXMem(u32 address, s32 length, char *data)
+-{
+- //printf("%08x %08x\n",address,length);
+- while(length>0)
+- {
+-  if(address&65535)
+-  {
+-   u32 tmplen;
+-
+-   //puts("Squishy");
+-   tmplen=((65536-(address&65535))>length)?length:65536-(address&65535);
+-   if(psxMemLUT[address>>16])
+-    memcpy((char *)(psxMemLUT[address>>16]+(address&65535)),data,tmplen);
+-   address+=tmplen;
+-   data+=tmplen;
+-   length-=tmplen;
+-   //printf("%08x %08x\n",address,tmplen);
+-   continue;
+-  }
+-  if(psxMemLUT[address>>16])
+-  {
+-   memcpy((char *)(psxMemLUT[address>>16]),data,(length<65536)?length:65536);
++void LoadPSXMem(u32 address, s32 length, char *data) {
++  // printf("%08x %08x\n",address,length);
++  while (length > 0) {
++    if (address & 65535) {
++      u32 tmplen;
++
++      // puts("Squishy");
++      tmplen = ((65536 - (address & 65535)) > length)
++                   ? length
++                   : 65536 - (address & 65535);
++      if (psxMemLUT[address >> 16])
++        memcpy((char *)(psxMemLUT[address >> 16] + (address & 65535)), data,
++               tmplen);
++      address += tmplen;
++      data += tmplen;
++      length -= tmplen;
++      // printf("%08x %08x\n",address,tmplen);
++      continue;
++    }
++    if (psxMemLUT[address >> 16]) {
++      memcpy((char *)(psxMemLUT[address >> 16]), data,
++             (length < 65536) ? length : 65536);
++    }
++    data += 65536;
++    address += 65536;
++    length -= 65536;
+   }
+-  data+=65536;
+-  address+=65536;
+-  length-=65536;
+- }
+ }
+ 
+ static int writeok;
+ int psxMemInit() {
+-	int i;
++  int i;
+ 
+-	writeok=1;
++  writeok = 1;
+ 
+-	psxMemLUT = malloc(0x10000 * sizeof *psxMemLUT);
+-	memset(psxMemLUT, 0, 0x10000 * sizeof *psxMemLUT);
++  psxMemLUT = malloc(0x10000 * sizeof *psxMemLUT);
++  memset(psxMemLUT, 0, 0x10000 * sizeof *psxMemLUT);
+ 
+-	psxM = (char*)malloc(0x00200000);
+-	psxP = (char*)malloc(0x00010000);
+-	psxH = (char*)malloc(0x00010000);
+-	psxR = (char*)malloc(0x00080000);
+-	if (psxMemLUT == NULL || psxM == NULL || psxP == NULL || psxH == NULL || psxR == NULL) {
+-		printf("Error allocating memory"); return -1;
+-	}
++  psxM = (s8 *)malloc(0x00200000);
++  psxP = (s8 *)malloc(0x00010000);
++  psxH = (s8 *)malloc(0x00010000);
++  psxR = (s8 *)malloc(0x00080000);
++  if (psxMemLUT == NULL || psxM == NULL || psxP == NULL || psxH == NULL ||
++      psxR == NULL) {
++    printf("Error allocating memory");
++    return -1;
++  }
+ 
+-	for (i=0; i<0x80; i++) psxMemLUT[i + 0x0000] = &psxM[(i & 0x1f) << 16];
++  for (i = 0; i < 0x80; i++)
++    psxMemLUT[i + 0x0000] = (char *)&psxM[(i & 0x1f) << 16];
+ 
+-	memcpy(psxMemLUT + 0x8000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
+-	memcpy(psxMemLUT + 0xa000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
++  memcpy(psxMemLUT + 0x8000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
++  memcpy(psxMemLUT + 0xa000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
+ 
+-	for (i=0; i<0x01; i++) psxMemLUT[i + 0x1f00] = (u32)&psxP[i << 16];
++  for (i = 0; i < 0x01; i++)
++    psxMemLUT[i + 0x1f00] = (char *)&psxP[i << 16];
+ 
+-	for (i=0; i<0x01; i++) psxMemLUT[i + 0x1f80] = (u32)&psxH[i << 16];
++  for (i = 0; i < 0x01; i++)
++    psxMemLUT[i + 0x1f80] = (char *)&psxH[i << 16];
+ 
+-	for (i=0; i<0x08; i++) psxMemLUT[i + 0xbfc0] = (u32)&psxR[i << 16];
++  for (i = 0; i < 0x08; i++)
++    psxMemLUT[i + 0xbfc0] = (char *)&psxR[i << 16];
+ 
+-	return 0;
++  return 0;
+ }
+ 
+ void psxMemReset() {
+-	memset(psxM, 0, 0x00200000);
+-	memset(psxP, 0, 0x00010000);
++  memset(psxM, 0, 0x00200000);
++  memset(psxP, 0, 0x00010000);
+ }
+ 
+ void psxMemShutdown() {
+-	free(psxM);
+-	free(psxP);
+-	free(psxH);
+-	free(psxR);
+-	free(psxMemLUT);
++  free(psxM);
++  free(psxP);
++  free(psxH);
++  free(psxR);
++  free(psxMemLUT);
+ }
+ 
+ u8 psxMemRead8(u32 mem) {
+-	char *p;
+-	u32 t;
+-
+-	t = mem >> 16;
+-	if (t == 0x1f80) {
+-		if (mem < 0x1f801000)
+-			return psxHu8(mem);
+-		else
+-			return psxHwRead8(mem);
+-	} else {
+-		p = (char *)(psxMemLUT[t]);
+-		if (p != NULL) {
+-			return *(u8 *)(p + (mem & 0xffff));
+-		} else {
+-			return 0;
+-		}
+-	}
++  char *p;
++  u32 t;
++
++  t = mem >> 16;
++  if (t == 0x1f80) {
++    if (mem < 0x1f801000)
++      return psxHu8(mem);
++    else
++      return psxHwRead8(mem);
++  } else {
++    p = (char *)(psxMemLUT[t]);
++    if (p != NULL) {
++      return *(u8 *)(p + (mem & 0xffff));
++    } else {
++      return 0;
++    }
++  }
+ }
+ 
+ u16 psxMemRead16(u32 mem) {
+-	char *p;
+-	u32 t;
+-
+-	t = mem >> 16;
+-	if (t == 0x1f80) {
+-		if (mem < 0x1f801000)
+-			return BFLIP16(psxHu16(mem));
+-		else
+-			return psxHwRead16(mem);
+-	} else {
+-		p = (char *)(psxMemLUT[t]);
+-		if (p != NULL) {
+-			return BFLIP16(*(u16 *)(p + (mem & 0xffff)));
+-		} else {
+-			return 0;
+-		}
+-	}
++  char *p;
++  u32 t;
++
++  t = mem >> 16;
++  if (t == 0x1f80) {
++    if (mem < 0x1f801000)
++      return BFLIP16(psxHu16(mem));
++    else
++      return psxHwRead16(mem);
++  } else {
++    p = (char *)(psxMemLUT[t]);
++    if (p != NULL) {
++      return BFLIP16(*(u16 *)(p + (mem & 0xffff)));
++    } else {
++      return 0;
++    }
++  }
+ }
+ 
+ u32 psxMemRead32(u32 mem) {
+-	char *p;
+-	u32 t;
+-
+-	t = mem >> 16;
+-	if (t == 0x1f80) {
+-		if (mem < 0x1f801000)
+-			return BFLIP32(psxHu32(mem));
+-		else
+-			return psxHwRead32(mem);
+-	} else {
+-		p = (char *)(psxMemLUT[t]);
+-		if (p != NULL) {
+-			return BFLIP32(*(u32 *)(p + (mem & 0xffff)));
+-		} else {
+-			return 0;
+-		}
+-	}
++  char *p;
++  u32 t;
++
++  t = mem >> 16;
++  if (t == 0x1f80) {
++    if (mem < 0x1f801000)
++      return BFLIP32(psxHu32(mem));
++    else
++      return psxHwRead32(mem);
++  } else {
++    p = (char *)(psxMemLUT[t]);
++    if (p != NULL) {
++      return BFLIP32(*(u32 *)(p + (mem & 0xffff)));
++    } else {
++      return 0;
++    }
++  }
+ }
+ 
+ void psxMemWrite8(u32 mem, u8 value) {
+-	char *p;
+-	u32 t;
+-
+-	t = mem >> 16;
+-	if (t == 0x1f80) {
+-		if (mem < 0x1f801000)
+-			psxHu8(mem) = value;
+-		else
+-			psxHwWrite8(mem, value);
+-	} else {
+-		p = (char *)(psxMemLUT[t]);
+-		if (p != NULL) {
+-			*(u8  *)(p + (mem & 0xffff)) = value;
+-		}
+-	}
++  char *p;
++  u32 t;
++
++  t = mem >> 16;
++  if (t == 0x1f80) {
++    if (mem < 0x1f801000)
++      psxHu8(mem) = value;
++    else
++      psxHwWrite8(mem, value);
++  } else {
++    p = (char *)(psxMemLUT[t]);
++    if (p != NULL) {
++      *(u8 *)(p + (mem & 0xffff)) = value;
++    }
++  }
+ }
+ 
+ void psxMemWrite16(u32 mem, u16 value) {
+-	char *p;
+-	u32 t;
+-
+-	t = mem >> 16;
+-	if (t == 0x1f80) {
+-		if (mem < 0x1f801000)
+-			psxHu16(mem) = BFLIP16(value);
+-		else
+-			psxHwWrite16(mem, value);
+-	} else {
+-		p = (char *)(psxMemLUT[t]);
+-		if (p != NULL) {
+-			*(u16 *)(p + (mem & 0xffff)) = BFLIP16(value);
+-		}
+-	}
++  char *p;
++  u32 t;
++
++  t = mem >> 16;
++  if (t == 0x1f80) {
++    if (mem < 0x1f801000)
++      psxHu16(mem) = BFLIP16(value);
++    else
++      psxHwWrite16(mem, value);
++  } else {
++    p = (char *)(psxMemLUT[t]);
++    if (p != NULL) {
++      *(u16 *)(p + (mem & 0xffff)) = BFLIP16(value);
++    }
++  }
+ }
+ 
+ void psxMemWrite32(u32 mem, u32 value) {
+-	char *p;
+-	u32 t;
+-
+-//	if ((mem&0x1fffff) == 0x71E18 || value == 0x48088800) SysPrintf("t2fix!!\n");
+-	t = mem >> 16;
+-	if (t == 0x1f80) {
+-		if (mem < 0x1f801000)
+-			psxHu32(mem) = BFLIP32(value);
+-		else
+-			psxHwWrite32(mem, value);
+-	} else {
+-		p = (char *)(psxMemLUT[t]);
+-		if (p != NULL) {
+-			*(u32 *)(p + (mem & 0xffff)) = BFLIP32(value);
+-		} else {
+-			if (mem != 0xfffe0130) {
+-
+-			} else {
+-				int i;
+-
+-				switch (value) {
+-					case 0x800: case 0x804:
+-						if (writeok == 0) break;
+-						writeok = 0;
+-						memset(psxMemLUT + 0x0000, 0, 0x80 * sizeof *psxMemLUT);
+-						memset(psxMemLUT + 0x8000, 0, 0x80 * sizeof *psxMemLUT);
+-						memset(psxMemLUT + 0xa000, 0, 0x80 * sizeof *psxMemLUT);
+-						break;
+-					case 0x1e988:
+-						if (writeok == 1) break;
+-						writeok = 1;
+-						for (i=0; i<0x80; i++) psxMemLUT[i + 0x0000] = &psxM[(i & 0x1f) << 16];
+-						memcpy(psxMemLUT + 0x8000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
+-						memcpy(psxMemLUT + 0xa000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
+-						break;
+-					default:
+-						break;
+-				}
+-			}
+-		}
+-	}
++  char *p;
++  u32 t;
++
++  //	if ((mem&0x1fffff) == 0x71E18 || value == 0x48088800)
++  //SysPrintf("t2fix!!\n");
++  t = mem >> 16;
++  if (t == 0x1f80) {
++    if (mem < 0x1f801000)
++      psxHu32(mem) = BFLIP32(value);
++    else
++      psxHwWrite32(mem, value);
++  } else {
++    p = (char *)(psxMemLUT[t]);
++    if (p != NULL) {
++      *(u32 *)(p + (mem & 0xffff)) = BFLIP32(value);
++    } else {
++      if (mem != 0xfffe0130) {
++
++      } else {
++        int i;
++
++        switch (value) {
++        case 0x800:
++        case 0x804:
++          if (writeok == 0)
++            break;
++          writeok = 0;
++          memset(psxMemLUT + 0x0000, 0, 0x80 * sizeof *psxMemLUT);
++          memset(psxMemLUT + 0x8000, 0, 0x80 * sizeof *psxMemLUT);
++          memset(psxMemLUT + 0xa000, 0, 0x80 * sizeof *psxMemLUT);
++          break;
++        case 0x1e988:
++          if (writeok == 1)
++            break;
++          writeok = 1;
++          for (i = 0; i < 0x80; i++)
++            psxMemLUT[i + 0x0000] = (char *)&psxM[(i & 0x1f) << 16];
++          memcpy(psxMemLUT + 0x8000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
++          memcpy(psxMemLUT + 0xa000, psxMemLUT, 0x80 * sizeof *psxMemLUT);
++          break;
++        default:
++          break;
++        }
++      }
++    }
++  }
+ }
+-
+diff --git a/spu/spu.c b/spu/spu.c
+index ec45a19..08d0a4f 100644
+--- a/spu/spu.c
++++ b/spu/spu.c
+@@ -5,7 +5,7 @@
+     copyright            : (C) 2002 by Pete Bernert
+     email                : BlackDove@addcom.de
+  ***************************************************************************/
+-                       
++
+ /***************************************************************************
+  *                                                                         *
+  *   This program is free software; you can redistribute it and/or modify  *
+@@ -15,7 +15,7 @@
+  *   additional informations.                                              *
+  *                                                                         *
+  ***************************************************************************/
+-                           
++
+ //*************************************************************************//
+ // History of changes:
+ //
+@@ -28,24 +28,30 @@
+ // - added MONO support for MSWindows DirectSound
+ //
+ // 2003/02/20 - kode54
+-// - amended interpolation code, goto GOON could skip initialization of gpos and cause segfault
++// - amended interpolation code, goto GOON could skip initialization of gpos and
++// cause segfault
+ //
+ // 2003/02/19 - kode54
+ // - moved SPU IRQ handler and changed sample flag processing
+ //
+ // 2003/02/18 - kode54
+-// - moved ADSR calculation outside of the sample decode loop, somehow I doubt that
+-//   ADSR timing is relative to the frequency at which a sample is played... I guess
+-//   this remains to be seen, and I don't know whether ADSR is applied to noise channels...
++// - moved ADSR calculation outside of the sample decode loop, somehow I doubt
++// that
++//   ADSR timing is relative to the frequency at which a sample is played... I
++//   guess this remains to be seen, and I don't know whether ADSR is applied to
++//   noise channels...
+ //
+ // 2003/02/09 - kode54
+ // - one-shot samples now process the end block before stopping
+-// - in light of removing fmod hack, now processing ADSR on frequency channel as well
++// - in light of removing fmod hack, now processing ADSR on frequency channel as
++// well
+ //
+ // 2003/02/08 - kode54
+ // - replaced easy interpolation with gaussian
+ // - removed fmod averaging hack
+-// - changed .sinc to be updated from .iRawPitch, no idea why it wasn't done this way already (<- Pete: because I sometimes fail to see the obvious, haharhar :)
++// - changed .sinc to be updated from .iRawPitch, no idea why it wasn't done
++// this way already (<- Pete: because I sometimes fail to see the obvious,
++// haharhar :)
+ //
+ // 2003/02/08 - linuzappz
+ // - small bugfix for one usleep that was 1 instead of 1000
+@@ -79,11 +85,11 @@
+ 
+ #define _IN_SPU
+ 
+-#include "stdafx.h"
+-#include "externals.h"
+ #include "spu.h"
+-#include "regs.h"
++#include "externals.h"
+ #include "registers.h"
++#include "regs.h"
++#include "stdafx.h"
+ 
+ #include "PsxMem.h"
+ #include "driver.h"
+@@ -94,35 +100,31 @@
+ 
+ // psx buffer / addresses
+ 
+-static u16  regArea[0x200];
+-static u16  spuMem[256*1024];
+-static u8 * spuMemC;
+-static u8 * pSpuIrq=0;
+-static u8 * pSpuBuffer;
++static u16 regArea[0x200];
++static u16 spuMem[256 * 1024];
++static u8 *spuMemC;
++static u8 *pSpuIrq = 0;
++static u8 *pSpuBuffer;
++
++// user settings
++static int iVolume;
+ 
+-// user settings          
+-static int             iVolume;
+-                               
+ // MAIN infos struct for each channel
+ 
+-static SPUCHAN         s_chan[MAXCHAN+1];                     // channel + 1 infos (1 is security for fmod handling)
+-static REVERBInfo      rvb;
++static SPUCHAN
++    s_chan[MAXCHAN + 1]; // channel + 1 infos (1 is security for fmod handling)
++static REVERBInfo rvb;
+ 
+-static u32   dwNoiseVal=1;                          // global noise generator
++static u32 dwNoiseVal = 1; // global noise generator
+ 
+-static u16  spuCtrl=0;                             // some vars to store psx reg infos
+-static u16  spuStat=0;
+-static u16  spuIrq=0;             
+-static u32  spuAddr=0xffffffff;                    // address into spu mem
+-static int  bSPUIsOpen=0;
++static u16 spuCtrl = 0; // some vars to store psx reg infos
++static u16 spuStat = 0;
++static u16 spuIrq = 0;
++static u32 spuAddr = 0xffffffff; // address into spu mem
++static int bSPUIsOpen = 0;
+ 
+-static const int f[5][2] = {   
+-			{    0,  0  },
+-                        {   60,  0  },
+-                        {  115, -52 },
+-                        {   98, -55 },
+-                        {  122, -60 } };
+-s16 * pS;
++static const int f[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
++s16 *pS;
+ 
+ ////////////////////////////////////////////////////////////////////////
+ // CODE AREA
+@@ -130,18 +132,18 @@ s16 * pS;
+ 
+ // dirty inline func includes
+ 
+-#include "reverb.c"        
+ #include "adsr.c"
++#include "reverb.c"
+ 
+ // Try this to increase speed.
+-#include "registers.c"
+ #include "dma.c"
++#include "registers.c"
+ 
+ ////////////////////////////////////////////////////////////////////////
+ // helpers for so-called "gauss interpolation"
+ 
+ #define gval0 (((int *)(&s_chan[ch].SB[29]))[gpos])
+-#define gval(x) (((int *)(&s_chan[ch].SB[29]))[(gpos+x)&3])
++#define gval(x) (((int *)(&s_chan[ch].SB[29]))[(gpos + x) & 3])
+ 
+ #include "gauss_i.h"
+ 
+@@ -151,24 +153,24 @@ s16 * pS;
+ // START SOUND... called by main thread to setup a new sound on a channel
+ ////////////////////////////////////////////////////////////////////////
+ 
+-static INLINE void StartSound(int ch)
+-{
+- StartADSR(ch);
+-                          
+- s_chan[ch].pCurr=s_chan[ch].pStart;                   // set sample start
+-                         
+- s_chan[ch].s_1=0;                                     // init mixing vars
+- s_chan[ch].s_2=0;
+- s_chan[ch].iSBPos=28;
++static INLINE void StartSound(int ch) {
++  StartADSR(ch);
++
++  s_chan[ch].pCurr = s_chan[ch].pStart; // set sample start
+ 
+- s_chan[ch].bNew=0;                                    // init channel flags
+- s_chan[ch].bStop=0;                                   
+- s_chan[ch].bOn=1;
++  s_chan[ch].s_1 = 0; // init mixing vars
++  s_chan[ch].s_2 = 0;
++  s_chan[ch].iSBPos = 28;
+ 
+- s_chan[ch].SB[29]=0;                                  // init our interpolation helpers
+- s_chan[ch].SB[30]=0;
++  s_chan[ch].bNew = 0; // init channel flags
++  s_chan[ch].bStop = 0;
++  s_chan[ch].bOn = 1;
+ 
+- s_chan[ch].spos=0x40000L;s_chan[ch].SB[28]=0;  // -> start with more decoding
++  s_chan[ch].SB[29] = 0; // init our interpolation helpers
++  s_chan[ch].SB[30] = 0;
++
++  s_chan[ch].spos = 0x40000L;
++  s_chan[ch].SB[28] = 0; // -> start with more decoding
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////
+@@ -177,344 +179,362 @@ static INLINE void StartSound(int ch)
+ // basically the whole sound processing is done in this fat func!
+ ////////////////////////////////////////////////////////////////////////
+ 
+-static u32 sampcount;
++u32 sampcount;
+ static u32 decaybegin;
+ static u32 decayend;
+ 
+ // Counting to 65536 results in full volume offage.
+-void SPUsetlength(s32 stop, s32 fade)
+-{
+- if(stop==~0)
+- {
+-  decaybegin=~0;
+- }
+- else
+- {
+-  stop=(stop*441)/10;
+-  fade=(fade*441)/10;
+-
+-  decaybegin=stop;
+-  decayend=stop+fade;
+- }
++void SPUsetlength(s32 stop, s32 fade) {
++  if (stop == ~0) {
++    decaybegin = ~0;
++  } else {
++    stop = (stop * 441) / 10;
++    fade = (fade * 441) / 10;
++
++    decaybegin = stop;
++    decayend = stop + fade;
++  }
+ }
+ 
+ static s32 seektime;
+ static s32 poo;
+-int sexy_seek(u32 t)
+-{
+- seektime=t*441/10;
+- if(seektime>sampcount) return(1);
+- return(0);
++int sexy_seek(u32 t) {
++  seektime = t * 441 / 10;
++  if (seektime > sampcount)
++    return (1);
++  return (0);
+ }
+ 
+-#define CLIP(_x) {if(_x>32767) _x=32767; if(_x<-32767) _x=-32767;}
+-int SPUasync(u32 cycles)
+-{
+- int volmul=iVolume;
+- static s32 dosampies;
+- s32 temp;
+-
+- poo+=cycles;
+- dosampies=poo/384;
+- if(!dosampies) return(1);
+- poo-=dosampies*384;
+- temp=dosampies;
+-
+- while(temp)
+- {
+-   s32 revLeft=0, revRight=0;
+-   s32 sl=0, sr=0;
+-   int ch,fa;
+-
+-   temp--;
+-   //--------------------------------------------------//
+-   //- main channel loop                              -// 
+-   //--------------------------------------------------//
++#define CLIP(_x)                                                               \
++  {                                                                            \
++    if (_x > 32767)                                                            \
++      _x = 32767;                                                              \
++    if (_x < -32767)                                                           \
++      _x = -32767;                                                             \
++  }
++int SPUasync(u32 cycles) {
++  int volmul = iVolume;
++  static s32 dosampies;
++  s32 temp;
++
++  poo += cycles;
++  dosampies = poo / 384;
++  if (!dosampies)
++    return (1);
++  poo -= dosampies * 384;
++  temp = dosampies;
++
++  while (temp) {
++    s32 revLeft = 0, revRight = 0;
++    s32 sl = 0, sr = 0;
++    int ch, fa;
++
++    temp--;
++    //--------------------------------------------------//
++    //- main channel loop                              -//
++    //--------------------------------------------------//
+     {
+-     for(ch=0;ch<MAXCHAN;ch++)                         // loop em all.
++      for (ch = 0; ch < MAXCHAN; ch++) // loop em all.
+       {
+-       if(s_chan[ch].bNew) StartSound(ch);             // start new sound
+-       if(!s_chan[ch].bOn) continue;                   // channel not playing? next
+-
++        if (s_chan[ch].bNew)
++          StartSound(ch); // start new sound
++        if (!s_chan[ch].bOn)
++          continue; // channel not playing? next
+ 
+-       if(s_chan[ch].iActFreq!=s_chan[ch].iUsedFreq)   // new psx frequency?
++        if (s_chan[ch].iActFreq != s_chan[ch].iUsedFreq) // new psx frequency?
+         {
+-         s_chan[ch].iUsedFreq=s_chan[ch].iActFreq;     // -> take it and calc steps
+-         s_chan[ch].sinc=s_chan[ch].iRawPitch<<4;
+-         if(!s_chan[ch].sinc) s_chan[ch].sinc=1;
++          s_chan[ch].iUsedFreq =
++              s_chan[ch].iActFreq; // -> take it and calc steps
++          s_chan[ch].sinc = s_chan[ch].iRawPitch << 4;
++          if (!s_chan[ch].sinc)
++            s_chan[ch].sinc = 1;
+         }
+ 
+-         while(s_chan[ch].spos>=0x10000L)
++        while (s_chan[ch].spos >= 0x10000L) {
++          if (s_chan[ch].iSBPos == 28) // 28 reached?
+           {
+-           if(s_chan[ch].iSBPos==28)                   // 28 reached?
+-            {
+-	     int predict_nr,shift_factor,flags,d,s;
+-	     u8* start;unsigned int nSample;
+-	     int s_1,s_2;
+-
+-             start=s_chan[ch].pCurr;                   // set up the current pos
+-
+-             if (start == (u8*)-1)          // special "stop" sign
+-              {
+-               s_chan[ch].bOn=0;                       // -> turn everything off
+-               s_chan[ch].ADSRX.lVolume=0;
+-               s_chan[ch].ADSRX.EnvelopeVol=0;
+-               goto ENDX;                              // -> and done for this channel
+-              }
+-
+-             s_chan[ch].iSBPos=0;	// Reset buffer play index.
+-
+-             //////////////////////////////////////////// spu irq handler here? mmm... do it later
+-
+-             s_1=s_chan[ch].s_1;
+-             s_2=s_chan[ch].s_2;
+-
+-             predict_nr=(int)*start;start++;           
+-             shift_factor=predict_nr&0xf;
+-             predict_nr >>= 4;
+-             flags=(int)*start;start++;
+-
+-             // -------------------------------------- // 
+-	     // Decode new samples into s_chan[ch].SB[0 through 27]
+-             for (nSample=0;nSample<28;start++)      
+-              {
+-               d=(int)*start;
+-               s=((d&0xf)<<12);
+-               if(s&0x8000) s|=0xffff0000;
+-
+-               fa=(s >> shift_factor);
+-               fa=fa + ((s_1 * f[predict_nr][0])>>6) + ((s_2 * f[predict_nr][1])>>6);
+-               s_2=s_1;s_1=fa;
+-               s=((d & 0xf0) << 8);
++            int predict_nr, shift_factor, flags, d, s;
++            u8 *start;
++            unsigned int nSample;
++            int s_1, s_2;
+ 
+-               s_chan[ch].SB[nSample++]=fa;
++            start = s_chan[ch].pCurr; // set up the current pos
+ 
+-               if(s&0x8000) s|=0xffff0000;
+-               fa=(s>>shift_factor);              
+-               fa=fa + ((s_1 * f[predict_nr][0])>>6) + ((s_2 * f[predict_nr][1])>>6);
+-               s_2=s_1;s_1=fa;
++            if (start == (u8 *)-1) // special "stop" sign
++            {
++              s_chan[ch].bOn = 0; // -> turn everything off
++              s_chan[ch].ADSRX.lVolume = 0;
++              s_chan[ch].ADSRX.EnvelopeVol = 0;
++              goto ENDX; // -> and done for this channel
++            }
+ 
+-               s_chan[ch].SB[nSample++]=fa;
+-              }     
++            s_chan[ch].iSBPos = 0; // Reset buffer play index.
++
++            //////////////////////////////////////////// spu irq handler here?
++            ///mmm... do it later
++
++            s_1 = s_chan[ch].s_1;
++            s_2 = s_chan[ch].s_2;
++
++            predict_nr = (int)*start;
++            start++;
++            shift_factor = predict_nr & 0xf;
++            predict_nr >>= 4;
++            flags = (int)*start;
++            start++;
++
++            // -------------------------------------- //
++            // Decode new samples into s_chan[ch].SB[0 through 27]
++            for (nSample = 0; nSample < 28; start++) {
++              d = (int)*start;
++              s = ((d & 0xf) << 12);
++              if (s & 0x8000)
++                s |= 0xffff0000;
++
++              fa = (s >> shift_factor);
++              fa = fa + ((s_1 * f[predict_nr][0]) >> 6) +
++                   ((s_2 * f[predict_nr][1]) >> 6);
++              s_2 = s_1;
++              s_1 = fa;
++              s = ((d & 0xf0) << 8);
++
++              s_chan[ch].SB[nSample++] = fa;
++
++              if (s & 0x8000)
++                s |= 0xffff0000;
++              fa = (s >> shift_factor);
++              fa = fa + ((s_1 * f[predict_nr][0]) >> 6) +
++                   ((s_2 * f[predict_nr][1]) >> 6);
++              s_2 = s_1;
++              s_1 = fa;
++
++              s_chan[ch].SB[nSample++] = fa;
++            }
+ 
+-             //////////////////////////////////////////// irq check
++            //////////////////////////////////////////// irq check
+ 
+-             if(spuCtrl&0x40)         			// irq active?
+-              {
+-               if((pSpuIrq >  start-16 &&              // irq address reached?
++            if (spuCtrl & 0x40) // irq active?
++            {
++              if ((pSpuIrq > start - 16 && // irq address reached?
+                    pSpuIrq <= start) ||
+-                  ((flags&1) &&                        // special: irq on looping addr, when stop/loop flag is set 
+-                   (pSpuIrq >  s_chan[ch].pLoop-16 && 
+-                    pSpuIrq <= s_chan[ch].pLoop)))
+-               {
+-		 //extern s32 spuirqvoodoo;
+-                 s_chan[ch].iIrqDone=1;                // -> debug flag
+-		 SPUirq();
+-		//puts("IRQ");
+-		 //if(spuirqvoodoo!=-1)
+-		 //{
+-		 // spuirqvoodoo=temp*384;
+-		 // temp=0;
+-		 //}
+-                }
+-              }
+-      
+-             //////////////////////////////////////////// flag handler
+-
+-             if((flags&4) && (!s_chan[ch].bIgnoreLoop))
+-              s_chan[ch].pLoop=start-16;               // loop adress
+-
+-             if(flags&1)                               // 1: stop/loop
+-              {
+-               // We play this block out first...
+-               //if(!(flags&2))                          // 1+2: do loop... otherwise: stop
+-               if(flags!=3 || s_chan[ch].pLoop==NULL)  // PETE: if we don't check exactly for 3, loop hang ups will happen (DQ4, for example)
+-                {                                      // and checking if pLoop is set avoids crashes, yeah
+-                 start = (u8*)-1;
+-                }
+-               else
+-                {
+-                 start = s_chan[ch].pLoop;
+-                }
++                  ((flags & 1) && // special: irq on looping addr, when
++                                  // stop/loop flag is set
++                   (pSpuIrq > s_chan[ch].pLoop - 16 &&
++                    pSpuIrq <= s_chan[ch].pLoop))) {
++                // extern s32 spuirqvoodoo;
++                s_chan[ch].iIrqDone = 1; // -> debug flag
++                SPUirq();
++                // puts("IRQ");
++                // if(spuirqvoodoo!=-1)
++                //{
++                //  spuirqvoodoo=temp*384;
++                //  temp=0;
++                // }
+               }
++            }
+ 
+-             s_chan[ch].pCurr=start;                   // store values for next cycle
+-             s_chan[ch].s_1=s_1;
+-             s_chan[ch].s_2=s_2;      
++            //////////////////////////////////////////// flag handler
+ 
+-             ////////////////////////////////////////////
+-            }
++            if ((flags & 4) && (!s_chan[ch].bIgnoreLoop))
++              s_chan[ch].pLoop = start - 16; // loop adress
+ 
+-           fa=s_chan[ch].SB[s_chan[ch].iSBPos++];      // get sample data
++            if (flags & 1) // 1: stop/loop
++            {
++              // We play this block out first...
++              // if(!(flags&2))                          // 1+2: do loop...
++              // otherwise: stop
++              if (flags != 3 ||
++                  s_chan[ch].pLoop ==
++                      NULL) // PETE: if we don't check exactly for 3, loop hang
++                            // ups will happen (DQ4, for example)
++              {             // and checking if pLoop is set avoids crashes, yeah
++                start = (u8 *)-1;
++              } else {
++                start = s_chan[ch].pLoop;
++              }
++            }
+ 
+-           if((spuCtrl&0x4000)==0) fa=0;               // muted?
+-	   else CLIP(fa);
++            s_chan[ch].pCurr = start; // store values for next cycle
++            s_chan[ch].s_1 = s_1;
++            s_chan[ch].s_2 = s_2;
+ 
+-	    {
+-	     int gpos;
+-             gpos = s_chan[ch].SB[28];
+-             gval0 = fa;
+-             gpos = (gpos+1) & 3;
+-             s_chan[ch].SB[28] = gpos;
+-	    }
+-           s_chan[ch].spos -= 0x10000L;
++            ////////////////////////////////////////////
+           }
+ 
+-         ////////////////////////////////////////////////
+-         // noise handler... just produces some noise data
+-         // surely wrong... and no noise frequency (spuCtrl&0x3f00) will be used...
+-         // and sometimes the noise will be used as fmod modulation... pfff
+-
+-         if(s_chan[ch].bNoise)
+-          {
+-	   //puts("Noise");
+-           if((dwNoiseVal<<=1)&0x80000000L)
+-            {
+-             dwNoiseVal^=0x0040001L;
+-             fa=((dwNoiseVal>>2)&0x7fff);
+-             fa=-fa;
+-            }
+-           else fa=(dwNoiseVal>>2)&0x7fff;
++          fa = s_chan[ch].SB[s_chan[ch].iSBPos++]; // get sample data
+ 
+-           // mmm... depending on the noise freq we allow bigger/smaller changes to the previous val
+-           fa=s_chan[ch].iOldNoise+((fa-s_chan[ch].iOldNoise)/((0x001f-((spuCtrl&0x3f00)>>9))+1));
+-           if(fa>32767L)  fa=32767L;
+-           if(fa<-32767L) fa=-32767L;              
+-           s_chan[ch].iOldNoise=fa;
++          if ((spuCtrl & 0x4000) == 0)
++            fa = 0; // muted?
++          else
++            CLIP(fa);
+ 
+-          }                                            //----------------------------------------
+-         else                                         // NO NOISE (NORMAL SAMPLE DATA) HERE 
+           {
+-             int vl, vr, gpos;
+-             vl = (s_chan[ch].spos >> 6) & ~3;
+-             gpos = s_chan[ch].SB[28];
+-             vr=(gauss[vl]*gval0)>>9;
+-             vr+=(gauss[vl+1]*gval(1))>>9;
+-             vr+=(gauss[vl+2]*gval(2))>>9;
+-             vr+=(gauss[vl+3]*gval(3))>>9;
+-             fa = vr>>2;
++            int gpos;
++            gpos = s_chan[ch].SB[28];
++            gval0 = fa;
++            gpos = (gpos + 1) & 3;
++            s_chan[ch].SB[28] = gpos;
+           }
++          s_chan[ch].spos -= 0x10000L;
++        }
++
++        ////////////////////////////////////////////////
++        // noise handler... just produces some noise data
++        // surely wrong... and no noise frequency (spuCtrl&0x3f00) will be
++        // used... and sometimes the noise will be used as fmod modulation...
++        // pfff
++
++        if (s_chan[ch].bNoise) {
++          // puts("Noise");
++          if ((dwNoiseVal <<= 1) & 0x80000000L) {
++            dwNoiseVal ^= 0x0040001L;
++            fa = ((dwNoiseVal >> 2) & 0x7fff);
++            fa = -fa;
++          } else
++            fa = (dwNoiseVal >> 2) & 0x7fff;
++
++          // mmm... depending on the noise freq we allow bigger/smaller changes
++          // to the previous val
++          fa = s_chan[ch].iOldNoise +
++               ((fa - s_chan[ch].iOldNoise) /
++                ((0x001f - ((spuCtrl & 0x3f00) >> 9)) + 1));
++          if (fa > 32767L)
++            fa = 32767L;
++          if (fa < -32767L)
++            fa = -32767L;
++          s_chan[ch].iOldNoise = fa;
++
++        } //----------------------------------------
++        else // NO NOISE (NORMAL SAMPLE DATA) HERE
++        {
++          int vl, vr, gpos;
++          vl = (s_chan[ch].spos >> 6) & ~3;
++          gpos = s_chan[ch].SB[28];
++          vr = (gauss[vl] * gval0) >> 9;
++          vr += (gauss[vl + 1] * gval(1)) >> 9;
++          vr += (gauss[vl + 2] * gval(2)) >> 9;
++          vr += (gauss[vl + 3] * gval(3)) >> 9;
++          fa = vr >> 2;
++        }
+ 
+-         s_chan[ch].sval = (MixADSR(ch) * fa)>>10;     // / 1023;  // add adsr
+-         if(s_chan[ch].bFMod==2)                       // fmod freq channel
+-         {
+-           int NP=s_chan[ch+1].iRawPitch;
+-           NP=((32768L+s_chan[ch].sval)*NP)>>15; ///32768L;
+-
+-           if(NP>0x3fff) NP=0x3fff;
+-           if(NP<0x1)    NP=0x1;
+-                                                        
+-	   // mmmm... if I do this, all is screwed              
+-	  //           s_chan[ch+1].iRawPitch=NP;
+-
+-           NP=(44100L*NP)/(4096L);                     // calc frequency
+-
+-           s_chan[ch+1].iActFreq=NP;
+-           s_chan[ch+1].iUsedFreq=NP;
+-           s_chan[ch+1].sinc=(((NP/10)<<16)/4410);
+-           if(!s_chan[ch+1].sinc) s_chan[ch+1].sinc=1;
+-
+-		// mmmm... set up freq decoding positions?
+-		//           s_chan[ch+1].iSBPos=28;
+-		//           s_chan[ch+1].spos=0x10000L;
+-          }                    
+-         else
+-          {                                          
+-           //////////////////////////////////////////////
+-           // ok, left/right sound volume (psx volume goes from 0 ... 0x3fff)
+-	   int tmpl,tmpr;
+-
+-	   tmpl=(s_chan[ch].sval*s_chan[ch].iLeftVolume)>>14;
+-	   tmpr=(s_chan[ch].sval*s_chan[ch].iRightVolume)>>14;
+-
+-	   sl+=tmpl;
+-	   sr+=tmpr;
+-
+-	   if(((rvb.Enabled>>ch)&1) && (spuCtrl&0x80))
+-	   {
+-	    revLeft+=tmpl;
+-	    revRight+=tmpr;
+-	   }
++        s_chan[ch].sval = (MixADSR(ch) * fa) >> 10; // / 1023;  // add adsr
++        if (s_chan[ch].bFMod == 2)                  // fmod freq channel
++        {
++          int NP = s_chan[ch + 1].iRawPitch;
++          NP = ((32768L + s_chan[ch].sval) * NP) >> 15; /// 32768L;
++
++          if (NP > 0x3fff)
++            NP = 0x3fff;
++          if (NP < 0x1)
++            NP = 0x1;
++
++          // mmmm... if I do this, all is screwed
++          //           s_chan[ch+1].iRawPitch=NP;
++
++          NP = (44100L * NP) / (4096L); // calc frequency
++
++          s_chan[ch + 1].iActFreq = NP;
++          s_chan[ch + 1].iUsedFreq = NP;
++          s_chan[ch + 1].sinc = (((NP / 10) << 16) / 4410);
++          if (!s_chan[ch + 1].sinc)
++            s_chan[ch + 1].sinc = 1;
++
++          // mmmm... set up freq decoding positions?
++          //           s_chan[ch+1].iSBPos=28;
++          //           s_chan[ch+1].spos=0x10000L;
++        } else {
++          //////////////////////////////////////////////
++          // ok, left/right sound volume (psx volume goes from 0 ... 0x3fff)
++          int tmpl, tmpr;
++
++          tmpl = (s_chan[ch].sval * s_chan[ch].iLeftVolume) >> 14;
++          tmpr = (s_chan[ch].sval * s_chan[ch].iRightVolume) >> 14;
++
++          sl += tmpl;
++          sr += tmpr;
++
++          if (((rvb.Enabled >> ch) & 1) && (spuCtrl & 0x80)) {
++            revLeft += tmpl;
++            revRight += tmpr;
+           }
++        }
+ 
+-         s_chan[ch].spos += s_chan[ch].sinc;             
+- ENDX:   ;                                                      
++        s_chan[ch].spos += s_chan[ch].sinc;
++      ENDX:;
+       }
+-    }                                                         
+-                                                           
+-  ///////////////////////////////////////////////////////
+-  // mix all channels (including reverb) into one buffer
+-  MixREVERBLeftRight(&sl,&sr,revLeft,revRight);
+-  if(sampcount>=decaybegin)
+-  {
+-   s32 dmul;
+-   if(decaybegin!=~0) // Is anyone REALLY going to be playing a song
+-		      // for 13 hours?
+-   {
+-    if(sampcount>=decayend) return(0);
+-    dmul=256-(256*(sampcount-decaybegin)/(decayend-decaybegin));
+-    sl=(sl*dmul)>>8;
+-    sr=(sr*dmul)>>8;
+-   }
++    }
++
++    ///////////////////////////////////////////////////////
++    // mix all channels (including reverb) into one buffer
++    MixREVERBLeftRight(&sl, &sr, revLeft, revRight);
++    if (sampcount >= decaybegin) {
++      s32 dmul;
++      if (decaybegin != ~0) // Is anyone REALLY going to be playing a song
++                            // for 13 hours?
++      {
++        if (sampcount >= decayend)
++          return (0);
++        dmul = 256 - (256 * (sampcount - decaybegin) / (decayend - decaybegin));
++        sl = (sl * dmul) >> 8;
++        sr = (sr * dmul) >> 8;
++      }
++    }
++    sampcount++;
++    sl = (sl * volmul) >> 8;
++    sr = (sr * volmul) >> 8;
++
++    //{
++    // static double asl=0;
++    // static double asr=0;
++
++    // asl+=(sl-asl)/5;
++    // asr+=(sl-asr)/5;
++
++    // sl-=asl;
++    // sr-=asr;
++
++    // if(sl>32767 || sl < -32767) printf("Left: %d, %f\n",sl,asl);
++    // if(sr>32767 || sr < -32767) printf("Right: %d, %f\n",sl,asl);
++    //}
++
++    if (sl > 32767)
++      sl = 32767;
++    if (sl < -32767)
++      sl = -32767;
++    if (sr > 32767)
++      sr = 32767;
++    if (sr < -32767)
++      sr = -32767;
++    *pS++ = sl;
++    *pS++ = sr;
+   }
+-  sampcount++;
+-  sl=(sl*volmul)>>8;
+-  sr=(sr*volmul)>>8;
+-
+-  //{
+-  // static double asl=0;
+-  // static double asr=0;
+-   
+-  // asl+=(sl-asl)/5;
+-  // asr+=(sl-asr)/5;
+-
+-   //sl-=asl;
+-   //sr-=asr;
+-
+-  // if(sl>32767 || sl < -32767) printf("Left: %d, %f\n",sl,asl);
+-  // if(sr>32767 || sr < -32767) printf("Right: %d, %f\n",sl,asl);
+-  //}
+-
+-  if(sl>32767) sl=32767; if(sl<-32767) sl=-32767;
+-  if(sr>32767) sr=32767; if(sr<-32767) sr=-32767;
+-  *pS++=sl;
+-  *pS++=sr;
+- }
+-
+- return(1);
+-}
+ 
+-void sexy_stop(void)
+-{
+- decaybegin=decayend=0;
++  return (1);
+ }
+ 
+-void SPUendflush(void)
+-{
+-   if((seektime!=~0) && seektime>sampcount)
+-   {
+-    pS=(s16 *)pSpuBuffer;
+-    sexyd_update(0,0);
+-   }
+-   else if((u8*)pS>((u8*)pSpuBuffer+1024))
+-   {
+-    sexyd_update((u8*)pSpuBuffer,(u8*)pS-(u8*)pSpuBuffer);
+-    pS=(s16 *)pSpuBuffer;
+-   }
+-}   
++void sexy_stop(void) { decaybegin = decayend = 0; }
++
++void SPUendflush(void) {
++  if ((seektime != ~0) && seektime > sampcount) {
++    pS = (s16 *)pSpuBuffer;
++    sexyd_update(0, 0);
++  } else if ((u8 *)pS > ((u8 *)pSpuBuffer + 1024)) {
++    sexyd_update((u8 *)pSpuBuffer, (u8 *)pS - (u8 *)pSpuBuffer);
++    pS = (s16 *)pSpuBuffer;
++  }
++}
+ 
+ #ifdef TIMEO
+ static u64 begintime;
+-static u64 SexyTime64(void)
+-{
+- struct timeval tv;
+- u64 ret;
+-
+- gettimeofday(&tv,0);
+- ret=tv.tv_sec;
+- ret*=1000000;
+- ret+=tv.tv_usec;
+- return(ret);
++static u64 SexyTime64(void) {
++  struct timeval tv;
++  u64 ret;
++
++  gettimeofday(&tv, 0);
++  ret = tv.tv_sec;
++  ret *= 1000000;
++  ret += tv.tv_usec;
++  return (ret);
+ }
+ #endif
+ ////////////////////////////////////////////////////////////////////////
+@@ -524,41 +544,39 @@ static u64 SexyTime64(void)
+ ////////////////////////////////////////////////////////////////////////
+ // SPUINIT: this func will be called first by the main emu
+ ////////////////////////////////////////////////////////////////////////
+-              
+-int SPUinit(void)
+-{
+- spuMemC=(u8*)spuMem;                      // just small setup
+- memset((void *)s_chan,0,MAXCHAN*sizeof(SPUCHAN));
+- memset((void *)&rvb,0,sizeof(REVERBInfo));
+- memset(regArea,0,sizeof(regArea));
+- memset(spuMem,0,sizeof(spuMem));
+- InitADSR();
+- sampcount=poo=0;
+- seektime=~0;
+- #ifdef TIMEO
+- begintime=SexyTime64();
+- #endif
+- return 0;
++
++int SPUinit(void) {
++  spuMemC = (u8 *)spuMem; // just small setup
++  memset((void *)s_chan, 0, MAXCHAN * sizeof(SPUCHAN));
++  memset((void *)&rvb, 0, sizeof(REVERBInfo));
++  memset(regArea, 0, sizeof(regArea));
++  memset(spuMem, 0, sizeof(spuMem));
++  InitADSR();
++  sampcount = poo = 0;
++  seektime = ~0;
++#ifdef TIMEO
++  begintime = SexyTime64();
++#endif
++  return 0;
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////
+ // SETUPSTREAMS: init most of the spu buffers
+ ////////////////////////////////////////////////////////////////////////
+ 
+-void SetupStreams(void)
+-{ 
+- int i;
++void SetupStreams(void) {
++  int i;
+ 
+- pSpuBuffer=(u8*)malloc(32768);            // alloc mixing buffer
+- pS=(s16 *)pSpuBuffer;
++  pSpuBuffer = (u8 *)malloc(32768); // alloc mixing buffer
++  pS = (s16 *)pSpuBuffer;
+ 
+- for(i=0;i<MAXCHAN;i++)                                // loop sound channels
++  for (i = 0; i < MAXCHAN; i++) // loop sound channels
+   {
+-   s_chan[i].ADSRX.SustainLevel = 1024;                // -> init sustain
+-   s_chan[i].iIrqDone=0;
+-   s_chan[i].pLoop=spuMemC;
+-   s_chan[i].pStart=spuMemC;
+-   s_chan[i].pCurr=spuMemC;
++    s_chan[i].ADSRX.SustainLevel = 1024; // -> init sustain
++    s_chan[i].iIrqDone = 0;
++    s_chan[i].pLoop = spuMemC;
++    s_chan[i].pStart = spuMemC;
++    s_chan[i].pCurr = spuMemC;
+   }
+ }
+ 
+@@ -566,47 +584,45 @@ void SetupStreams(void)
+ // REMOVESTREAMS: free most buffer
+ ////////////////////////////////////////////////////////////////////////
+ 
+-void RemoveStreams(void)
+-{ 
+- free(pSpuBuffer);                                     // free mixing buffer
+- pSpuBuffer=NULL;
+-
+- #ifdef TIMEO
+- {
+-  u64 tmp;
+-  tmp=SexyTime64();
+-  tmp-=begintime;
+-  if(tmp)
+-   tmp=(u64)sampcount*1000000/tmp;
+-  printf("%lld samples per second\n",tmp);
+- }
+- #endif
+-}
++void RemoveStreams(void) {
++  free(pSpuBuffer); // free mixing buffer
++  pSpuBuffer = NULL;
+ 
++#ifdef TIMEO
++  {
++    u64 tmp;
++    tmp = SexyTime64();
++    tmp -= begintime;
++    if (tmp)
++      tmp = (u64)sampcount * 1000000 / tmp;
++    printf("%lld samples per second\n", tmp);
++  }
++#endif
++}
+ 
+ ////////////////////////////////////////////////////////////////////////
+ // SPUOPEN: called by main emu after init
+ ////////////////////////////////////////////////////////////////////////
+-   
+-int SPUopen(void)
+-{
+- if(bSPUIsOpen) return 0;                              // security for some stupid main emus
+- spuIrq=0;                       
+ 
+- spuStat=spuCtrl=0;
+- spuAddr=0xffffffff;
+- dwNoiseVal=1;
++int SPUopen(void) {
++  if (bSPUIsOpen)
++    return 0; // security for some stupid main emus
++  spuIrq = 0;
+ 
+- spuMemC=(u8*)spuMem;      
+- memset((void *)s_chan,0,(MAXCHAN+1)*sizeof(SPUCHAN));
+- pSpuIrq=0;
++  spuStat = spuCtrl = 0;
++  spuAddr = 0xffffffff;
++  dwNoiseVal = 1;
+ 
+- iVolume=128; //85;
+- SetupStreams();                                       // prepare streaming
++  spuMemC = (u8 *)spuMem;
++  memset((void *)s_chan, 0, (MAXCHAN + 1) * sizeof(SPUCHAN));
++  pSpuIrq = 0;
+ 
+- bSPUIsOpen=1;
++  iVolume = 128;  // 85;
++  SetupStreams(); // prepare streaming
+ 
+- return 1;
++  bSPUIsOpen = 1;
++
++  return 1;
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////
+@@ -615,23 +631,19 @@ int SPUopen(void)
+ // SPUCLOSE: called before shutdown
+ ////////////////////////////////////////////////////////////////////////
+ 
+-int SPUclose(void)
+-{
+- if(!bSPUIsOpen) return 0;                             // some security
++int SPUclose(void) {
++  if (!bSPUIsOpen)
++    return 0; // some security
+ 
+- bSPUIsOpen=0;                                         // no more open
++  bSPUIsOpen = 0; // no more open
+ 
+- RemoveStreams();                                      // no more streaming
++  RemoveStreams(); // no more streaming
+ 
+- return 0;
++  return 0;
+ }
+ 
+ ////////////////////////////////////////////////////////////////////////
+ // SPUSHUTDOWN: called by main emu on final exit
+ ////////////////////////////////////////////////////////////////////////
+ 
+-int SPUshutdown(void)
+-{
+- return 0;
+-}
+-
++int SPUshutdown(void) { return 0; }
+diff --git a/spu/spu.h b/spu/spu.h
+index bbee14a..f73f9f7 100644
+--- a/spu/spu.h
++++ b/spu/spu.h
+@@ -1,3 +1,5 @@
++#include "../types.h"
++
+ int SPUinit(void);
+ int SPUopen(void);
+ void SPUsetlength(s32 stop, s32 fade);

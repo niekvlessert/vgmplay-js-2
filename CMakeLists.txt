@@ -6,6 +6,17 @@ if(NOT EMSCRIPTEN)
   message(FATAL_ERROR "This project requires the Emscripten toolchain")
 endif()
 
+# Automatically apply patches
+message(STATUS "Automatically applying library patches...")
+execute_process(
+    COMMAND /bin/bash ${CMAKE_CURRENT_SOURCE_DIR}/apply_patches.sh
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    RESULT_VARIABLE PATCH_RESULT
+)
+if(NOT PATCH_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to apply library patches")
+endif()
+
 # Libvgm Only Build Option
 option(BUILD_LIBVGM_ONLY "Build only libvgm components (VGM/VGZ support only)" OFF)
 

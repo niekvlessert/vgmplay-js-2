@@ -13,3 +13,6 @@
 [submodule "modules/miniaudio"]
 	path = modules/miniaudio
 	url = https://github.com/mackron/miniaudio
+[submodule "modules/sexypsf"]
+	path = modules/sexypsf
+	url = https://github.com/CoreDumpling/sexypsf

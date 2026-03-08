@@ -1,0 +1,81 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2f57bb9..6950bd8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.5)
+ project(libkss)
+ 
+ # add_compile_definitions(EXCLUDE_DRIVER_ALL)
+@@ -46,4 +46,3 @@ if(NOT CMAKE_COMPILER_IS_GNUCC)
+ else()
+ 	target_link_libraries(kss2wav kss m)
+ endif()
+-
+Submodule modules/emu2149 contains modified content
+diff --git a/modules/emu2149/CMakeLists.txt b/modules/emu2149/CMakeLists.txt
+index 42b0add..f13bf52 100644
+--- a/modules/emu2149/CMakeLists.txt
++++ b/modules/emu2149/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.5)
+ 
+ if(MSVC)
+   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
+Submodule modules/emu2212 contains modified content
+diff --git a/modules/emu2212/CMakeLists.txt b/modules/emu2212/CMakeLists.txt
+index 560a2fb..3209e3c 100644
+--- a/modules/emu2212/CMakeLists.txt
++++ b/modules/emu2212/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.5)
+ 
+ if(MSVC)
+   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
+Submodule modules/emu2413 contains modified content
+diff --git a/modules/emu2413/CMakeLists.txt b/modules/emu2413/CMakeLists.txt
+index 83e154a..599bb58 100644
+--- a/modules/emu2413/CMakeLists.txt
++++ b/modules/emu2413/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.5)
+ project(emu2413)
+ 
+ if(MSVC)
+Submodule modules/emu76489 contains modified content
+diff --git a/modules/emu76489/CMakeLists.txt b/modules/emu76489/CMakeLists.txt
+index 205903f..ace1cec 100644
+--- a/modules/emu76489/CMakeLists.txt
++++ b/modules/emu76489/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.5)
+ 
+ if(MSVC)
+   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
+Submodule modules/emu8950 contains modified content
+diff --git a/modules/emu8950/CMakeLists.txt b/modules/emu8950/CMakeLists.txt
+index 1ebf69e..d986494 100644
+--- a/modules/emu8950/CMakeLists.txt
++++ b/modules/emu8950/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.5)
+ 
+ if(MSVC)
+   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
+Submodule modules/kmz80 contains modified content
+diff --git a/modules/kmz80/CMakeLists.txt b/modules/kmz80/CMakeLists.txt
+index 342824b..ccf513c 100644
+--- a/modules/kmz80/CMakeLists.txt
++++ b/modules/kmz80/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 3.0)
++cmake_minimum_required(VERSION 3.5)
+ 
+ if(MSVC)
+   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")

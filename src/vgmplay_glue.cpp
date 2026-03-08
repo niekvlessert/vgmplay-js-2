@@ -138,13 +138,22 @@ static int usf_load_psf(const char *path, void *state, int level) {
       // printf("USF: Loading raw section from %s (%u bytes)\n", path, pSize);
       return usf_upload_section(state, payload, pSize) >= 0;
     } else {
-      // Try decompressing
-      uLongf uncompressedSize = 1024 * 1024 * 64;
+      // Try decompressing. Most sections are small.
+      // Start with 16MB and grow if needed (Z_BUF_ERROR).
+      uLongf uncompressedSize = 1024 * 1024 * 16;
       std::vector<uint8_t> uncompressedData(uncompressedSize);
-      if (uncompress(uncompressedData.data(), &uncompressedSize, payload,
-                     pSize) == Z_OK) {
-        /* printf("USF: Decompressed section from %s (%u -> %lu bytes)\n", path,
-               pSize, uncompressedSize); */
+      int ret = uncompress(uncompressedData.data(), &uncompressedSize, payload,
+                           pSize);
+
+      if (ret == Z_BUF_ERROR) {
+        // Try 64MB for large sections
+        uncompressedSize = 1024 * 1024 * 64;
+        uncompressedData.resize(uncompressedSize);
+        ret = uncompress(uncompressedData.data(), &uncompressedSize, payload,
+                         pSize);
+      }
+
+      if (ret == Z_OK) {
         return usf_upload_section(state, uncompressedData.data(),
                                   uncompressedSize) >= 0;
       }

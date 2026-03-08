@@ -1399,6 +1399,41 @@ class VGMPlay_js {
 		});
 	}
 
+	/**
+	 * Purges all extracted game files from MEMFS to reclaim memory.
+	 */
+	purgeGamesFS() {
+		try {
+			const rootEntries = FS.readdir('/');
+			for (const entry of rootEntries) {
+				if (entry.startsWith('game_')) {
+					this._rmRecursive('/' + entry);
+				}
+			}
+			this.amountOfGamesLoaded = 0;
+		} catch (e) {
+			console.error("[VGM] purgeGamesFS failed:", e);
+		}
+	}
+
+	_rmRecursive(path) {
+		try {
+			const stats = FS.stat(path);
+			if (FS.isDir(stats.mode)) {
+				const entries = FS.readdir(path);
+				for (const entry of entries) {
+					if (entry === '.' || entry === '..') continue;
+					this._rmRecursive(path + '/' + entry);
+				}
+				FS.rmdir(path);
+			} else {
+				FS.unlink(path);
+			}
+		} catch (e) {
+			console.error("[VGM] Failed to remove:", path, e);
+		}
+	}
+
 	processSingleBuffer(byteArray, sourceName = '') {
 		return new Promise((resolve) => {
 			let game;

@@ -32,7 +32,7 @@ else()
     add_subdirectory(modules/game-music-emu)
     add_subdirectory(modules/libkss)
     add_subdirectory(modules/lazyusf)
-    add_subdirectory(modules/libmusdoom)
+    add_subdirectory(modules/libMusDoom)
 endif()
 
 # Main Executable
@@ -43,8 +43,8 @@ else()
 endif()
 
 # Link against libvgm components and others
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2 -s USE_ZLIB=1")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2 -s USE_ZLIB=1")
 
 if(BUILD_LIBVGM_ONLY)
     target_link_libraries(vgmplay-js ${MINIMAL_LIBS})
@@ -74,7 +74,7 @@ if(NOT BUILD_LIBVGM_ONLY)
         modules/lazyusf
         modules/lazyusf/rsp
         modules/lazyusf/rsp_hle
-        modules/libmusdoom/src
+        modules/libMusDoom/src
     )
 endif()
 

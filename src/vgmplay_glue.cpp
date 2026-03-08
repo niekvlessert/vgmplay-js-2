@@ -25,12 +25,15 @@
 #include "../modules/libvgm/utils/FileLoader.h"
 
 extern "C" {
+#ifdef INLINE
+#undef INLINE
+#endif
 #include "../modules/sexypsf/driver.h"
 void psxShutdown(void);
 }
 #include "../modules/game-music-emu/gme/gme.h"
 #include "../modules/lazyusf/usf.h"
-#include "../modules/libmusdoom/src/libmusdoom.h"
+#include "../modules/libMusDoom/src/libmusdoom.h"
 #include "miniaudio.h"
 
 /* ---- globals ---- */
@@ -92,7 +95,7 @@ static const char *kssTrackTitle(KSS *kss, int trackNum) {
   for (uint16_t i = 0; i < kss->info_num; i++) {
     if (kss->info[i].song != trackNum)
       continue;
-    if (kss->info[i].title && kss->info[i].title[0]) {
+    if (kss->info[i].title[0]) {
       return kss->info[i].title;
     }
   }

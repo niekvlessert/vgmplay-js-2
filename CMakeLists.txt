@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 project(vgmplay-js-2)
 
-# Verify Emscripten
 if(NOT EMSCRIPTEN)
   message(FATAL_ERROR "This project requires the Emscripten toolchain")
 else()
@@ -9,10 +8,8 @@ else()
   add_compile_options("-s" "USE_ZLIB=1")
   add_link_options("-s" "USE_ZLIB=1")
   
-  # Trick libvgm's find_package(ZLIB) so it doesn't fail under CI
-  set(ZLIB_FOUND TRUE CACHE BOOL "ZLIB found")
-  set(ZLIB_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}" CACHE PATH "ZLIB Include")
-  set(ZLIB_LIBRARY "" CACHE STRING "ZLIB Library")
+  # Tell CMake to search our root directory for FindZLIB.cmake script first
+  set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_MODULE_PATH})
 endif()
 
 # Automatically apply patches

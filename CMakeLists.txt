@@ -4,6 +4,15 @@ project(vgmplay-js-2)
 # Verify Emscripten
 if(NOT EMSCRIPTEN)
   message(FATAL_ERROR "This project requires the Emscripten toolchain")
+else()
+  # Emscripten specific options
+  add_compile_options("-s" "USE_ZLIB=1")
+  add_link_options("-s" "USE_ZLIB=1")
+  
+  # Trick libvgm's find_package(ZLIB) so it doesn't fail under CI
+  set(ZLIB_FOUND TRUE CACHE BOOL "ZLIB found")
+  set(ZLIB_INCLUDE_DIR "dummy" CACHE PATH "ZLIB Include")
+  set(ZLIB_LIBRARY "z" CACHE STRING "ZLIB Library")
 endif()
 
 # Automatically apply patches
@@ -43,8 +52,8 @@ else()
 endif()
 
 # Link against libvgm components and others
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2 -s USE_ZLIB=1")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2 -s USE_ZLIB=1")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2")
 
 if(BUILD_LIBVGM_ONLY)
     target_link_libraries(vgmplay-js ${MINIMAL_LIBS})

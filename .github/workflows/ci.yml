@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          emcmake cmake .. -DZLIB_LIBRARY=${EMSDK}/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libz.a -DZLIB_INCLUDE_DIR=${EMSDK}/upstream/emscripten/cache/sysroot/include
+          emcmake cmake ..
           emmake make -j4
 
       - name: Upload WASM Artifacts

@@ -44,6 +44,7 @@ FILES_TO_COPY=(
     "7zz.umd.js"
     "7zz.wasm"
     "unrar.min.js"
+    "audiomotion-analyzer.js"
 )
 
 # Optional files

@@ -2357,7 +2357,7 @@ class VGMPlay_js {
 		if (typeof window === 'undefined') return;
 		if (window.AudioMotionAnalyzer) return;
 		if (!this._audioMotionLoading) {
-			this._audioMotionLoading = import('https://cdn.jsdelivr.net/npm/audiomotion-analyzer@4/+esm')
+			this._audioMotionLoading = import(this.baseURL + 'audiomotion-analyzer.js')
 				.then((mod) => {
 					window.AudioMotionAnalyzer = mod.default || mod;
 				})

@@ -42,6 +42,7 @@ set(ASSET_FILES
     7zz.umd.js
     7zz.wasm
     unrar.min.js
+    audiomotion-analyzer.js
 )
 
 # Copy index.html and symlink extension assets next to the binary

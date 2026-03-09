@@ -39,6 +39,9 @@ else()
     add_subdirectory(modules/libkss)
     add_subdirectory(modules/lazyusf)
     add_subdirectory(modules/libMusDoom)
+    set(USE_FFMPEG OFF CACHE BOOL "Use FFmpeg for support of many codecs" FORCE)
+    set(USE_MPEG OFF CACHE BOOL "Use libmpg123 for support of MPEG" FORCE)
+    set(USE_VORBIS OFF CACHE BOOL "Use libvorbis for support of Vorbis" FORCE)
     add_subdirectory(modules/vgmstream)
 endif()
 
@@ -111,6 +114,9 @@ set(VGMPLAY_EXPORTS
     "'_main'"
     "'_malloc'"
     "'_free'"
+    "'_GetUsedMemory'"
+    "'_GetFreeMemory'"
+    "'_GetTotalMemory'"
 )
 
 if(NOT BUILD_LIBVGM_ONLY)

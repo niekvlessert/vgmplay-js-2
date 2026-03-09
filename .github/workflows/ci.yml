@@ -26,6 +26,9 @@ jobs:
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
 
+      - name: Pre-build Cleanup
+        run: rm -f vgmplay-js.js vgmplay-js.wasm vgmplay-js.data
+
       - name: Build WASM
         run: |
           mkdir -p build
@@ -33,17 +36,26 @@ jobs:
           emcmake cmake ..
           emmake make -j4
 
+      - name: Verify Build Output
+        run: |
+          ls -l vgmplay-js.js vgmplay-js.wasm vgmplay-js.data
+          if [ ! -f vgmplay-js.js ] || [ ! -f vgmplay-js.wasm ] || [ ! -f vgmplay-js.data ]; then
+            echo "Error: Build did not produce all required files"
+            exit 1
+          fi
+
       - name: Upload WASM Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: wasm-artifacts
+          if-no-files-found: error
           path: |
             vgmplay-js.js
             vgmplay-js.wasm
             vgmplay-js.data
 
   deploy-pages:
-    needs: build-wasm
+    needs: [build-wasm, build-mac]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -57,6 +69,13 @@ jobs:
         with:
           name: wasm-artifacts
           path: .
+
+      - name: Verify Deployment Artifacts
+        run: |
+          if [ ! -f vgmplay-js.js ] || [ ! -f vgmplay-js.wasm ]; then
+            echo "Error: Essential WASM files missing before deployment"
+            exit 1
+          fi
 
       - name: Disable Jekyll
         run: touch .nojekyll

@@ -1285,7 +1285,7 @@ class VGMPlay_js {
 					});
 				}
 
-				var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo };
+				var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo, archiveName: sourceName };
 				this.tempGameInfo = null;
 				this.games.push(game);
 				this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -1542,12 +1542,29 @@ class VGMPlay_js {
 			return relPath;
 		};
 
+		// Helper: parse archive filename to extract title (before first '(')
+		const parseArchiveTitle = (filename) => {
+			if (!filename) return "Archive";
+			// Remove extension
+			let name = filename;
+			const dot = name.lastIndexOf('.');
+			if (dot !== -1) name = name.substring(0, dot);
+			// Find first '('
+			const p1 = name.indexOf('(');
+			if (p1 === -1) return name.trim();
+			let title = name.substring(0, p1);
+			// Trim whitespace
+			title = title.replace(/^\s+|\s+$/g, '');
+			return title || "Archive";
+		};
+
 		const getGame = (gameKey) => {
 			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
 			this.amountOfGamesLoaded++;
 			const gamePath = "/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
-			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+			const parsedName = parseArchiveTitle(sourceName);
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, name: parsedName };
 			gamesByKey[gameKey] = game;
 			gamesInOrder.push(game);
 			return game;
@@ -1622,7 +1639,8 @@ class VGMPlay_js {
 				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fsPath)], { type: "image/png" });
 			}
 
-			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath };
+			const parsedName = parseArchiveTitle(sourceName);
+			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, archiveName: sourceName, name: parsedName };
 
 			// Alphabetical sorting for DOOM MUS/LMP archives
 			const hasMusLmp = fileList.some(f => {
@@ -1706,6 +1724,10 @@ class VGMPlay_js {
 	}
 
 	showVGMFromZip(game) {
+		// Ensure game name is set from archive name if available
+		if (!game.name && game.archiveName) {
+			game.name = game.archiveName;
+		}
 		const files = game.files;
 		const gameIndex = this.games.indexOf(game) + 1;
 
@@ -2728,6 +2750,14 @@ class VGMPlay_js {
 	}
 
 	load(fileName) {
+		// Determine archive name if this file belongs to a game from an archive
+		let archiveName = '';
+		for (const game of this.games) {
+			if (fileName.startsWith(game.path + '/')) {
+				archiveName = game.archiveName || '';
+				break;
+			}
+		}
 		if (this.isVGMLoaded && this.StopVGM) {
 			this.StopVGM();
 		}
@@ -2736,6 +2766,10 @@ class VGMPlay_js {
 		}
 		const res = this.OpenVGMFile(fileName);
 		const ok = !!res;
+		if (ok && Module && Module.SetCurrentArchiveName) {
+			// Set archive name AFTER OpenVGMFile (which calls cleanup) so it persists for ShowTitle
+			Module.SetCurrentArchiveName(archiveName);
+		}
 		if (!ok) {
 			console.error("[VGM] Failed to open file:", fileName);
 		}

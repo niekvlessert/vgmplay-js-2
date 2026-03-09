@@ -35,6 +35,11 @@ void psxShutdown(void);
 #include "../modules/lazyusf/usf.h"
 #include "../modules/libMusDoom/src/libmusdoom.h"
 #include "miniaudio.h"
+#include <map>
+#include <algorithm>
+#include <ctime>
+#include <sys/stat.h>
+#include <cctype>
 
 extern "C" {
 #include "../modules/vgmstream/src/libvgmstream.h"
@@ -80,6 +85,8 @@ static std::vector<uint8_t> musData;
 static bool isMA = false;
 static ma_decoder gMaDecoder;
 static bool gMaInitialized = false;
+static std::string currentMAPath;
+static std::string currentArchiveName;
 
 // VGMStream integration
 static bool isVGMStream = false;
@@ -90,6 +97,101 @@ static std::vector<int16_t> vgmstreamInputBuffer;
 static std::vector<float> vgmstreamOutputBuffer;
 static int vgmstreamChannels = 0;
 static int vgmstreamSampleRate = 0;
+static std::string currentVGMStreamPath;
+
+// Helper: parse archive filenames like "Game (date)(-)(Company)[Platform].ext"
+static void parseArchiveFilename(const std::string& filename, std::string& outTitle, std::string& outPlatform, std::string& outCompany, std::string& outDate) {
+    outTitle.clear(); outPlatform.clear(); outCompany.clear(); outDate.clear();
+    
+    std::string name = filename;
+    // Remove extension
+    size_t dot = name.rfind('.');
+    if (dot != std::string::npos) name = name.substr(0, dot);
+    
+    // Find first '('
+    size_t p1 = name.find('(');
+    if (p1 == std::string::npos) {
+        outTitle = name;
+        return;
+    }
+    
+    // Title: everything before first '(' (trimmed)
+    outTitle = name.substr(0, p1);
+    size_t start = outTitle.find_first_not_of(" \t");
+    size_t end = outTitle.find_last_not_of(" \t");
+    if (start != std::string::npos && end != std::string::npos) outTitle = outTitle.substr(start, end-start+1);
+    
+    // Find closing ')' for first '('
+    size_t p2 = name.find(')', p1);
+    if (p2 != std::string::npos) {
+        outDate = name.substr(p1+1, p2-p1-1);
+        start = outDate.find_first_not_of(" \t");
+        end = outDate.find_last_not_of(" \t");
+        if (start != std::string::npos && end != std::string::npos) outDate = outDate.substr(start, end-start+1);
+    }
+    
+    // Find last '[' for platform
+    size_t b1 = name.rfind('[');
+    if (b1 != std::string::npos && b1 > p2) {
+        size_t b2 = name.find(']', b1);
+        if (b2 != std::string::npos) {
+            outPlatform = name.substr(b1+1, b2-b1-1);
+            start = outPlatform.find_first_not_of(" \t");
+            end = outPlatform.find_last_not_of(" \t");
+            if (start != std::string::npos && end != std::string::npos) outPlatform = outPlatform.substr(start, end-start+1);
+        }
+    }
+    
+    // Find '(' before '[' but after first ')' for company
+    if (p2 != std::string::npos && b1 != std::string::npos && b1 > p2) {
+        size_t p3 = name.rfind('(', b1);
+        if (p3 != std::string::npos && p3 > p2) {
+            size_t p4 = name.find(')', p3);
+            if (p4 != std::string::npos && p4 < b1) {
+                outCompany = name.substr(p3+1, p4-p3-1);
+                start = outCompany.find_first_not_of(" \t");
+                end = outCompany.find_last_not_of(" \t");
+                if (start != std::string::npos && end != std::string::npos) outCompany = outCompany.substr(start, end-start+1);
+                if (outCompany == "-") outCompany.clear();
+            }
+        }
+    }
+}
+
+#ifdef MA_HAS_FLAC
+
+static void flac_meta_callback(void* pUserData, ma_dr_flac_metadata* pMetadata) {
+    if (pMetadata->type != MA_DR_FLAC_METADATA_BLOCK_TYPE_VORBIS_COMMENT) {
+        return;
+    }
+    std::map<std::string, std::string>* tags = (std::map<std::string, std::string>*)pUserData;
+    ma_dr_flac_vorbis_comment_iterator iter;
+    ma_dr_flac_init_vorbis_comment_iterator(&iter, pMetadata->data.vorbis_comment.commentCount, pMetadata->data.vorbis_comment.pComments);
+    const char* comment;
+    while ((comment = ma_dr_flac_next_vorbis_comment(&iter, nullptr)) != nullptr) {
+        std::string s(comment);
+        size_t eq = s.find('=');
+        if (eq != std::string::npos) {
+            std::string key = s.substr(0, eq);
+            std::string value = s.substr(eq + 1);
+            // Convert key to uppercase for case-insensitive matching
+            std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return std::toupper(c); });
+            (*tags)[key] = value;
+        }
+    }
+}
+
+static bool readFlacMetadata(const char* path, std::map<std::string, std::string>& tags) {
+    tags.clear();
+    ma_dr_flac* pFlac = ma_dr_flac_open_file_with_metadata(path, flac_meta_callback, &tags, nullptr);
+    if (pFlac == nullptr) {
+        return false;
+    }
+    ma_dr_flac_free(pFlac, nullptr);
+    return true;
+}
+
+#endif // MA_HAS_FLAC
 
 static const char *kssSystemName(int mode) {
   switch (mode) {
@@ -130,6 +232,11 @@ void LoadGENMIDI(const uint8_t *data, size_t size) {
 
 EMSCRIPTEN_KEEPALIVE
 int MUSPlaying() { return isMUS ? 1 : 0; }
+
+EMSCRIPTEN_KEEPALIVE
+void SetCurrentArchiveName(const char* name) {
+    currentArchiveName = name ? name : "";
+}
 
 /* ---- SexyPSF callbacks ---- */
 void SPUirq(void) {} // Dummy SPU IRQ for SexyPSF
@@ -338,6 +445,8 @@ static void cleanup() {
       gMaInitialized = false;
     }
     isMA = false;
+    currentMAPath.clear();
+    currentArchiveName.clear();
   }
   if (isVGMStream) {
     if (vgmstreamContext) {
@@ -350,6 +459,7 @@ static void cleanup() {
     }
     vgmstreamInputBuffer.clear();
     vgmstreamOutputBuffer.clear();
+    currentVGMStreamPath.clear();
     isVGMStream = false;
     vgmstreamChannels = 0;
     vgmstreamSampleRate = 0;
@@ -678,6 +788,7 @@ int OpenVGMFile(const char *path) {
     }
     isMA = true;
     gMaInitialized = true;
+    currentMAPath = basePath;
     return 1;
   }
 
@@ -742,6 +853,7 @@ int OpenVGMFile(const char *path) {
           vgmstreamContext = vs;
           vgmstreamChannels = vs->format->channels;
           vgmstreamSampleRate = vs->format->sample_rate;
+          currentVGMStreamPath = basePath;
 
           // Initialize data converter: s16 -> f32, with channel conversion and resampling
           ma_data_converter_config convConfig = ma_data_converter_config_init(
@@ -1568,6 +1680,155 @@ char *ShowTitle(void) {
       s += "|||";
     }
 
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
+  if (isVGMStream) {
+    if (!vgmstreamContext) return nullptr;
+    
+    // Try to get title from vgmstream
+    char vgmTitle[256] = {0};
+    libvgmstream_title_t titleCfg = {};
+    titleCfg.force_title = true;
+    titleCfg.remove_extension = true;
+    titleCfg.filename = currentVGMStreamPath.c_str();
+    if (libvgmstream_get_title(vgmstreamContext, &titleCfg, vgmTitle, sizeof(vgmTitle)) <= 0) {
+        vgmTitle[0] = '\0';
+    }
+    
+    // Parse filename for additional metadata if title is empty
+    std::string parsedTitle, parsedPlatform, parsedCompany, parsedDate;
+    if (vgmTitle[0] == '\0') {
+        parseArchiveFilename(currentVGMStreamPath, parsedTitle, parsedPlatform, parsedCompany, parsedDate);
+    }
+    
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+        s += "Key";
+        s += "|||";
+        const char* val = "";
+        switch (i) {
+            case 0: // title
+                val = vgmTitle[0] ? vgmTitle : parsedTitle.c_str();
+                break;
+            case 2: // game
+                val = "";
+                break;
+            case 4: // platform
+                val = parsedPlatform.c_str();
+                break;
+            case 6: // artist
+                val = parsedCompany.c_str();
+                break;
+            case 8: // year
+                val = parsedDate.c_str();
+                break;
+            default:
+                val = "";
+        }
+        s += val;
+        s += "|||";
+    }
+    
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
+  if (isMA) {
+    // Parse track filename for title (use basename only)
+    std::string trackPath = currentMAPath;
+    size_t lastSlash = trackPath.find_last_of('/');
+    if (lastSlash != std::string::npos) {
+        trackPath = trackPath.substr(lastSlash + 1);
+    }
+    std::string trackTitle, trackPlatform, trackCompany, trackDate;
+    parseArchiveFilename(trackPath, trackTitle, trackPlatform, trackCompany, trackDate);
+    
+    // Parse archive filename for additional metadata if available
+    std::string archiveTitle, archivePlatform, archiveCompany, archiveDate;
+    if (!currentArchiveName.empty()) {
+        parseArchiveFilename(currentArchiveName, archiveTitle, archivePlatform, archiveCompany, archiveDate);
+    }
+    
+    // Initialize values with filename parsing
+    std::string valTitle = trackTitle;
+    std::string valGame = archiveTitle;
+    std::string valPlatform = !archivePlatform.empty() ? archivePlatform : trackPlatform;
+    std::string valArtist = !archiveCompany.empty() ? archiveCompany : trackCompany;
+    std::string valYear = !archiveDate.empty() ? archiveDate : trackDate;
+    std::string valCreator = "";
+    std::string valNotes = "";
+    
+    // Try to read FLAC metadata if the file is a FLAC file
+    std::map<std::string, std::string> flacTags;
+    bool hasFlacTags = false;
+#ifdef MA_HAS_FLAC
+    std::string lowerPath = currentMAPath;
+    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), [](unsigned char c) { return std::tolower(c); });
+    if (lowerPath.size() > 5 && lowerPath.compare(lowerPath.size() - 5, 5, ".flac") == 0) {
+        hasFlacTags = readFlacMetadata(currentMAPath.c_str(), flacTags);
+    }
+#endif
+    
+    if (hasFlacTags) {
+        auto it = flacTags.find("TITLE");
+        if (it != flacTags.end()) valTitle = it->second;
+        it = flacTags.find("ALBUM");
+        if (it != flacTags.end()) valGame = it->second;
+        it = flacTags.find("GENRE");
+        if (it != flacTags.end()) valPlatform = it->second;
+        it = flacTags.find("ARTIST");
+        if (it != flacTags.end()) valArtist = it->second;
+        it = flacTags.find("DATE");
+        if (it != flacTags.end()) valYear = it->second;
+        else {
+            it = flacTags.find("YEAR");
+            if (it != flacTags.end()) valYear = it->second;
+        }
+        it = flacTags.find("PUBLISHER");
+        if (it != flacTags.end()) valCreator = it->second;
+        it = flacTags.find("ORGANIZATION");
+        if (it != flacTags.end() && valCreator.empty()) valCreator = it->second;
+        it = flacTags.find("COMMENT");
+        if (it != flacTags.end()) valNotes = it->second;
+        it = flacTags.find("DESCRIPTION");
+        if (it != flacTags.end() && valNotes.empty()) valNotes = it->second;
+    }
+    
+    // If year is still empty, try to use file modification timestamp as fallback
+    if (valYear.empty()) {
+        struct stat st;
+        if (stat(currentMAPath.c_str(), &st) == 0) {
+            std::tm* tm = gmtime(&st.st_mtime); // Use UTC to avoid timezone issues
+            if (tm) {
+                char yearStr[5];
+                snprintf(yearStr, sizeof(yearStr), "%d", tm->tm_year + 1900);
+                valYear = yearStr;
+            }
+        }
+    }
+    
+    // Build the VGMTag string
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      const char* val = "";
+      switch (i) {
+        case 0:  val = valTitle.c_str(); break;
+        case 2:  val = valGame.c_str(); break;
+        case 4:  val = valPlatform.c_str(); break;
+        case 6:  val = valArtist.c_str(); break;
+        case 8:  val = valYear.c_str(); break;
+        case 9:  val = valCreator.c_str(); break;
+        case 10: val = valNotes.c_str(); break;
+        default: val = "";
+      }
+      s += val;
+      s += "|||";
+    }
+    
     free(titleBuf);
     titleBuf = strdup(s.c_str());
     return titleBuf;

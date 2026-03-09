@@ -222,6 +222,24 @@ static const char *kssTrackTitle(KSS *kss, int trackNum) {
 extern "C" {
 int stop_sexy_execute = 0; // Declare stop_sexy_execute here
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/heap.h>
+EMSCRIPTEN_KEEPALIVE
+uint32_t GetUsedMemory() {
+    return (uint32_t)(*emscripten_get_sbrk_ptr());
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t GetFreeMemory() {
+    return (uint32_t)(emscripten_get_heap_size() - *emscripten_get_sbrk_ptr());
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t GetTotalMemory() {
+    return (uint32_t)emscripten_get_heap_size();
+}
+#endif
+
 EMSCRIPTEN_KEEPALIVE
 void LoadGENMIDI(const uint8_t *data, size_t size) {
   genmidiData.assign(data, data + size);

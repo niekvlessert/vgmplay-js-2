@@ -168,6 +168,17 @@
   padding: 2px 6px;
 }
 
+.vgmplayContainer.vgmplayStandalone .vgmplayMemoryDisplay {
+  font-size: 11px;
+  color: #00ff66;
+  font-family: 'Lucida Grande', Tahoma, Verdana, sans-serif !important;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  display: block;
+  margin-bottom: 4px;
+  text-align: right;
+}
+
 .vgmplayContainer.vgmplayStandalone #vgmplayMenu {
   font-size: 12px;
   line-height: 1.3;

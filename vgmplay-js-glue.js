@@ -198,6 +198,8 @@ class VGMPlay_js {
 				this.standaloneOverlay = document.createElement('div');
 				this.standaloneOverlay.className = 'vgmplayStandaloneOverlay';
 				this.standaloneOverlay.innerHTML = `
+					<div class="vgmplayMemoryDisplay"></div>
+					<br>
 					<label class="vgmplayStandaloneLabel">Spectrum</label>
 					<select class="vgmplayStandaloneSelect">
 						<option value="off">Off</option>
@@ -216,6 +218,10 @@ class VGMPlay_js {
 					this.rightPanelMode = this.standaloneSelect.value;
 					this._updateStandaloneRightPanel();
 				});
+				
+				// Memory display
+				this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
+				this._updateMemoryDisplay();
 			}
 
 			if (this.standalone) {
@@ -337,6 +343,18 @@ class VGMPlay_js {
 		}
 	}
 
+	_updateMemoryDisplay() {
+		if (!this.memoryDisplay || !Module._GetFreeMemory) return;
+		
+		const freeMem = Module._GetFreeMemory();
+		const totalMem = Module._GetTotalMemory();
+		
+		const freeMB = (freeMem / (1024 * 1024)).toFixed(2);
+		const totalMB = (totalMem / (1024 * 1024)).toFixed(2);
+		
+		this.memoryDisplay.textContent = `${freeMB} MB`;
+	}
+	
 	_resetMobileIdleTimer() {
 		if (!this.isMobile) return;
 		if (this._mobileIdleTimer) clearTimeout(this._mobileIdleTimer);
@@ -2065,6 +2083,7 @@ class VGMPlay_js {
 				this.currentTrackSupportsLoop = this._trackSupportsLoop();
 				this._applyLoopMode();
 				this._updateHighlight();
+				this._updateMemoryDisplay();
 			} finally {
 				this._isLoadingFile = false;
 			}
@@ -2774,6 +2793,7 @@ class VGMPlay_js {
 			console.error("[VGM] Failed to open file:", fileName);
 		}
 		this.isVGMLoaded = ok;
+		this._updateMemoryDisplay();
 		return ok;
 	}
 

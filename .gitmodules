@@ -19,3 +19,6 @@
 [submodule "modules/libMusDoom"]
 	path = modules/libMusDoom
 	url = https://github.com/niekvlessert/libMusDoom.git
+[submodule "modules/vgmstream"]
+	path = modules/vgmstream
+	url = https://github.com/vgmstream/vgmstream.git

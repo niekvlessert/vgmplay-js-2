@@ -36,6 +36,11 @@ void psxShutdown(void);
 #include "../modules/libMusDoom/src/libmusdoom.h"
 #include "miniaudio.h"
 
+extern "C" {
+#include "../modules/vgmstream/src/libvgmstream.h"
+#include "../modules/vgmstream/src/libvgmstream_streamfile.h"
+}
+
 /* ---- globals ---- */
 static VGMPlayer *player = nullptr;
 static DATA_LOADER *loader = nullptr;
@@ -75,6 +80,16 @@ static std::vector<uint8_t> musData;
 static bool isMA = false;
 static ma_decoder gMaDecoder;
 static bool gMaInitialized = false;
+
+// VGMStream integration
+static bool isVGMStream = false;
+static libvgmstream_t* vgmstreamContext = nullptr;
+static ma_data_converter vgmstreamConverter;
+static bool vgmstreamConverterInitialized = false;
+static std::vector<int16_t> vgmstreamInputBuffer;
+static std::vector<float> vgmstreamOutputBuffer;
+static int vgmstreamChannels = 0;
+static int vgmstreamSampleRate = 0;
 
 static const char *kssSystemName(int mode) {
   switch (mode) {
@@ -324,6 +339,21 @@ static void cleanup() {
     }
     isMA = false;
   }
+  if (isVGMStream) {
+    if (vgmstreamContext) {
+      libvgmstream_free(vgmstreamContext);
+      vgmstreamContext = nullptr;
+    }
+    if (vgmstreamConverterInitialized) {
+      ma_data_converter_uninit(&vgmstreamConverter, NULL);
+      vgmstreamConverterInitialized = false;
+    }
+    vgmstreamInputBuffer.clear();
+    vgmstreamOutputBuffer.clear();
+    isVGMStream = false;
+    vgmstreamChannels = 0;
+    vgmstreamSampleRate = 0;
+  }
   if (player) {
     player->Stop();
     player->UnloadFile();
@@ -459,6 +489,17 @@ void Seek(unsigned int sec, unsigned int ms) {
           psfInfo->length = 180000;
         }
         sexy_seek((u32)totalMs);
+      }
+    }
+    return;
+  }
+  if (isVGMStream) {
+    if (vgmstreamContext) {
+      libvgmstream_seek(vgmstreamContext, sample);
+      vgmstreamInputBuffer.clear();
+      vgmstreamOutputBuffer.clear();
+      if (vgmstreamConverterInitialized) {
+        ma_data_converter_reset(&vgmstreamConverter);
       }
     }
     return;
@@ -682,6 +723,51 @@ int OpenVGMFile(const char *path) {
     }
   }
 
+  // Try vgmstream as a fallback for many game audio formats
+  {
+    libvgmstream_t* vs = libvgmstream_init();
+    if (vs) {
+      libvgmstream_config_t cfg = {};
+      cfg.ignore_loop = true;
+      cfg.force_sfmt = LIBVGMSTREAM_SFMT_PCM16;
+      libvgmstream_setup(vs, &cfg);
+
+      libstreamfile_t* sf = libstreamfile_open_from_stdio(basePath.c_str());
+      if (sf) {
+        int result = libvgmstream_open_stream(vs, sf, 0);
+        libstreamfile_close(sf);
+        if (result >= 0) {
+          // Success - set up converter and buffers
+          isVGMStream = true;
+          vgmstreamContext = vs;
+          vgmstreamChannels = vs->format->channels;
+          vgmstreamSampleRate = vs->format->sample_rate;
+
+          // Initialize data converter: s16 -> f32, with channel conversion and resampling
+          ma_data_converter_config convConfig = ma_data_converter_config_init(
+              ma_format_s16, ma_format_f32,
+              vgmstreamChannels, 2,
+              vgmstreamSampleRate, gSampleRate);
+          ma_result res = ma_data_converter_init(&convConfig, NULL, &vgmstreamConverter);
+          if (res != MA_SUCCESS) {
+            // Failed to init converter, clean up and fail
+            libvgmstream_free(vs);
+            isVGMStream = false;
+            vgmstreamContext = nullptr;
+            return 0;
+          }
+          vgmstreamConverterInitialized = true;
+          // Clear buffers
+          vgmstreamInputBuffer.clear();
+          vgmstreamOutputBuffer.clear();
+
+          return 1;
+        }
+      }
+      libvgmstream_free(vs);
+    }
+  }
+
   loader = FileLoader_Init(path);
   if (!loader) {
     return 0;
@@ -754,6 +840,10 @@ int VGMEnded(void) {
   if (isMUS) {
     return musEmu ? (musdoom_is_playing(musEmu) ? 0 : 1) : 1;
   }
+  if (isVGMStream) {
+    if (!vgmstreamContext) return 1;
+    return vgmstreamContext->decoder->done ? 1 : 0;
+  }
   if (!player)
     return 1;
   return (player->GetState() & PLAYSTATE_END) ? 1 : 0;
@@ -789,6 +879,12 @@ int GetTrackLength(void) {
     ma_uint64 length;
     ma_decoder_get_length_in_pcm_frames(&gMaDecoder, &length);
     return (int)length;
+  }
+  if (isVGMStream) {
+    if (vgmstreamContext) {
+      return (int)vgmstreamContext->format->play_samples;
+    }
+    return 0;
   }
   if (!player)
     return 0;
@@ -848,6 +944,28 @@ int GetTrackLengthDirect(const char *path) {
     gme_free_info(info);
     gme_delete(emu);
     return samples;
+  }
+
+  // Try vgmstream for various game audio formats
+  {
+    libvgmstream_t* vs = libvgmstream_init();
+    if (vs) {
+      libvgmstream_config_t cfg = {};
+      cfg.ignore_loop = true;
+      cfg.force_sfmt = LIBVGMSTREAM_SFMT_PCM16;
+      libvgmstream_setup(vs, &cfg);
+      libstreamfile_t* sf = libstreamfile_open_from_stdio(path);
+      if (sf) {
+        int result = libvgmstream_open_stream(vs, sf, 0);
+        libstreamfile_close(sf);
+        if (result >= 0) {
+          int length = (int)vs->format->play_samples;
+          libvgmstream_free(vs);
+          return length;
+        }
+      }
+      libvgmstream_free(vs);
+    }
   }
 
   if (lowerPath.find(".mus") != std::string::npos ||
@@ -1234,6 +1352,71 @@ void FillBuffer2(float *left, float *right, int n) {
     }
 
     sampcount += (UINT32)n;
+    return;
+  }
+
+  if (isVGMStream) {
+    if (!vgmstreamContext || !vgmstreamConverterInitialized) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+
+    int framesNeeded = n;
+    // Loop until we have enough output or stream ends
+    while ((int)vgmstreamOutputBuffer.size() < framesNeeded * 2 && !vgmstreamContext->decoder->done) {
+      // Decode more data from vgmstream if needed
+      if (vgmstreamInputBuffer.empty()) {
+        const int decodeFrames = 4096;
+        std::vector<int16_t> tempBuffer(decodeFrames * vgmstreamChannels);
+        int rendered = libvgmstream_fill(vgmstreamContext, tempBuffer.data(), decodeFrames);
+        if (rendered <= 0) {
+          break; // no more data or error
+        }
+        int samplesRendered = rendered * vgmstreamChannels;
+        vgmstreamInputBuffer.insert(vgmstreamInputBuffer.end(), tempBuffer.begin(), tempBuffer.begin() + samplesRendered);
+      }
+
+      if (!vgmstreamInputBuffer.empty()) {
+        ma_uint64 inputFrames = vgmstreamInputBuffer.size() / vgmstreamChannels;
+        // Estimate output capacity: worst case upsampling + channel conversion
+        size_t outCapacity = (size_t)(inputFrames * (double)gSampleRate / vgmstreamSampleRate) + 256;
+        if (outCapacity < 1) outCapacity = 1;
+        std::vector<float> outBuffer(outCapacity * 2);
+        ma_uint64 inCount = inputFrames;
+        ma_uint64 outCount = outCapacity;
+        ma_result res = ma_data_converter_process_pcm_frames(&vgmstreamConverter,
+            vgmstreamInputBuffer.data(), &inCount,
+            outBuffer.data(), &outCount);
+        if (res != MA_SUCCESS) {
+          break;
+        }
+        // Remove consumed input samples
+        size_t consumedSamples = (size_t)inCount * vgmstreamChannels;
+        vgmstreamInputBuffer.erase(vgmstreamInputBuffer.begin(), vgmstreamInputBuffer.begin() + consumedSamples);
+        // Append output
+        vgmstreamOutputBuffer.insert(vgmstreamOutputBuffer.end(), outBuffer.begin(), outBuffer.begin() + outCount * 2);
+      }
+    }
+
+    // Copy from vgmstreamOutputBuffer to left/right
+    int framesToCopy = framesNeeded;
+    int availableFrames = vgmstreamOutputBuffer.size() / 2;
+    if (availableFrames < framesToCopy) {
+      framesToCopy = availableFrames;
+    }
+    for (int i = 0; i < framesToCopy; i++) {
+      left[i] = vgmstreamOutputBuffer[i * 2];
+      right[i] = vgmstreamOutputBuffer[i * 2 + 1];
+    }
+    // Zero remaining
+    for (int i = framesToCopy; i < framesNeeded; i++) {
+      left[i] = 0;
+      right[i] = 0;
+    }
+    // Remove copied frames
+    vgmstreamOutputBuffer.erase(vgmstreamOutputBuffer.begin(), vgmstreamOutputBuffer.begin() + framesToCopy * 2);
+
     return;
   }
 

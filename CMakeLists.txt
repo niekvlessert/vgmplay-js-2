@@ -39,6 +39,7 @@ else()
     add_subdirectory(modules/libkss)
     add_subdirectory(modules/lazyusf)
     add_subdirectory(modules/libMusDoom)
+    add_subdirectory(modules/vgmstream)
 endif()
 
 # Main Executable
@@ -59,6 +60,7 @@ else()
     target_link_libraries(vgmplay-js gme::gme)
     target_link_libraries(vgmplay-js kss)
     target_link_libraries(vgmplay-js musdoom)
+    target_link_libraries(vgmplay-js libvgmstream)
 endif()
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
@@ -81,6 +83,7 @@ if(NOT BUILD_LIBVGM_ONLY)
         modules/lazyusf/rsp
         modules/lazyusf/rsp_hle
         modules/libMusDoom/src
+        modules/vgmstream/src
     )
 endif()
 

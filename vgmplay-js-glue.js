@@ -56,6 +56,9 @@ class VGMPlay_js {
 		this.zipURLPending = [];
 		this._isLoadingFile = false;
 		this._loadLock = Promise.resolve();
+		this.archiveWorker = null;
+		this._archiveWorkerJobs = new Map();
+		this._archiveWorkerSeq = 1;
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
 		this.autoDownloadCount = 0;
@@ -594,17 +597,328 @@ class VGMPlay_js {
 		}, false);
 	}
 
+	_yieldToUI() {
+		return new Promise((resolve) => {
+			if (typeof requestAnimationFrame === 'function') {
+				requestAnimationFrame(() => resolve());
+			} else {
+				setTimeout(resolve, 0);
+			}
+		});
+	}
+
+	async _readFileAsUint8(file) {
+		if (file && typeof file.stream === 'function' && typeof file.size === 'number') {
+			const reader = file.stream().getReader();
+			const buffer = new Uint8Array(file.size);
+			let offset = 0;
+			let nextYieldAt = 8 * 1024 * 1024;
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				buffer.set(value, offset);
+				offset += value.length;
+				if (offset >= nextYieldAt) {
+					nextYieldAt = offset + (8 * 1024 * 1024);
+					await this._yieldToUI();
+				}
+			}
+			return buffer;
+		}
+
+		const arrayBuffer = await file.arrayBuffer();
+		return new Uint8Array(arrayBuffer);
+	}
+
 	async handleFiles(files) {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
 			if (this._isArchiveUrl(lower) || this.isPlayable(lower)) {
-				const arrayBuffer = await file.arrayBuffer();
-				const byteArray = new Uint8Array(arrayBuffer);
+				const byteArray = await this._readFileAsUint8(file);
 				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
+				await this._yieldToUI();
 			}
 		}
 		this._processQueue();
+	}
+
+	_getArchiveWorker() {
+		if (this.archiveWorker) return this.archiveWorker;
+		if (typeof Worker === 'undefined') return null;
+		try {
+			const url = this.baseURL + 'archive-worker.js';
+			const worker = new Worker(url);
+			worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
+			worker.onerror = (e) => {
+				console.error("[VGM] Archive worker error:", e);
+			};
+			this.archiveWorker = worker;
+			return worker;
+		} catch (e) {
+			console.error("[VGM] Failed to start archive worker:", e);
+			return null;
+		}
+	}
+
+	_onArchiveWorkerMessage(e) {
+		const msg = e.data || {};
+		const job = this._archiveWorkerJobs.get(msg.id);
+		if (!job) return;
+		if (msg.type === 'meta') {
+			job.hasKss = !!msg.hasKss;
+			job.entries = (msg.entries || []).map((p) => ({ filepath: p }));
+			return;
+		}
+		if (msg.type === 'file') {
+			const buf = msg.data;
+			const arr = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
+			job.fileDataByPath.set(msg.path, arr);
+			return;
+		}
+		if (msg.type === 'error') {
+			this._archiveWorkerJobs.delete(msg.id);
+			job.reject(new Error(msg.message || "Archive worker error"));
+			return;
+		}
+		if (msg.type === 'done') {
+			this._archiveWorkerJobs.delete(msg.id);
+			job.resolve({
+				entries: job.entries || [],
+				fileDataByPath: job.fileDataByPath,
+				hasKss: job.hasKss
+			});
+		}
+	}
+
+	_extractArchiveWithWorker(byteArray, kind) {
+		return new Promise((resolve, reject) => {
+			const worker = this._getArchiveWorker();
+			if (!worker) {
+				reject(new Error("Archive worker unavailable"));
+				return;
+			}
+			const id = this._archiveWorkerSeq++;
+			this._archiveWorkerJobs.set(id, {
+				resolve,
+				reject,
+				entries: null,
+				hasKss: false,
+				fileDataByPath: new Map()
+			});
+			try {
+				worker.postMessage(
+					{ type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL },
+					[byteArray.buffer]
+				);
+			} catch (e) {
+				this._archiveWorkerJobs.delete(id);
+				reject(e);
+			}
+		});
+	}
+
+	async _processArchiveEntries(entries, fileDataByPath, sourceName = '', hasKss = false) {
+		const yieldEvery = 50;
+		let sinceYield = 0;
+		const maybeYield = async () => {
+			sinceYield++;
+			if (sinceYield >= yieldEvery) {
+				sinceYield = 0;
+				await this._yieldToUI();
+			}
+		};
+
+		if (!hasKss) {
+			var m3uFile;
+			var txtFile;
+			var pngFile;
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+
+			for (const entry of entries) {
+				if (!entry || !entry.filepath) continue;
+				const relPath = entry.filepath;
+				const fileArray = fileDataByPath.get(relPath);
+				if (!fileArray) continue;
+				const fullPath = gamePath + "/" + relPath;
+
+				const lastSlash = fullPath.lastIndexOf('/');
+				if (lastSlash > gamePath.length) {
+					this._makedirs(fullPath.substring(0, lastSlash));
+				}
+
+				entry.filepath = fullPath;
+				try {
+					const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+					const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+					FS.createDataFile(parent, name, fileArray, true, true);
+				} catch (e) {
+					console.error("Error creating file in FS:", e);
+				}
+				const lower = relPath.toLowerCase();
+				if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
+					const txt = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.includes("gameinfo")) {
+						this.tempGameInfo = txt;
+					} else {
+						txtFile = txt;
+					}
+				}
+				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+				await maybeYield();
+			}
+
+			const filteredFiles = entries.filter(e => e && e.filepath);
+			const hasMusLmp = filteredFiles.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mus') || l.endsWith('.lmp');
+			});
+			if (hasMusLmp) {
+				filteredFiles.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					return nameA.localeCompare(nameB);
+				});
+			}
+
+			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo, archiveName: sourceName };
+			this.tempGameInfo = null;
+			this.games.push(game);
+			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (!hasPlayable) {
+				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
+			await this.checkEverythingReady();
+			if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+			for (const g of this.games) {
+				g.uiElement = null;
+				this.showVGMFromZip(g);
+				await maybeYield();
+			}
+			return;
+		}
+
+		const gamesInOrder = [];
+		const gamesByKey = {};
+
+		const getGameKey = (relPath) => {
+			const parts = relPath.split('/');
+			if (parts.length > 1) return parts[0];
+			const lower = relPath.toLowerCase();
+			if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo')) {
+				const dot = relPath.lastIndexOf('.');
+				return dot > 0 ? relPath.substring(0, dot) : relPath;
+			}
+			return 'root';
+		};
+
+		const getRelPath = (relPath, gameKey) => {
+			if (relPath.startsWith(gameKey + '/') && gameKey !== 'root') return relPath.substring(gameKey.length + 1);
+			return relPath;
+		};
+
+		const getGame = (gameKey) => {
+			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+			gamesByKey[gameKey] = game;
+			gamesInOrder.push(game);
+			return game;
+		};
+
+		for (const entry of entries) {
+			if (!entry || !entry.filepath) continue;
+			const relPath = entry.filepath;
+			const fileArray = fileDataByPath.get(relPath);
+			if (!fileArray) continue;
+			const gameKey = getGameKey(relPath);
+			const game = getGame(gameKey);
+			const gameRelPath = getRelPath(relPath, gameKey);
+			const fullPath = game.path + "/" + gameRelPath;
+
+			const lastSlash = fullPath.lastIndexOf('/');
+			if (lastSlash > game.path.length) {
+				this._makedirs(fullPath.substring(0, lastSlash));
+			}
+
+			entry.filepath = fullPath;
+			try {
+				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+				FS.createDataFile(parent, name, fileArray, true, true);
+			} catch (e) {
+				console.error("Error creating file in FS:", e);
+			}
+
+			game.files.push({ filepath: fullPath });
+
+			const lower = relPath.toLowerCase();
+			const isInfoFile = lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo');
+			if (isInfoFile) {
+				const lastSlash = relPath.lastIndexOf('/');
+				const lastDot = relPath.lastIndexOf('.');
+				const base = relPath.substring(lastSlash + 1, lastDot > lastSlash ? lastDot : relPath.length);
+				try {
+					const txt = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.includes('gameinfo')) {
+						game.gameinfo = txt;
+					} else {
+						game.kssTxtByBase[base] = txt;
+						game.kssTxtOrder.push(base);
+					}
+				} catch (e) {
+					console.error("Failed to read info file:", fullPath, e);
+				}
+			}
+			if (lower.endsWith('.png') && !game.png) {
+				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+			}
+			await maybeYield();
+		}
+
+		let anyPlayable = false;
+		for (const game of gamesInOrder) {
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (hasPlayable) {
+				const hasMusLmp = game.files.some(f => {
+					const l = (f.filepath || "").toLowerCase();
+					return l.endsWith('.mus') || l.endsWith('.lmp');
+				});
+				if (hasMusLmp) {
+					game.files.sort((a, b) => {
+						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+						return nameA.localeCompare(nameB);
+					});
+				}
+
+				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+				game.name = name;
+				this.games.push(game);
+				anyPlayable = true;
+			}
+			await maybeYield();
+		}
+
+		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+		if (!anyPlayable) {
+			this._addNoPlayableNotice(sourceName || 'Archive');
+		}
+
+		await this.checkEverythingReady();
+		if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+		for (const game of this.games) {
+			game.uiElement = null;
+			this.showVGMFromZip(game);
+			await maybeYield();
+		}
 	}
 
 	toggleDisplayZipFileListWindow() {
@@ -1229,15 +1543,36 @@ class VGMPlay_js {
 		return "";
 	}
 
-	processZipBuffer(byteArray, sourceName = '') {
-		return new Promise((resolve) => {
-			this.mz = new Minizip(byteArray);
-			var fileList = this.mz.list();
-			const entries = Array.isArray(fileList)
-				? fileList
-				: (fileList && (fileList.files || fileList.filelist || fileList.entries))
-					? (fileList.files || fileList.filelist || fileList.entries)
-					: Object.values(fileList || {});
+	async processZipBuffer(byteArray, sourceName = '') {
+		try {
+			const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
+			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			return;
+		} catch (e) {
+			if (byteArray.byteLength === 0) {
+				console.error("[VGM] Zip worker failed after buffer transfer:", e);
+				return;
+			}
+			console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
+		}
+
+		const yieldEvery = 50;
+		let sinceYield = 0;
+		const maybeYield = async () => {
+			sinceYield++;
+			if (sinceYield >= yieldEvery) {
+				sinceYield = 0;
+				await this._yieldToUI();
+			}
+		};
+
+		this.mz = new Minizip(byteArray);
+		var fileList = this.mz.list();
+		const entries = Array.isArray(fileList)
+			? fileList
+			: (fileList && (fileList.files || fileList.filelist || fileList.entries))
+				? (fileList.files || fileList.filelist || fileList.entries)
+				: Object.values(fileList || {});
 
 			let hasKss = false;
 			for (const entry of entries) {
@@ -1247,6 +1582,7 @@ class VGMPlay_js {
 					hasKss = true;
 					break;
 				}
+				await maybeYield();
 			}
 
 			if (!hasKss) {
@@ -1288,6 +1624,7 @@ class VGMPlay_js {
 						}
 					}
 					if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+					await maybeYield();
 				}
 
 				const filteredFiles = entries.filter(e => e && e.filepath);
@@ -1311,14 +1648,13 @@ class VGMPlay_js {
 				if (!hasPlayable) {
 					this._addNoPlayableNotice(sourceName || 'Archive');
 				}
-				this.checkEverythingReady().then(() => {
-					if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
-					for (const g of this.games) {
-						g.uiElement = null;
-						this.showVGMFromZip(g);
-					}
-					resolve();
-				});
+				await this.checkEverythingReady();
+				if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+				for (const g of this.games) {
+					g.uiElement = null;
+					this.showVGMFromZip(g);
+					await maybeYield();
+				}
 				return;
 			}
 
@@ -1398,6 +1734,7 @@ class VGMPlay_js {
 				if (lower.endsWith('.png') && !game.png) {
 					game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 				}
+				await maybeYield();
 			}
 
 			let anyPlayable = false;
@@ -1422,6 +1759,7 @@ class VGMPlay_js {
 					this.games.push(game);
 					anyPlayable = true;
 				}
+				await maybeYield();
 			}
 
 			// Sort games alphabetically
@@ -1431,16 +1769,14 @@ class VGMPlay_js {
 				this._addNoPlayableNotice(sourceName || 'Archive');
 			}
 
-			this.checkEverythingReady().then(() => {
-				// Clear and re-render all games to maintain sort order
-				if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
-				for (const game of this.games) {
-					game.uiElement = null; // Reset UI element to force re-render
-					this.showVGMFromZip(game);
-				}
-				resolve();
-			});
-		});
+			await this.checkEverythingReady();
+			// Clear and re-render all games to maintain sort order
+			if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+			for (const game of this.games) {
+				game.uiElement = null; // Reset UI element to force re-render
+				this.showVGMFromZip(game);
+				await maybeYield();
+			}
 	}
 
 	/**
@@ -1524,6 +1860,18 @@ class VGMPlay_js {
 	}
 
 	async process7zBuffer(byteArray, sourceName = '') {
+		try {
+			const workerResult = await this._extractArchiveWithWorker(byteArray, '7z');
+			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			return;
+		} catch (e) {
+			if (byteArray.byteLength === 0) {
+				console.error("[VGM] 7z worker failed after buffer transfer:", e);
+				return;
+			}
+			console.warn("[VGM] 7z worker failed, falling back to main thread:", e);
+		}
+
 		const sz = await SevenZip({
 			locateFile: (path) => this.baseURL + path,
 			print: () => { },

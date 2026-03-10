@@ -107,6 +107,7 @@
 			this.SetSampleRate = Module.cwrap('SetSampleRate', 'number', ['number']);
 			this.SetLoopCount = Module.cwrap('SetLoopCount', 'number', ['number']);
 			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);
+			this.PrefillPSF = Module.cwrap('PrefillPSF', 'void', ['number', 'number']);
 
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
 			this.dataPtrs[1] = Module._malloc(16384 * 2);
@@ -137,6 +138,9 @@
 
 		generateBuffer() {
 			const N = 4096;
+			if (this.PrefillPSF) {
+				this.PrefillPSF(4096, 1);
+			}
 			this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
 			const leftHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[0], N);
 			const rightHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[1], N);

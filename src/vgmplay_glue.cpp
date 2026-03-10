@@ -59,6 +59,7 @@ static std::string currentPsfPath;
 static PSFINFO *psfInfo = nullptr;
 static std::vector<float> psfBufferL;
 static std::vector<float> psfBufferR;
+static size_t psfReadPos = 0;
 extern UINT32 sampcount;
 static bool isGME = false;
 static Music_Emu *gmeEmu = nullptr;
@@ -256,6 +257,24 @@ void SetCurrentArchiveName(const char* name) {
     currentArchiveName = name ? name : "";
 }
 
+EMSCRIPTEN_KEEPALIVE
+void PrefillPSF(int minFrames, int maxExec) {
+  if (!isPSF)
+    return;
+  if (minFrames < 0)
+    minFrames = 0;
+  if (maxExec <= 0)
+    maxExec = 1;
+  while ((int)(psfBufferL.size() - psfReadPos) < minFrames && maxExec-- > 0) {
+    stop_sexy_execute = 0;
+    sexy_execute();
+    if ((int)(psfBufferL.size() - psfReadPos) < minFrames && psfInfo &&
+        sampcount >= psfInfo->length * 44.1) {
+      break;
+    }
+  }
+}
+
 /* ---- SexyPSF callbacks ---- */
 void SPUirq(void) {} // Dummy SPU IRQ for SexyPSF
 }
@@ -380,7 +399,8 @@ void sexyd_update(unsigned char *p, long l) {
     psfBufferL.push_back(pcm[i * 2] / 32768.0f);
     psfBufferR.push_back(pcm[i * 2 + 1] / 32768.0f);
   }
-  if (psfBufferL.size() >= 4096)
+  if (psfBufferL.size() > psfReadPos &&
+      (psfBufferL.size() - psfReadPos) >= 4096)
     stop_sexy_execute = 1;
 }
 }
@@ -433,6 +453,7 @@ static void cleanup() {
     currentPsfPath.clear();
     psfBufferL.clear();
     psfBufferR.clear();
+    psfReadPos = 0;
   }
   if (isUSF) {
     if (usfInfo) {
@@ -606,6 +627,7 @@ void Seek(unsigned int sec, unsigned int ms) {
   if (isPSF) {
     psfBufferL.clear();
     psfBufferR.clear();
+    psfReadPos = 0;
     if (!sexy_seek((u32)totalMs)) {
       // Backward seek requires reloading the file
       if (!currentPsfPath.empty()) {
@@ -663,6 +685,9 @@ int OpenVGMFile(const char *path) {
     sampcount = 0;
     psfBufferL.clear();
     psfBufferR.clear();
+    psfReadPos = 0;
+    psfBufferL.reserve(16384);
+    psfBufferR.reserve(16384);
     if (psfInfo->length == 0) {
       psfInfo->length = 180000;
     }
@@ -1401,24 +1426,13 @@ void FillBuffer2(float *left, float *right, int n) {
   }
 
   if (isPSF) {
-    int max_exec = 10000; // Increased limit for slower WASM execution
-    while ((int)psfBufferL.size() < n && max_exec-- > 0) {
-      stop_sexy_execute = 0;
-      sexy_execute();
-      // If SexyPSF didn't add any samples, it might be the end or an error.
-      // Break to avoid infinite loop.
-      if (psfBufferL.size() < n && psfInfo &&
-          sampcount >= psfInfo->length * 44.1) {
-        break;
-      }
-    }
-    if (max_exec <= 0) {
-    }
-    int available = (int)psfBufferL.size();
+    // Try a small budget here; bulk prefill is handled separately.
+    PrefillPSF(n, 2);
+    int available = (int)(psfBufferL.size() - psfReadPos);
     int toCopy = (available < n) ? available : n;
     for (int i = 0; i < toCopy; i++) {
-      left[i] = psfBufferL[i];
-      right[i] = psfBufferR[i];
+      left[i] = psfBufferL[psfReadPos + i];
+      right[i] = psfBufferR[psfReadPos + i];
     }
     // Zero out remaining if any
     for (int i = toCopy; i < n; i++) {
@@ -1426,8 +1440,15 @@ void FillBuffer2(float *left, float *right, int n) {
       right[i] = 0;
     }
     if (toCopy > 0) {
-      psfBufferL.erase(psfBufferL.begin(), psfBufferL.begin() + toCopy);
-      psfBufferR.erase(psfBufferR.begin(), psfBufferR.begin() + toCopy);
+      psfReadPos += (size_t)toCopy;
+      // Compact occasionally to avoid unbounded growth.
+      if (psfReadPos >= 16384 && psfReadPos * 2 >= psfBufferL.size()) {
+        psfBufferL.erase(psfBufferL.begin(),
+                         psfBufferL.begin() + (long)psfReadPos);
+        psfBufferR.erase(psfBufferR.begin(),
+                         psfBufferR.begin() + (long)psfReadPos);
+        psfReadPos = 0;
+      }
     }
     return;
   }

@@ -2427,6 +2427,7 @@ class VGMPlay_js {
 			this.GetDeviceName = Module.cwrap('GetDeviceName', 'string', ['number']);
 			this.GetDeviceVolume = Module.cwrap('GetDeviceVolume', 'number', ['number']);
 			this.SetDeviceVolume = Module.cwrap('SetDeviceVolume', 'void', ['number', 'number']);
+			this.PrefillPSF = Module.cwrap('PrefillPSF', 'void', ['number', 'number']);
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
@@ -2441,6 +2442,23 @@ class VGMPlay_js {
 
 
 		return true;
+	}
+
+	_startPsfPrefill() {
+		if (this._psfPrefillTimer) return;
+		this._psfPrefillTimer = setInterval(() => {
+			if (!this.isVGMPlaying || this.isPlaybackPaused) return;
+			if (this.PrefillPSF) {
+				this.PrefillPSF(16384, 4);
+			}
+		}, 15);
+	}
+
+	_stopPsfPrefill() {
+		if (this._psfPrefillTimer) {
+			clearInterval(this._psfPrefillTimer);
+			this._psfPrefillTimer = null;
+		}
 	}
 
 	_initStandaloneAnalyzer(forceRecreate = false) {
@@ -2543,6 +2561,9 @@ class VGMPlay_js {
 
 	generateBuffer() {
 		const N = 2048; // Even smaller batch size to reduce main-thread blocking
+		if (this.PrefillPSF) {
+			this.PrefillPSF(4096, 1);
+		}
 		// Always create fresh views from Module.HEAPU8.buffer in case it was reallocated (detached)
 		this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
 
@@ -2637,6 +2658,7 @@ class VGMPlay_js {
 			this.PlayVGM();
 			this.isVGMPlaying = true;
 		}
+		this._startPsfPrefill();
 		if (this.isMobile) {
 			this._resetMobileIdleTimer();
 		}
@@ -2710,6 +2732,7 @@ class VGMPlay_js {
 		if (!this.useAsLibrary) {
 			this._stopSpectrumAnimation();
 		}
+		this._stopPsfPrefill();
 	}
 
 	stop() {
@@ -2724,6 +2747,7 @@ class VGMPlay_js {
 		if (this.workletNode) {
 			this.workletNode.port.postMessage({ type: 'stop' });
 		}
+		this._stopPsfPrefill();
 
 		// Don't close AudioContext — just disconnect and reset state
 		// This avoids expensive re-initialization of worklet module

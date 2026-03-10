@@ -111,6 +111,7 @@ set(VGMPLAY_EXPORTS
     "'_GetVGMTagDirect'"
     "'_GetLoopPoint'"
     "'_FillBuffer2'"
+    "'_PrefillPSF'"
     "'_ShowTitle'"
     "'_GetChipInfoString'"
     "'_GetDeviceCount'"

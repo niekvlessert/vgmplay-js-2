@@ -23,54 +23,37 @@ if(NOT PATCH_RESULT EQUAL 0)
     message(FATAL_ERROR "Failed to apply library patches")
 endif()
 
-# Libvgm Only Build Option
-option(BUILD_LIBVGM_ONLY "Build only libvgm components (VGM/VGZ support only)" OFF)
+add_subdirectory(modules/libvgm)
+add_subdirectory(modules/sexypsf)
+set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
+set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
+add_subdirectory(modules/game-music-emu)
+add_subdirectory(modules/libkss)
+add_subdirectory(modules/lazyusf)
+add_subdirectory(modules/libMusDoom)
 
-if(BUILD_LIBVGM_ONLY)
-    add_definitions(-DVGMPLAY_LIBVGM_ONLY)
-    add_subdirectory(modules/libvgm)
-    set(MINIMAL_LIBS vgm-player vgm-emu vgm-utils)
-else()
-    add_subdirectory(modules/libvgm)
-    add_subdirectory(modules/sexypsf)
-    set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
-    set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
-    add_subdirectory(modules/game-music-emu)
-    add_subdirectory(modules/libkss)
-    add_subdirectory(modules/lazyusf)
-    add_subdirectory(modules/libMusDoom)
-
-    set(USE_FFMPEG OFF CACHE BOOL "Use FFmpeg for support of many codecs" FORCE)
-    set(USE_MPEG OFF CACHE BOOL "Use libmpg123 for support of MPEG" FORCE)
-    set(USE_VORBIS OFF CACHE BOOL "Use libvorbis for support of Vorbis" FORCE)
-    set(USE_ATRAC9 OFF CACHE BOOL "Use LibAtrac9 for support of ATRAC9" FORCE)
-    set(USE_CELT OFF CACHE BOOL "Use libcelt for support of FSB CELT" FORCE)
-    set(USE_G719 OFF CACHE BOOL "Use libg719_decode for support ITU-T G.719" FORCE)
-    set(USE_G7221 OFF CACHE BOOL "Use G7221 for support of ITU-T" FORCE)
-    set(USE_SPEEX OFF CACHE BOOL "Use libspeex for support of SPEEX" FORCE)
-    add_subdirectory(modules/vgmstream)
-endif()
+set(USE_FFMPEG OFF CACHE BOOL "Use FFmpeg for support of many codecs" FORCE)
+set(USE_MPEG OFF CACHE BOOL "Use libmpg123 for support of MPEG" FORCE)
+set(USE_VORBIS OFF CACHE BOOL "Use libvorbis for support of Vorbis" FORCE)
+set(USE_ATRAC9 OFF CACHE BOOL "Use LibAtrac9 for support of ATRAC9" FORCE)
+set(USE_CELT OFF CACHE BOOL "Use libcelt for support of FSB CELT" FORCE)
+set(USE_G719 OFF CACHE BOOL "Use libg719_decode for support ITU-T G.719" FORCE)
+set(USE_G7221 OFF CACHE BOOL "Use G7221 for support of ITU-T" FORCE)
+set(USE_SPEEX OFF CACHE BOOL "Use libspeex for support of SPEEX" FORCE)
+add_subdirectory(modules/vgmstream)
 
 # Main Executable
-if(BUILD_LIBVGM_ONLY)
-    add_executable(vgmplay-js src/vgmplay_minimal_glue.cpp src/miniaudio_impl.cpp)
-else()
-    add_executable(vgmplay-js src/vgmplay_glue.cpp src/miniaudio_impl.cpp)
-endif()
+add_executable(vgmplay-js src/vgmplay_glue.cpp src/miniaudio_impl.cpp)
 
 # Link against libvgm components and others
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2")
 
-if(BUILD_LIBVGM_ONLY)
-    target_link_libraries(vgmplay-js ${MINIMAL_LIBS})
-else()
-    target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf)
-    target_link_libraries(vgmplay-js gme::gme)
-    target_link_libraries(vgmplay-js kss)
-    target_link_libraries(vgmplay-js musdoom)
-    target_link_libraries(vgmplay-js libvgmstream)
-endif()
+target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf)
+target_link_libraries(vgmplay-js gme::gme)
+target_link_libraries(vgmplay-js kss)
+target_link_libraries(vgmplay-js musdoom)
+target_link_libraries(vgmplay-js libvgmstream)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
 
@@ -81,20 +64,18 @@ target_include_directories(vgmplay-js PRIVATE
     modules/libvgm/emu
     modules/miniaudio
 )
-if(NOT BUILD_LIBVGM_ONLY)
-    target_include_directories(vgmplay-js PRIVATE
-        modules/sexypsf
-        modules/game-music-emu/gme
-        modules/libkss/src
-        modules/libkss/src/kss
-        modules/libkss/modules
-        modules/lazyusf
-        modules/lazyusf/rsp
-        modules/lazyusf/rsp_hle
-        modules/libMusDoom/src
-        modules/vgmstream/src
-    )
-endif()
+target_include_directories(vgmplay-js PRIVATE
+    modules/sexypsf
+    modules/game-music-emu/gme
+    modules/libkss/src
+    modules/libkss/src/kss
+    modules/libkss/modules
+    modules/lazyusf
+    modules/lazyusf/rsp
+    modules/lazyusf/rsp_hle
+    modules/libMusDoom/src
+    modules/vgmstream/src
+)
 
 # Exported functions
 set(VGMPLAY_EXPORTS 
@@ -111,7 +92,6 @@ set(VGMPLAY_EXPORTS
     "'_GetVGMTagDirect'"
     "'_GetLoopPoint'"
     "'_FillBuffer2'"
-    "'_PrefillPSF'"
     "'_ShowTitle'"
     "'_GetChipInfoString'"
     "'_GetDeviceCount'"
@@ -126,18 +106,17 @@ set(VGMPLAY_EXPORTS
     "'_GetTotalMemory'"
 )
 
-if(NOT BUILD_LIBVGM_ONLY)
-    list(APPEND VGMPLAY_EXPORTS
-        "'_GetGMETrackCountDirect'"
-        "'_GetGMETrackNameDirect'"
-        "'_GetKSSTrackCountDirect'"
-        "'_GetKSSTrackMinDirect'"
-        "'_GetKSSTrackMaxDirect'"
-        "'_GetKSSTrackNameDirect'"
-        "'_LoadGENMIDI'"
-        "'_MUSPlaying'"
-    )
-endif()
+list(APPEND VGMPLAY_EXPORTS
+    "'_GetGMETrackCountDirect'"
+    "'_GetGMETrackNameDirect'"
+    "'_GetKSSTrackCountDirect'"
+    "'_GetKSSTrackMinDirect'"
+    "'_GetKSSTrackMaxDirect'"
+    "'_GetKSSTrackNameDirect'"
+    "'_LoadGENMIDI'"
+    "'_MUSPlaying'"
+    "'_PrefillPSF'"
+)
 string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")
 
 # Emscripten Linker Flags
@@ -154,26 +133,14 @@ set(LINK_FLAGS "\
     -s EXPORTED_FUNCTIONS=\"[${EXPORT_STR}]\" \
 ")
 
-if(BUILD_LIBVGM_ONLY)
-    set(LINK_FLAGS "${LINK_FLAGS} -s MODULARIZE=1 -s EXPORT_NAME=\"VGMPlay\"")
-else()
-    set(LINK_FLAGS "${LINK_FLAGS} --preload-file ${PROJECT_SOURCE_DIR}/files@/")
-endif()
+set(LINK_FLAGS "${LINK_FLAGS} --preload-file ${PROJECT_SOURCE_DIR}/files@/")
 
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LINK_FLAGS}")
 
 # Post-build copy
-if(BUILD_LIBVGM_ONLY)
-    add_custom_command(TARGET vgmplay-js POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
-      COMMENT "Copying minimal build artifacts to project root"
-    )
-else()
-    add_custom_command(TARGET vgmplay-js POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
-      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.data ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.data
-      COMMENT "Copying build artifacts to project root"
-    )
-endif()
+add_custom_command(TARGET vgmplay-js POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
+  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.data ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.data
+  COMMENT "Copying build artifacts to project root"
+)

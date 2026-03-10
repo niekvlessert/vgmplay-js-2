@@ -21,7 +21,7 @@ For the extension:
 
 For the library:
 
-- Make it easy to design your own webbased games and play VGM files in that (via `vgmplay-js-glue-library.js`).
+- Make it easy to design your own webbased games and play VGM files in that.
 
 Works on current Brave and Chrome now (feb 2026). Compilation works with Emscripten 5.0.1
 
@@ -103,53 +103,7 @@ Two examples of trackinfo entries under here. The syntax is: `<kss id to play>,<
 
 ## Minimal Library Build
 
-A minimal build option is provided that only supports core `libvgm` formats (VGM/VGZ). This results in a significantly smaller binary (approx. 900KB WASM) compared to the full build which includes PSF, USF, GME, etc.
-
-### Building Separately
-To build ONLY the minimal library:
-```bash
-mkdir build_minimal
-cd build_minimal
-emcmake cmake .. -DBUILD_LIBVGM_ONLY=ON
-make
-```
-
-### Export for Game Development
-Use the provided export script to build the minimal library and bundle only the necessary files for your project:
-```bash
-./build_and_export_lib.sh <destination_directory>
-```
-This will copy `vgmplay-js.js`, `vgmplay-js.wasm`, and the glue library files to the target folder.
-
-## Library Usage (Minimal Engine Glue)
-
-Use the separate minimal library glue that talks directly to the engine (no UI):
-
-```html
-<script src="vgmplay-js-glue-library.js"></script>
-```
-
-This library only supports:
-- Direct `.vgm`/`.vgz`
-- `.zip` containing the above formats
-
-### API Reference
-Once initialized, you can access the instance via `window.vgmPlayInstance`.
-
-#### Play a Track
-`vgmPlayInstance.playTrack(url, trackIndex, loopCount)`
-- `url`: String. URL to a `.zip` or a direct `.vgm`/`.vgz` file.
-- `trackIndex`: Integer (Default: 0). Track number to play (0-indexed, within the zip’s playable files).
-- `loopCount`: Integer (Default: 0). Number of times to loop. `0` means loop forever.
-
-Example:
-```javascript
-// Play first track of a ZIP forever
-vgmPlayInstance.playTrack('music/game.zip', 0, 0);
-
-// Play a direct VGM file
-vgmPlayInstance.playTrack('music/track.vgm', 0, 0);
-```
+The minimal library build has been split out into its own repository at https://github.com/niekvlessert/libvgm-js/
 
 ---
 

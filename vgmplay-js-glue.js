@@ -3801,6 +3801,15 @@ VGMPlay_js.prototype._setupTooltips = function () {
 	const buttons = this.playerWindow.querySelectorAll('button');
 	const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
 	const targets = [...buttons, ...tracks];
+	const idDescriptions = {
+		'buttonTogglePlayback': 'Play/Pause (Space)',
+		'btnBass': 'Bass Boost',
+		'btnReverb': 'Reverb',
+		'btnRandom': 'Shuffle game/all',
+		'btnLoop': 'Loop track/game (L)',
+		'btnLibrary': 'Toggle Float/Library',
+		'btnSearch': 'Search'
+	};
 	const descriptions = {
 		'|&lt;': 'Previous Track (P)',
 		'|<': 'Previous Track (P)',
@@ -3818,14 +3827,15 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'R': 'Shuffle game/all',
 		'L': 'Loop track/game (L)',
 		'Z': 'Toggle Float/Library',
-		'🔍': 'Search'
+		'🔍': 'Search',
+		'&#128269;': 'Search'
 	};
 
 	let tooltipTimeout;
 
 	targets.forEach(target => {
 		const text = target.innerHTML.trim();
-		const desc = descriptions[text] || target.innerText;
+		const desc = idDescriptions[target.id] || descriptions[text] || target.innerText;
 		if (!desc) return;
 
 		const hideTooltip = () => {

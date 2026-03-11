@@ -65,6 +65,9 @@ class VGMPlay_js {
 		this._loopBaseSamplesByTrack = new Map();
 		this.showMemoryStats = false;
 		this._memoryBaselineUsed = null;
+		this.searchQuery = "";
+		this.searchBarVisible = false;
+		this._searchGlobalKeyHandler = null;
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
 		this.autoDownloadCount = 0;
@@ -564,6 +567,7 @@ class VGMPlay_js {
 				<button id="btnRandom" onclick="vgmplay_js.toggleRandomScope()">R</button>
 				<button id="btnLoop" onclick="vgmplay_js.toggleLoopMode()">L</button>
 				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
+				<button id="btnSearch" onclick="vgmplay_js.toggleSearchBar()">&#128269;</button>
 				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
 			</div>
 		`;
@@ -574,6 +578,46 @@ class VGMPlay_js {
 		this.btnRandom = document.getElementById('btnRandom');
 		this.btnLoop = document.getElementById('btnLoop');
 		this.btnLibrary = document.getElementById('btnLibrary');
+		this.btnSearch = document.getElementById('btnSearch');
+
+		this.searchBar = document.createElement('div');
+		this.searchBar.className = 'vgmplaySearchBar';
+		this.searchBar.style.display = 'none';
+		this.searchBar.innerHTML = `<input id="vgmplaySearchInput" type="text" placeholder="Search games...">`;
+		this.playerWindow.appendChild(this.searchBar);
+		this.searchInput = document.getElementById('vgmplaySearchInput');
+		this.searchInput.addEventListener('input', () => {
+			this.searchQuery = (this.searchInput.value || '').toLowerCase();
+			this._applyGameSearchFilter();
+		});
+		this.searchInput.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				this.toggleSearchBar();
+				this._expandFirstSearchResult();
+			} else if (e.key === 'Escape') {
+				e.preventDefault();
+				this.searchQuery = "";
+				if (this.searchInput) this.searchInput.value = "";
+				this._applyGameSearchFilter();
+			}
+		});
+		if (!this._searchGlobalKeyHandler) {
+			this._searchGlobalKeyHandler = (e) => {
+				if (e.key !== 'Escape') return;
+				e.preventDefault();
+				this.searchQuery = "";
+				if (this.searchInput) this.searchInput.value = "";
+				this._applyGameSearchFilter();
+				this._collapseAllGames();
+				if (this.zipFileListWindow) this.zipFileListWindow.scrollTop = 0;
+				if (this.searchBarVisible) {
+					this.searchBarVisible = false;
+					if (this.searchBar) this.searchBar.style.display = 'none';
+				}
+			};
+			document.addEventListener('keydown', this._searchGlobalKeyHandler);
+		}
 
 		// Create progress bar
 		this.progressContainer = document.createElement('div');
@@ -1643,6 +1687,47 @@ class VGMPlay_js {
 		return "";
 	}
 
+	toggleSearchBar() {
+		this.searchBarVisible = !this.searchBarVisible;
+		if (this.searchBar) {
+			this.searchBar.style.display = this.searchBarVisible ? 'block' : 'none';
+		}
+		if (this.searchBarVisible && this.searchInput) {
+			this.searchInput.focus();
+			this.searchInput.select();
+		}
+	}
+
+	_applyGameSearchFilter() {
+		const query = (this.searchQuery || '').toLowerCase();
+		for (const game of this.games) {
+			if (!game || !game.uiElement) continue;
+			const name = (game.searchName || game.name || '').toLowerCase();
+			const match = !query || name.includes(query);
+			game.uiElement.style.display = match ? '' : 'none';
+		}
+	}
+
+	_expandFirstSearchResult() {
+		for (const game of this.games) {
+			if (!game || !game.uiElement) continue;
+			if (game.uiElement.style.display === 'none') continue;
+			game.uiElement.dataset.expanded = 'true';
+			game.uiElement.classList.add('vgmplayGameExpanded');
+			game.uiElement.classList.remove('vgmplayGameCollapsed');
+			return;
+		}
+	}
+
+	_collapseAllGames() {
+		for (const game of this.games) {
+			if (!game || !game.uiElement) continue;
+			game.uiElement.dataset.expanded = 'false';
+			game.uiElement.classList.remove('vgmplayGameExpanded');
+			game.uiElement.classList.add('vgmplayGameCollapsed');
+		}
+	}
+
 	_deriveVgmGameName(files, fallbackName) {
 		let name = fallbackName || "Archive";
 		if (!files || !this.GetVGMTagDirect) return name;
@@ -2202,6 +2287,8 @@ class VGMPlay_js {
 		}
 		const files = game.files;
 		const gameIndex = this.games.indexOf(game) + 1;
+		let gameDisplayName = game.name || "";
+		let tagGameName = "";
 
 		if (this.zipFileListWindow) {
 			let gameWrap = game.uiElement;
@@ -2218,6 +2305,14 @@ class VGMPlay_js {
 				gameWrap.dataset.expanded = 'false';
 				gameWrap.classList.add('vgmplayGameCollapsed');
 				game.uiElement = gameWrap;
+
+				for (const f of files) {
+					const l = f.filepath.toLowerCase();
+					if (this.isPlayable(l)) {
+						tagGameName = this.GetVGMTagDirect(f.filepath, 2); // Game tag
+						if (tagGameName) break;
+					}
+				}
 
 				if (game.png) {
 					const url = URL.createObjectURL(game.png);
@@ -2240,22 +2335,29 @@ class VGMPlay_js {
 					placeholder.className = "game-name-placeholder";
 
 					// Try to get game name from first track if possible
-					let psfGame = "";
-					for (const f of files) {
-						const l = f.filepath.toLowerCase();
-						if (this.isPlayable(l)) {
-							psfGame = this.GetVGMTagDirect(f.filepath, 2); // Game tag
-							if (psfGame) break;
-						}
-					}
-
+					let psfGame = tagGameName || "";
 					if (psfGame && (psfGame.toLowerCase().endsWith('.usf') || psfGame.toLowerCase().endsWith('.miniusf'))) {
 						psfGame = ""; // Filter out bad data if it's just the filename
 					}
-					placeholder.textContent = game.name || psfGame || "Game " + gameIndex;
+					gameDisplayName = game.name || psfGame || "Game " + gameIndex;
+					placeholder.textContent = gameDisplayName;
 					placeholder.classList.add('vgmplayGameToggle');
 					gameWrap.appendChild(placeholder);
 				}
+
+				if (!gameDisplayName) {
+					gameDisplayName = game.name || tagGameName || "Game " + gameIndex;
+				} else if (tagGameName && !gameDisplayName) {
+					gameDisplayName = tagGameName;
+				}
+				if (tagGameName && (!game.name || gameDisplayName === game.name)) {
+					gameDisplayName = tagGameName;
+				}
+				if (!gameDisplayName) {
+					gameDisplayName = game.name || "Game " + gameIndex;
+				}
+				game.searchName = gameDisplayName;
+				gameWrap.dataset.searchName = gameDisplayName.toLowerCase();
 
 				trackContainer = document.createElement('div');
 				trackContainer.className = 'vgmplayGameTracks';
@@ -2274,6 +2376,11 @@ class VGMPlay_js {
 				this.zipFileListWindow.appendChild(gameWrap);
 			} else {
 				trackContainer = game.trackContainer;
+				if (!gameDisplayName) {
+					gameDisplayName = game.name || "Game " + gameIndex;
+				}
+				game.searchName = gameDisplayName;
+				gameWrap.dataset.searchName = gameDisplayName.toLowerCase();
 			}
 
 			const startIndex = game.lastRenderedCount || 0;
@@ -2445,6 +2552,7 @@ class VGMPlay_js {
 			if (activeLink) {
 				activeLink.classList.add('activeTrack');
 			}
+			this._applyGameSearchFilter();
 		}
 	}
 
@@ -3709,7 +3817,8 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'V': 'Reverb',
 		'R': 'Shuffle game/all',
 		'L': 'Loop track/game (L)',
-		'Z': 'Toggle Float/Library'
+		'Z': 'Toggle Float/Library',
+		'🔍': 'Search'
 	};
 
 	let tooltipTimeout;

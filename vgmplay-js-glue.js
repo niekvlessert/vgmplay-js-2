@@ -411,6 +411,28 @@ class VGMPlay_js {
 		}, 5000);
 	}
 
+	_resetWindowPositions() {
+		if (!this.standalone) return;
+		this.standaloneGroupTransformX = 0;
+		this.standaloneGroupTransformY = 0;
+		this.trackListTransformX = 0;
+		this.trackListTransformY = 0;
+		if (this.standaloneGroup) {
+			this.standaloneGroup.style.transform = 'none';
+			this.standaloneGroup.style.width = '';
+		}
+		if (this.tracksContainer) {
+			this.tracksContainer.style.transform = 'none';
+		}
+		if (this.vgmplayContainer) {
+			this.vgmplayContainer.style.top = '';
+			this.vgmplayContainer.style.left = '';
+		}
+		if (this.zipFileListWindow) {
+			this.zipFileListWindow.scrollTop = 0;
+		}
+	}
+
 	_normalizeBool(value) {
 		if (value === true) return true;
 		if (value === false) return false;
@@ -423,6 +445,16 @@ class VGMPlay_js {
 	}
 
 	setKeyBindings() {
+		if (!this._mousetrapStopCallbackPatched && typeof Mousetrap !== 'undefined') {
+			const prevStop = Mousetrap.stopCallback;
+			Mousetrap.stopCallback = (e, element, combo) => {
+				if (combo === 'space' && element && element.classList && element.classList.contains('vgmplayStandaloneSelect')) {
+					return false;
+				}
+				return prevStop ? prevStop(e, element, combo) : false;
+			};
+			this._mousetrapStopCallbackPatched = true;
+		}
 		if (!this.isLibrary) {
 			window.addEventListener('keydown', function (e) {
 				if (e.keyCode == 32) e.preventDefault();
@@ -430,7 +462,8 @@ class VGMPlay_js {
 
 			Mousetrap.bind('space', (e) => {
 				this.togglePlayback();
-			});
+				return false;
+			}, 'keydown');
 		}
 		Mousetrap.bind('n', (e) => {
 			if (this.libraryState === 1) return;
@@ -440,11 +473,20 @@ class VGMPlay_js {
 			if (this.libraryState === 1) return;
 			this.changeTrack('previous');
 		});
-		Mousetrap.bind('s', (e) => {
-			stop();
-		});
-		Mousetrap.bind('z', (e) => {
+		Mousetrap.bind('f', (e) => {
 			this.toggleDisplayZipFileListWindow();
+		});
+		Mousetrap.bind('s', (e) => {
+			this.toggleSearchBar();
+		});
+		Mousetrap.bind('r', (e) => {
+			this.toggleRandomScope();
+		});
+		Mousetrap.bind('v', (e) => {
+			this.toggleReverb();
+		});
+		Mousetrap.bind('b', (e) => {
+			this.toggleBassBoost();
 		});
 		Mousetrap.bind('l', (e) => {
 			this.toggleLoopMode();
@@ -566,7 +608,7 @@ class VGMPlay_js {
 				<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
 				<button id="btnRandom" onclick="vgmplay_js.toggleRandomScope()">R</button>
 				<button id="btnLoop" onclick="vgmplay_js.toggleLoopMode()">L</button>
-				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">Z</button>
+				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">F</button>
 				<button id="btnSearch" onclick="vgmplay_js.toggleSearchBar()">&#128269;</button>
 				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
 			</div>
@@ -611,6 +653,7 @@ class VGMPlay_js {
 				this._applyGameSearchFilter();
 				this._collapseAllGames();
 				if (this.zipFileListWindow) this.zipFileListWindow.scrollTop = 0;
+				if (this.standalone) this._resetWindowPositions();
 				if (this.searchBarVisible) {
 					this.searchBarVisible = false;
 					if (this.searchBar) this.searchBar.style.display = 'none';
@@ -1061,6 +1104,7 @@ class VGMPlay_js {
 			this.trackListTransformX = 0;
 			this.trackListTransformY = 0;
 			if (this.tracksContainer) this.tracksContainer.style.transform = `translate(0px, 0px)`;
+			this._resetWindowPositions();
 			if (this.btnLibrary) {
 				this.btnLibrary.classList.remove('active');
 				this.btnLibrary.classList.remove('blue-active');
@@ -1508,6 +1552,7 @@ class VGMPlay_js {
 
 	async _shouldDownload(url, forceLarge) {
 		if (forceLarge) return true;
+		if (this.standalone) return true;
 		const size = await this._getRemoteFileSize(url);
 		if (!size || size <= this.largeDownloadLimitBytes) return true;
 		this._addSkippedDownload(url, size);
@@ -1537,6 +1582,7 @@ class VGMPlay_js {
 	}
 
 	async _checkLargeOverflow(url) {
+		if (this.standalone) return;
 		const size = await this._getRemoteFileSize(url);
 		if (!size || size <= this.largeDownloadLimitBytes) return;
 		this._addSkippedDownload(url, size);
@@ -3803,12 +3849,12 @@ VGMPlay_js.prototype._setupTooltips = function () {
 	const targets = [...buttons, ...tracks];
 	const idDescriptions = {
 		'buttonTogglePlayback': 'Play/Pause (Space)',
-		'btnBass': 'Bass Boost',
-		'btnReverb': 'Reverb',
-		'btnRandom': 'Shuffle game/all',
+		'btnBass': 'Bass Boost (B)',
+		'btnReverb': 'Reverb (V)',
+		'btnRandom': 'Shuffle game/all (R)',
 		'btnLoop': 'Loop track/game (L)',
-		'btnLibrary': 'Toggle Float/Library',
-		'btnSearch': 'Search'
+		'btnLibrary': 'Toggle Float/Library (F)',
+		'btnSearch': 'Search (S)'
 	};
 	const descriptions = {
 		'|&lt;': 'Previous Track (P)',
@@ -3822,13 +3868,13 @@ VGMPlay_js.prototype._setupTooltips = function () {
 		'&#9632;': 'Stop',
 		'■': 'Stop',
 		'\u25A0': 'Stop',
-		'B': 'Bass Boost',
-		'V': 'Reverb',
-		'R': 'Shuffle game/all',
+		'B': 'Bass Boost (B)',
+		'V': 'Reverb (V)',
+		'R': 'Shuffle game/all (R)',
 		'L': 'Loop track/game (L)',
-		'Z': 'Toggle Float/Library',
-		'🔍': 'Search',
-		'&#128269;': 'Search'
+		'Z': 'Toggle Float/Library (F)',
+		'🔍': 'Search (S)',
+		'&#128269;': 'Search (S)'
 	};
 
 	let tooltipTimeout;

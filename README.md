@@ -21,15 +21,15 @@ For the extension:
 
 For the library:
 
-- Make it easy to design your own webbased games and play VGM files in that.
+- Make it easy to design your own webbased games and play VGM files in that. But I seperated in later.
 
 Works on current Brave and Chrome now (feb 2026). Compilation works with Emscripten 5.0.1
 
 Lately a lot of additions using vibe coding.
 
-The compiled binaries are included. However if you want to build yourself use this. 
+The compiled binaries are build by github actions. However if you want to build yourself:
 
-Prepare_for_usage.sh is required to make the extension feature work. Since 'binaries' are included, you can run that without compiling.
+Prepare_for_usage.sh is required to make the extension feature work, run that after building
 
 ## Building
 
@@ -50,7 +50,7 @@ Then put it on your webserver or run a server with Python 3 or something. On loc
 
 By default a player is shown and the html file will be scanned for .zip files. If available they're unpacked into the Emscripten filesystem, then a player will be displayed.
 
-Loading vgmrips.net zip files is as easy as putting them on the webserver and offer them in the index.html, then include the glue and the player will be pick them up:
+Loading files is as easy as putting them on the webserver and offer them in the index.html, then include the glue and the player will be pick them up, see below:
 
 ```html
 <html>
@@ -61,6 +61,10 @@ Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatch
 </body>
 </html>
 ```
+
+But you can also drag and drop them at the bottom of the player.
+
+It has many shortcuts, look at the tooltips from the buttons (mousepointer on button and wait a few seconds).
 
 ## Supported Libraries & Formats
 
@@ -74,11 +78,14 @@ The full build of `vgmplay-js` includes the following libraries and supports the
 | **sexypsf** | `.psf`, `.minipsf` (PlayStation) |
 | **lazyusf** | `.usf`, `.miniusf` (Nintendo 64) |
 | **miniaudio** | `.mp3`, `.flac`, `.ogg`, `.wav` (Modern Audio Formats) |
+| **libmusdoom** | `.mus`, `.lmp` (Doom) |
 | **Archives** | `.zip`, `.7z`, `.rar`, `.vigamup` (via 7zz, unrar, minizip) |
+
+Full vgmstream format list: see `FORMATS.md`.
 
 ## Extension from Chrome & Firefox
 
-A Chrome Extension is also included. Don't forget to run prepare_for_usage.sh. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
+A Chrome Extension is also available. Don't forget to run prepare_for_usage.sh. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
 
 ## Vigamup format for KSS files
 
@@ -124,8 +131,3 @@ cmake ..
 make
 open VGMPlay.app
 ```
-
----
-Underneath an older screenshot, but you'd better try the latest version on the right, it's hosted on github as well.
-
-![Screenshot](http://vlessert.nl/vgmplay-js.png)

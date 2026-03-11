@@ -60,6 +60,9 @@ class VGMPlay_js {
 		this._archiveWorkerJobs = new Map();
 		this._archiveWorkerSeq = 1;
 		this.pendingZipRender = false;
+		this._lastSeekAt = 0;
+		this._lastSeekWasMUS = false;
+		this._loopBaseSamplesByTrack = new Map();
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
 		this.autoDownloadCount = 0;
@@ -2401,7 +2404,8 @@ class VGMPlay_js {
 
 			// On-demand GENMIDI loading for DOOM MUS files
 			const lowerFile = file.toLowerCase().split('|track=')[0];
-			if (lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp')) {
+			const isMusFile = lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp');
+			if (isMusFile) {
 				if (game) {
 					const activeGame = this.games[game - 1];
 					if (activeGame && activeGame.files) {
@@ -2435,8 +2439,12 @@ class VGMPlay_js {
 					this.currentFileKey = key;
 				}
 				this.play();
-				this.totalSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
+				const baseSampleCount = this.GetTrackLength() * this.sampleRate / 44100;
+				this.totalSampleCount = baseSampleCount;
 				this.trackLengthSeconds = Math.round(this.totalSampleCount / this.sampleRate);
+				if (isMusFile && this.currentFileKey && this._loopBaseSamplesByTrack) {
+					this._loopBaseSamplesByTrack.set(this.currentFileKey, baseSampleCount);
+				}
 				let overrideLen = 0;
 				if (href_object && href_object.dataset && href_object.dataset.trackLengthSec) {
 					const len = parseInt(href_object.dataset.trackLengthSec, 10);
@@ -2971,9 +2979,18 @@ class VGMPlay_js {
 		if (this.VGMEnded()) {
 			if (!this.emulatorFinished) {
 				this.emulatorFinished = true;
+				const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+				if (this._lastSeekWasMUS && (nowMs - this._lastSeekAt) < 2000) {
+					this.stop();
+					return;
+				}
 				if (this.loopMode === 1 && this.currentTrackSupportsLoop) {
 					const list = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList : null;
 					const entry = list && list[this.currentFileKey];
+					if (this.currentFileKey && this._loopBaseSamplesByTrack && !this._loopBaseSamplesByTrack.has(this.currentFileKey)) {
+						const baseLen = this.samplesGenerated || this.totalSampleCount || 0;
+						if (baseLen > 0) this._loopBaseSamplesByTrack.set(this.currentFileKey, baseLen);
+					}
 					if (entry && entry.filepath && !this._loopRestarting) {
 						this._loopRestarting = true;
 						setTimeout(async () => {
@@ -3415,36 +3432,53 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 	var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 	var targetSample = Math.floor(ratio * this.totalSampleCount);
 
-	// Seek in the VGM engine
-	var seekSecond = Math.floor(targetSample / this.sampleRate);
-	var seekMS = Math.round((targetSample / this.sampleRate - seekSecond) * 1000);
-	this.SeekVGM(seekSecond, seekMS);
-
-	// Update trackers
-	this.samplesGenerated = targetSample; // Keep generation somewhat in sync (optional but good practice)
-	this.visualSamplePosition = targetSample;
-	this.startSample = targetSample;
-	this.emulatorFinished = false; // Reset finished flag on seek
-
-	// Reset fade on seek
-	this.isFadingOut = false;
-	if (this.masterGain && this.context) {
-		const now = this.context.currentTime;
-		this.masterGain.gain.cancelScheduledValues(now);
-		this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-		this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
+	const entry = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList[this.currentFileKey] : null;
+	const path = (entry && entry.filepath ? entry.filepath : this.currentFileKey || "").toLowerCase();
+	const isMus = path.endsWith('.mus') || (path.endsWith('.lmp') && !path.endsWith('genmidi.lmp'));
+	if (isMus && this.loopMode === 1 && this.currentTrackSupportsLoop && this._loopBaseSamplesByTrack) {
+		const baseLen = this._loopBaseSamplesByTrack.get(this.currentFileKey);
+		if (baseLen && baseLen > 0) {
+			targetSample = targetSample % baseLen;
+		}
 	}
+	this._lastSeekAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+	this._lastSeekWasMUS = isMus;
+	this._setInfoLoading(true);
 
-	if (this.context && !this.isPlaybackPaused) {
-		this.playbackStartTime = this.context.currentTime;
-	}
+	setTimeout(() => {
+		// Seek in the VGM engine
+		var seekSecond = Math.floor(targetSample / this.sampleRate);
+		var seekMS = Math.round((targetSample / this.sampleRate - seekSecond) * 1000);
+		this.SeekVGM(seekSecond, seekMS);
 
-	// Clear worklet buffer and re-pump
-	if (this.workletNode) {
-		this.workletNode.port.postMessage({ type: 'stop' });
-		this.workletNode.port.postMessage({ type: 'start' });
-		this._pumpBuffers();
-	}
+		// Update trackers
+		this.samplesGenerated = targetSample; // Keep generation somewhat in sync (optional but good practice)
+		this.visualSamplePosition = targetSample;
+		this.startSample = targetSample;
+		this.emulatorFinished = false; // Reset finished flag on seek
+
+		// Reset fade on seek
+		this.isFadingOut = false;
+		if (this.masterGain && this.context) {
+			const now = this.context.currentTime;
+			this.masterGain.gain.cancelScheduledValues(now);
+			this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+			this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
+		}
+
+		if (this.context && !this.isPlaybackPaused) {
+			this.playbackStartTime = this.context.currentTime;
+		}
+
+		// Clear worklet buffer and re-pump
+		if (this.workletNode) {
+			this.workletNode.port.postMessage({ type: 'stop' });
+			this.workletNode.port.postMessage({ type: 'start' });
+			this._pumpBuffers();
+		}
+
+		this._setInfoLoading(false);
+	}, 0);
 };
 
 

@@ -63,6 +63,8 @@ class VGMPlay_js {
 		this._lastSeekAt = 0;
 		this._lastSeekWasMUS = false;
 		this._loopBaseSamplesByTrack = new Map();
+		this.showMemoryStats = false;
+		this._memoryBaselineUsed = null;
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
 		this.autoDownloadCount = 0;
@@ -228,6 +230,7 @@ class VGMPlay_js {
 				
 				// Memory display
 				this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
+				if (this.memoryDisplay) this.memoryDisplay.style.display = 'none';
 				this._updateMemoryDisplay();
 			}
 
@@ -276,6 +279,10 @@ class VGMPlay_js {
 				this.titleContent = document.createElement('div');
 				this.titleContent.className = 'vgmplayTitleContent';
 				this.titleWindow.appendChild(this.titleContent);
+
+				this.memoryOverlay = document.createElement('div');
+				this.memoryOverlay.className = 'vgmplayMemoryOverlay';
+				this.titleWindow.appendChild(this.memoryOverlay);
 
 				this.infoOverlay = document.createElement('div');
 				this.infoOverlay.className = 'vgmplayInfoOverlay';
@@ -362,15 +369,34 @@ class VGMPlay_js {
 	}
 
 	_updateMemoryDisplay() {
-		if (!this.memoryDisplay || !Module._GetFreeMemory) return;
+		if (!Module._GetFreeMemory || !Module._GetTotalMemory || !Module._GetUsedMemory || !Module._GetHeapTopUsedMemory) return;
 		
-		const freeMem = Module._GetFreeMemory();
-		const totalMem = Module._GetTotalMemory();
+		const usedMem = Module._GetUsedMemory(); // allocator in-use
+		const freeMem = Module._GetFreeMemory(); // allocator free blocks
+		const totalMem = Module._GetTotalMemory(); // wasm heap size
+		const heapTopUsed = Module._GetHeapTopUsedMemory(); // sbrk pointer
+		const heapTopFree = totalMem - heapTopUsed;
 		
+		if (this._memoryBaselineUsed === null) {
+			this._memoryBaselineUsed = usedMem;
+		}
+
 		const freeMB = (freeMem / (1024 * 1024)).toFixed(2);
 		const totalMB = (totalMem / (1024 * 1024)).toFixed(2);
-		
-		this.memoryDisplay.textContent = `${freeMB} MB`;
+		const usedMB = (usedMem / (1024 * 1024)).toFixed(2);
+		const heapTopFreeMB = (heapTopFree / (1024 * 1024)).toFixed(2);
+		const deltaMB = ((usedMem - this._memoryBaselineUsed) / (1024 * 1024)).toFixed(2);
+
+		if (this.showMemoryStats && this.memoryOverlay) {
+			this.memoryOverlay.innerHTML = `
+				<div>Memory</div>
+				<div>Alloc In-Use: ${usedMB} MB</div>
+				<div>Alloc Free: ${freeMB} MB</div>
+				<div>Heap Size: ${totalMB} MB</div>
+				<div>Heap Top Free: ${heapTopFreeMB} MB</div>
+				<div>Delta: ${deltaMB} MB</div>
+			`;
+		}
 	}
 	
 	_resetMobileIdleTimer() {
@@ -419,6 +445,9 @@ class VGMPlay_js {
 		});
 		Mousetrap.bind('l', (e) => {
 			this.toggleLoopMode();
+		});
+		Mousetrap.bind('m', (e) => {
+			this._setMemoryStatsVisible(!this.showMemoryStats);
 		});
 	}
 
@@ -690,6 +719,20 @@ class VGMPlay_js {
 		}
 	}
 
+	_setMemoryStatsVisible(isVisible) {
+		this.showMemoryStats = !!isVisible;
+		if (!this.titleWindow) return;
+		if (this.showMemoryStats) {
+			this.titleWindow.classList.add('vgmplayMemoryVisible');
+			if (this.titleContent) this.titleContent.innerHTML = "";
+			this._memoryBaselineUsed = null;
+			this._updateMemoryDisplay();
+		} else {
+			this.titleWindow.classList.remove('vgmplayMemoryVisible');
+			this.getVGMTag();
+		}
+	}
+
 	_getArchiveWorker() {
 		if (this.archiveWorker) return this.archiveWorker;
 		if (typeof Worker === 'undefined') return null;
@@ -831,7 +874,8 @@ class VGMPlay_js {
 				});
 			}
 
-			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo, archiveName: sourceName };
+			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
 			this.tempGameInfo = null;
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -1005,6 +1049,11 @@ class VGMPlay_js {
 	}
 
 	getVGMTag() {
+		if (this.showMemoryStats) {
+			if (this.titleContent) this.titleContent.innerHTML = "";
+			this._updateMemoryDisplay();
+			return;
+		}
 		if (this.titleWindow) {
 			const titleStr = this.ShowTitle();
 			if (!titleStr) return;
@@ -1594,6 +1643,23 @@ class VGMPlay_js {
 		return "";
 	}
 
+	_deriveVgmGameName(files, fallbackName) {
+		let name = fallbackName || "Archive";
+		if (!files || !this.GetVGMTagDirect) return name;
+		for (const f of files) {
+			if (!f || !f.filepath) continue;
+			const lower = f.filepath.toLowerCase();
+			if (!this.isPlayable(lower)) continue;
+			if (!lower.endsWith('.vgm') && !lower.endsWith('.vgz')) continue;
+			const tag = this.GetVGMTagDirect(f.filepath, 2);
+			if (tag && tag.trim()) {
+				name = tag.trim();
+				break;
+			}
+		}
+		return name;
+	}
+
 	async processZipBuffer(byteArray, sourceName = '') {
 		try {
 			const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
@@ -1691,7 +1757,8 @@ class VGMPlay_js {
 					});
 				}
 
-				var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: sourceName || "Archive", gameinfo: this.tempGameInfo, archiveName: sourceName };
+				const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+				var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
 				this.tempGameInfo = null;
 				this.games.push(game);
 				this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -2047,7 +2114,8 @@ class VGMPlay_js {
 			}
 
 			const parsedName = parseArchiveTitle(sourceName);
-			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, archiveName: sourceName, name: parsedName };
+			const derivedName = this._deriveVgmGameName(fileList, parsedName);
+			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, archiveName: sourceName, name: derivedName };
 
 			// Alphabetical sorting for DOOM MUS/LMP archives
 			const hasMusLmp = fileList.some(f => {
@@ -2458,7 +2526,12 @@ class VGMPlay_js {
 					this.totalSampleCount = this.trackLengthSeconds * this.sampleRate;
 				}
 				this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-				this.getVGMTag();
+				if (this.showMemoryStats) {
+					this._memoryBaselineUsed = null;
+					this._setMemoryStatsVisible(true);
+				} else {
+					this.getVGMTag();
+				}
 
 				let gameName = (this.VGMTag && this.VGMTag.length >= 8) ? (this.VGMTag[5] || this.VGMTag[7] || "Unknown Game") : "Unknown Game";
 				let trackName = file.substring(file.lastIndexOf('/') + 1);

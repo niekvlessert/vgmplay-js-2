@@ -111,6 +111,7 @@ set(VGMPLAY_EXPORTS
     "'_free'"
     "'_GetUsedMemory'"
     "'_GetFreeMemory'"
+    "'_GetHeapTopUsedMemory'"
     "'_GetTotalMemory'"
 )
 

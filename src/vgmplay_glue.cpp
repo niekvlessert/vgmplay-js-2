@@ -7,6 +7,7 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <malloc.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -227,12 +228,19 @@ int stop_sexy_execute = 0; // Declare stop_sexy_execute here
 #include <emscripten/heap.h>
 EMSCRIPTEN_KEEPALIVE
 uint32_t GetUsedMemory() {
-    return (uint32_t)(*emscripten_get_sbrk_ptr());
+    struct mallinfo mi = mallinfo();
+    return (uint32_t)mi.uordblks;
 }
 
 EMSCRIPTEN_KEEPALIVE
 uint32_t GetFreeMemory() {
-    return (uint32_t)(emscripten_get_heap_size() - *emscripten_get_sbrk_ptr());
+    struct mallinfo mi = mallinfo();
+    return (uint32_t)mi.fordblks;
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint32_t GetHeapTopUsedMemory() {
+    return (uint32_t)(*emscripten_get_sbrk_ptr());
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -415,7 +423,7 @@ static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
   return NULL;
 }
 
-static void cleanup() {
+static void cleanup(bool keepVGMPlayer) {
   if (isKSS) {
     if (gKssPlay) {
       KSSPLAY_delete(gKssPlay);
@@ -506,8 +514,10 @@ static void cleanup() {
   if (player) {
     player->Stop();
     player->UnloadFile();
-    delete player;
-    player = nullptr;
+    if (!keepVGMPlayer) {
+      delete player;
+      player = nullptr;
+    }
   }
   if (loader) {
     DataLoader_Deinit(loader);
@@ -663,8 +673,6 @@ void Seek(unsigned int sec, unsigned int ms) {
 }
 
 int OpenVGMFile(const char *path) {
-  cleanup();
-
   /* Detect PSF by extension */
   std::string basePath;
   int trackIndex = parseTrackSuffix(path, basePath);
@@ -672,6 +680,12 @@ int OpenVGMFile(const char *path) {
   std::string lowerPath = basePath;
   for (auto &c : lowerPath)
     c = tolower(c);
+
+  const bool isVgmPath =
+      (lowerPath.size() > 4 &&
+       (lowerPath.substr(lowerPath.size() - 4) == ".vgm" ||
+        lowerPath.substr(lowerPath.size() - 4) == ".vgz"));
+  cleanup(isVgmPath);
   if (sPath.size() > 4 && (sPath.substr(sPath.size() - 4) == ".psf" ||
                            sPath.substr(sPath.size() - 4) == ".PSF" ||
                            sPath.substr(sPath.size() - 8) == ".minipsf" ||
@@ -841,7 +855,6 @@ int OpenVGMFile(const char *path) {
        lowerPath.substr(lowerPath.size() - 4) == ".lmp")) {
     FILE *f = fopen(path, "rb");
     if (f) {
-      cleanup();
       fseek(f, 0, SEEK_END);
       long size = ftell(f);
       fseek(f, 0, SEEK_SET);
@@ -956,7 +969,7 @@ int OpenVGMFile(const char *path) {
   return 1;
 }
 
-void CloseVGMFile(void) { cleanup(); }
+void CloseVGMFile(void) { cleanup(false); }
 
 void PlayVGM(void) {
   if (player) {
@@ -1365,8 +1378,61 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     return "";
   }
 
-  // For non-PSF, we'd need to load the file and use VGMPlayer::GetTags.
-  // This is heavier but possible. For now, focus on PSF.
+  if (lowerPath.find(".vgm") != std::string::npos ||
+      lowerPath.find(".vgz") != std::string::npos) {
+    DATA_LOADER *locLoader = FileLoader_Init(path);
+    if (!locLoader)
+      return "";
+    if (DataLoader_Load(locLoader)) {
+      DataLoader_Deinit(locLoader);
+      return "";
+    }
+
+    VGMPlayer *locPlayer = new VGMPlayer();
+    locPlayer->SetSampleRate(gSampleRate);
+    if (locPlayer->LoadFile(locLoader)) {
+      delete locPlayer;
+      DataLoader_Deinit(locLoader);
+      return "";
+    }
+
+    const char *keys[] = {"TITLE", "TITLE-JPN", "GAME", "GAME-JPN", "SYSTEM",
+                          "SYSTEM-JPN", "ARTIST", "ARTIST-JPN", "DATE",
+                          "ENCODED_BY", "COMMENT"};
+    if (tagIndex < 0 || tagIndex >= 11) {
+      locPlayer->UnloadFile();
+      delete locPlayer;
+      DataLoader_Deinit(locLoader);
+      return "";
+    }
+
+    const char *targetKey = keys[tagIndex];
+    const char *const *tags = locPlayer->GetTags();
+    const char *val = "";
+    if (tags && targetKey && *targetKey) {
+      for (const char *const *t = tags; *t; t += 2) {
+        const char *key = t[0];
+        const char *value = t[1];
+        if (!key)
+          break;
+        if (strcasecmp(key, targetKey) == 0) {
+          val = value ? value : "";
+          break;
+        }
+      }
+    }
+
+    static char tagResult[256];
+    strncpy(tagResult, val ? val : "", 255);
+    tagResult[255] = '\0';
+    locPlayer->UnloadFile();
+    delete locPlayer;
+    DataLoader_Deinit(locLoader);
+    return tagResult;
+  }
+
+  // For other formats, we'd need to load the file and use player->GetTags.
+  // This is heavier but possible. For now, keep it opt-in.
   return "";
 }
 

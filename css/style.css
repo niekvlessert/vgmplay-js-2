@@ -279,6 +279,31 @@
   width: 100%;
 }
 
+.vgmplayContainer .vgmplayTitleWindow .vgmplayMemoryOverlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+  color: #00ff66;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  pointer-events: none;
+}
+
+.vgmplayContainer .vgmplayTitleWindow.vgmplayMemoryVisible .vgmplayMemoryOverlay {
+  display: flex;
+}
+
+.vgmplayContainer .vgmplayTitleWindow.vgmplayMemoryVisible .vgmplayTitleContent {
+  visibility: hidden;
+}
+
 .vgmplayContainer .vgmplayTitleWindow .vgmplayInfoOverlay {
   position: absolute;
   inset: 0;

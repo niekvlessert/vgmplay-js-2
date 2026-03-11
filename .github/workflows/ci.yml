@@ -43,6 +43,13 @@ jobs:
             echo "Error: Build did not produce all required files"
             exit 1
           fi
+          
+      - name: Prepare Extensions
+        run: |
+          chmod +x prepare_for_usage.sh
+          ./prepare_for_usage.sh
+          zip -r extension.zip extension
+          zip -r ff_extension.zip ff_extension
 
       - name: Upload WASM Artifacts
         uses: actions/upload-artifact@v4
@@ -53,6 +60,15 @@ jobs:
             vgmplay-js.js
             vgmplay-js.wasm
             vgmplay-js.data
+
+      - name: Upload Extension Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-extensions
+          if-no-files-found: error
+          path: |
+            extension.zip
+            ff_extension.zip
 
   deploy-pages:
     needs: [build-wasm, build-mac]
@@ -113,7 +129,23 @@ jobs:
         with:
           name: VGMPlay-macOS.dmg
           path: desktop-app-mac/VGMPlay-macOS.dmg
-          
+
+  release:
+    needs: [build-wasm, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Extension Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: browser-extensions
+          path: .
+
+      - name: Download DMG Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VGMPlay-macOS.dmg
+          path: .
+
       - name: Release Note Payload
         run: |
           echo "Automated CI build from commit ${{ github.sha }}" > release_notes.txt
@@ -125,6 +157,9 @@ jobs:
           tag_name: latest
           name: "VGMPlay Latest Nightly"
           body_path: release_notes.txt
-          files: desktop-app-mac/VGMPlay-macOS.dmg
+          files: |
+            VGMPlay-macOS.dmg
+            extension.zip
+            ff_extension.zip
           draft: false
           prerelease: true

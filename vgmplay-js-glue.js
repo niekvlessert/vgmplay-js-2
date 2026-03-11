@@ -59,6 +59,7 @@ class VGMPlay_js {
 		this.archiveWorker = null;
 		this._archiveWorkerJobs = new Map();
 		this._archiveWorkerSeq = 1;
+		this.pendingZipRender = false;
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
 		this.autoDownloadCount = 0;
@@ -268,6 +269,17 @@ class VGMPlay_js {
 				this.titleWindow.className = "vgmplayTitleWindow";
 				this.titleWindow.addEventListener("mousedown", this.dragStart);
 				this._bindScrollProxy(this.titleWindow);
+
+				this.titleContent = document.createElement('div');
+				this.titleContent.className = 'vgmplayTitleContent';
+				this.titleWindow.appendChild(this.titleContent);
+
+				this.infoOverlay = document.createElement('div');
+				this.infoOverlay.className = 'vgmplayInfoOverlay';
+				this.infoSpinner = document.createElement('div');
+				this.infoSpinner.className = 'vgmplayInfoSpinner';
+				this.infoOverlay.appendChild(this.infoSpinner);
+				this.titleWindow.appendChild(this.infoOverlay);
 			}
 			if (this.displayPlayer) {
 				this.playerWindow = document.createElement('div');
@@ -631,16 +643,48 @@ class VGMPlay_js {
 	}
 
 	async handleFiles(files) {
+		this._setInfoLoading(true);
+		let queued = 0;
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
 			if (this._isArchiveUrl(lower) || this.isPlayable(lower)) {
 				const byteArray = await this._readFileAsUint8(file);
 				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
+				queued++;
 				await this._yieldToUI();
 			}
 		}
 		this._processQueue();
+		if (queued === 0 && !this.isProcessingQueue && this.zipQueue.length === 0) {
+			this._setInfoLoading(false);
+		}
+	}
+
+	_renderZipGamesNow() {
+		if (!this.zipFileListWindow) return;
+		this.zipFileListWindow.innerHTML = "";
+		for (const game of this.games) {
+			game.uiElement = null;
+			this.showVGMFromZip(game);
+		}
+	}
+
+	_scheduleZipRender() {
+		this.pendingZipRender = true;
+		if (!this.isProcessingQueue) {
+			this.pendingZipRender = false;
+			this._renderZipGamesNow();
+		}
+	}
+
+	_setInfoLoading(isLoading) {
+		if (!this.titleWindow) return;
+		if (isLoading) {
+			this.titleWindow.classList.add('vgmplayInfoLoading');
+		} else {
+			this.titleWindow.classList.remove('vgmplayInfoLoading');
+		}
 	}
 
 	_getArchiveWorker() {
@@ -793,12 +837,7 @@ class VGMPlay_js {
 				this._addNoPlayableNotice(sourceName || 'Archive');
 			}
 			await this.checkEverythingReady();
-			if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
-			for (const g of this.games) {
-				g.uiElement = null;
-				this.showVGMFromZip(g);
-				await maybeYield();
-			}
+			this._scheduleZipRender();
 			return;
 		}
 
@@ -968,7 +1007,8 @@ class VGMPlay_js {
 			if (!titleStr) return;
 			this.VGMTag = titleStr.split("|||");
 			this.tagType = 0;
-			this.titleWindow.innerHTML = "";
+			const titleTarget = this.titleContent || this.titleWindow;
+			titleTarget.innerHTML = "";
 
 			// KSS gameinfo support (moved to top for visibility)
 			if (this.activeGame && this.activeGame.gameinfo) {
@@ -999,9 +1039,9 @@ class VGMPlay_js {
 				}
 
 				if (hasFields) {
-					this.titleWindow.innerHTML += infoHtml;
+					titleTarget.innerHTML += infoHtml;
 				} else if (info.trim()) {
-					this.titleWindow.innerHTML += "<br/><b>Game Info:</b><br/>" + info.replace(/\n/g, '<br/>') + "<br/>";
+					titleTarget.innerHTML += "<br/><b>Game Info:</b><br/>" + info.replace(/\n/g, '<br/>') + "<br/>";
 				}
 			}
 
@@ -1009,46 +1049,46 @@ class VGMPlay_js {
 			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
 				switch (this.i) {
 					case 1:
-						if (this.VGMTag[1] || this.VGMTag[3]) this.titleWindow.innerHTML += "Title: ";
-						if (this.VGMTag[1]) this.titleWindow.innerHTML += this.VGMTag[1];
+						if (this.VGMTag[1] || this.VGMTag[3]) titleTarget.innerHTML += "Title: ";
+						if (this.VGMTag[1]) titleTarget.innerHTML += this.VGMTag[1];
 						//if (this.VGMTag[1] && this.VGMTag[3]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[3]) this.titleWindow.innerHTML += " (" + this.VGMTag[3] + ")";
-						if (this.VGMTag[1] || this.VGMTag[3]) this.titleWindow.innerHTML += "<br/>";
+						if (this.VGMTag[3]) titleTarget.innerHTML += " (" + this.VGMTag[3] + ")";
+						if (this.VGMTag[1] || this.VGMTag[3]) titleTarget.innerHTML += "<br/>";
 						//this.titleWindow.innerHTML += "Length: " + this.trackLengthHumanReadeable + "<br/>";
 						break;
 					case 5:
-						if (this.VGMTag[5] || this.VGMTag[7]) this.titleWindow.innerHTML += "Game: ";
-						if (this.VGMTag[5]) this.titleWindow.innerHTML += this.VGMTag[5];
+						if (this.VGMTag[5] || this.VGMTag[7]) titleTarget.innerHTML += "Game: ";
+						if (this.VGMTag[5]) titleTarget.innerHTML += this.VGMTag[5];
 						//if (this.VGMTag[5] && this.VGMTag[7]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[7]) this.titleWindow.innerHTML += " (" + this.VGMTag[7] + ")";
-						if (this.VGMTag[17]) this.titleWindow.innerHTML += ", " + this.VGMTag[17];
-						if (this.VGMTag[5] || this.VGMTag[7]) this.titleWindow.innerHTML += "<br/>";
+						if (this.VGMTag[7]) titleTarget.innerHTML += " (" + this.VGMTag[7] + ")";
+						if (this.VGMTag[17]) titleTarget.innerHTML += ", " + this.VGMTag[17];
+						if (this.VGMTag[5] || this.VGMTag[7]) titleTarget.innerHTML += "<br/>";
 						break;
 					case 8:
 						if (this.VGMTag[9] && this.VGMTag[9].trim()) {
-							this.titleWindow.innerHTML += "System: " + this.VGMTag[9] + "<br/>";
+							titleTarget.innerHTML += "System: " + this.VGMTag[9] + "<br/>";
 							systemShown = true;
 						}
 						break;
 					case 13:
-						if (this.VGMTag[13] || this.VGMTag[15]) this.titleWindow.innerHTML += "Author: ";
-						if (this.VGMTag[13]) this.titleWindow.innerHTML += this.VGMTag[13];
+						if (this.VGMTag[13] || this.VGMTag[15]) titleTarget.innerHTML += "Author: ";
+						if (this.VGMTag[13]) titleTarget.innerHTML += this.VGMTag[13];
 						//if (this.VGMTag[13] && this.VGMTag[15]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[15]) this.titleWindow.innerHTML += " (" + this.VGMTag[15] + ")";
-						if (this.VGMTag[13] || this.VGMTag[13]) this.titleWindow.innerHTML += "<br/>";
+						if (this.VGMTag[15]) titleTarget.innerHTML += " (" + this.VGMTag[15] + ")";
+						if (this.VGMTag[13] || this.VGMTag[13]) titleTarget.innerHTML += "<br/>";
 						break;
 					case 19:
 						if (this.VGMTag[19]) {
-							this.titleWindow.innerHTML += "VGM Creator: ";
-							this.titleWindow.innerHTML += this.VGMTag[19];
-							this.titleWindow.innerHTML += "<br/>";
+							titleTarget.innerHTML += "VGM Creator: ";
+							titleTarget.innerHTML += this.VGMTag[19];
+							titleTarget.innerHTML += "<br/>";
 						}
 						break;
 					case 20:
 						if (this.VGMTag[21] && this.VGMTag[21].length > 1) {
-							this.titleWindow.innerHTML += "Comments: ";
-							this.titleWindow.innerHTML += this.VGMTag[21];
-							this.titleWindow.innerHTML += "<br/>";
+							titleTarget.innerHTML += "Comments: ";
+							titleTarget.innerHTML += this.VGMTag[21];
+							titleTarget.innerHTML += "<br/>";
 						}
 						break;
 				}
@@ -1060,10 +1100,10 @@ class VGMPlay_js {
 				const path = this.activeGame.playableList[this.currentFileKey].filepath || "";
 				const lower = path.toLowerCase();
 				if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-					this.titleWindow.innerHTML += "System: Playstation<br/>";
+					titleTarget.innerHTML += "System: Playstation<br/>";
 				}
 				if (lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
-					this.titleWindow.innerHTML += "System: Nintendo 64<br/>";
+					titleTarget.innerHTML += "System: Nintendo 64<br/>";
 				}
 			}
 
@@ -1075,7 +1115,7 @@ class VGMPlay_js {
 				if (dot >= 0) {
 					const ext = clean.substring(dot + 1).toUpperCase();
 					if (ext) {
-						this.titleWindow.innerHTML += "Format: " + ext + "<br/>";
+						titleTarget.innerHTML += "Format: " + ext + "<br/>";
 					}
 				}
 			}
@@ -1083,6 +1123,7 @@ class VGMPlay_js {
 
 
 		if (this.titleWindow) {
+			const titleTarget = this.titleContent || this.titleWindow;
 			// Display chips with volume sliders as the last entry of the top frame
 			const chipCount = this.GetDeviceCount ? this.GetDeviceCount() : 0;
 			if (chipCount > 0) {
@@ -1105,7 +1146,7 @@ class VGMPlay_js {
 						`;
 					chipStrip.appendChild(chipControl);
 				}
-				this.titleWindow.appendChild(chipStrip);
+				titleTarget.appendChild(chipStrip);
 			}
 		}
 	}
@@ -1454,16 +1495,23 @@ class VGMPlay_js {
 	_processQueue() {
 		if (this.isProcessingQueue || this.zipQueue.length === 0) {
 			if (this.loader && this.zipQueue.length === 0) this.loader.style.display = 'none';
+			if (this.zipQueue.length === 0) this._setInfoLoading(false);
 			return;
 		}
 
 		if (this.loader) this.loader.style.display = 'block';
+		this._setInfoLoading(true);
 
 		this.isProcessingQueue = true;
 		const job = this.zipQueue.shift();
 
 		const next = () => {
 			this.isProcessingQueue = false;
+			if (this.zipQueue.length === 0) this._setInfoLoading(false);
+			if (this.zipQueue.length === 0 && this.pendingZipRender) {
+				this.pendingZipRender = false;
+				this._renderZipGamesNow();
+			}
 			// Yield to UI before next job
 			setTimeout(() => this._processQueue(), 100);
 		};
@@ -1649,12 +1697,7 @@ class VGMPlay_js {
 					this._addNoPlayableNotice(sourceName || 'Archive');
 				}
 				await this.checkEverythingReady();
-				if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
-				for (const g of this.games) {
-					g.uiElement = null;
-					this.showVGMFromZip(g);
-					await maybeYield();
-				}
+				this._scheduleZipRender();
 				return;
 			}
 
@@ -1771,12 +1814,7 @@ class VGMPlay_js {
 
 			await this.checkEverythingReady();
 			// Clear and re-render all games to maintain sort order
-			if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
-			for (const game of this.games) {
-				game.uiElement = null; // Reset UI element to force re-render
-				this.showVGMFromZip(game);
-				await maybeYield();
-			}
+			this._scheduleZipRender();
 	}
 
 	/**
@@ -2056,10 +2094,7 @@ class VGMPlay_js {
 			this._addNoPlayableNotice(sourceName || 'Archive');
 		}
 		await this.checkEverythingReady();
-		for (const game of gamesInOrder) {
-			if (!this.games.includes(game)) continue;
-			this.showVGMFromZip(game);
-		}
+		this._scheduleZipRender();
 	}
 
 	async processPSFBuffer(byteArray, fileName) {

@@ -272,6 +272,49 @@
   align-items: center;
   text-align: center;
   z-index: 10;
+  position: relative;
+}
+
+.vgmplayContainer .vgmplayTitleWindow .vgmplayTitleContent {
+  width: 100%;
+}
+
+.vgmplayContainer .vgmplayTitleWindow .vgmplayInfoOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.vgmplayContainer .vgmplayTitleWindow.vgmplayInfoLoading .vgmplayInfoOverlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.vgmplayContainer .vgmplayTitleWindow .vgmplayInfoSpinner {
+  width: 50px;
+  padding: 8px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #00ff66;
+  --_m:
+    conic-gradient(#0000 10%, #000),
+    linear-gradient(#000 0 0) content-box;
+  -webkit-mask: var(--_m);
+  mask: var(--_m);
+  -webkit-mask-composite: source-out;
+  mask-composite: subtract;
+  animation: vgmplayInfoSpin 1s infinite linear;
+}
+
+@keyframes vgmplayInfoSpin {
+  to { transform: rotate(1turn); }
 }
 
 .vgmplayContainer .vgmplayPlayerWindow {

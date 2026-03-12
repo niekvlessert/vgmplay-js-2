@@ -1,0 +1,513 @@
+export function installArchives(VGMPlay_js) {
+	VGMPlay_js.prototype._getArchiveWorker = function () {
+		if (this.archiveWorker) return this.archiveWorker;
+		if (typeof Worker === 'undefined') return null;
+		try {
+			let workerUrl = null;
+			if (this.baseURL) {
+				const candidate = new URL('archive-worker.js', this.baseURL);
+				if (typeof window === 'undefined' || candidate.origin === window.location.origin) {
+					workerUrl = candidate;
+				}
+			}
+			if (!workerUrl && typeof window !== 'undefined') {
+				workerUrl = new URL('archive-worker.js', window.location.href);
+			}
+			const worker = new Worker(workerUrl ? workerUrl.toString() : (this.baseURL + 'archive-worker.js'));
+			worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
+			worker.onerror = (e) => {
+				console.error("[VGM] Archive worker error:", e);
+			};
+			this.archiveWorker = worker;
+			return worker;
+		} catch (e) {
+			console.error("[VGM] Failed to start archive worker:", e);
+			return null;
+		}
+	};
+
+	VGMPlay_js.prototype._onArchiveWorkerMessage = function (e) {
+		const msg = e.data || {};
+		const job = this._archiveWorkerJobs.get(msg.id);
+		if (!job) return;
+		if (msg.type === 'meta') {
+			job.hasKss = !!msg.hasKss;
+			job.entries = (msg.entries || []).map((p) => ({ filepath: p }));
+			return;
+		}
+		if (msg.type === 'file') {
+			const buf = msg.data;
+			const arr = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
+			job.fileDataByPath.set(msg.path, arr);
+			return;
+		}
+		if (msg.type === 'error') {
+			this._archiveWorkerJobs.delete(msg.id);
+			job.reject(new Error(msg.message || "Archive worker error"));
+			return;
+		}
+		if (msg.type === 'done') {
+			this._archiveWorkerJobs.delete(msg.id);
+			job.resolve({
+				entries: job.entries || [],
+				fileDataByPath: job.fileDataByPath,
+				hasKss: job.hasKss
+			});
+		}
+	};
+
+	VGMPlay_js.prototype._extractArchiveWithWorker = function (byteArray, kind) {
+		return new Promise((resolve, reject) => {
+			const worker = this._getArchiveWorker();
+			if (!worker) {
+				reject(new Error("Archive worker unavailable"));
+				return;
+			}
+			const id = this._archiveWorkerSeq++;
+			this._archiveWorkerJobs.set(id, {
+				resolve,
+				reject,
+				entries: null,
+				hasKss: false,
+				fileDataByPath: new Map()
+			});
+			try {
+				worker.postMessage(
+					{ type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL },
+					[byteArray.buffer]
+				);
+			} catch (e) {
+				this._archiveWorkerJobs.delete(id);
+				reject(e);
+			}
+		});
+	};
+
+	VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
+		try {
+			const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
+			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			return;
+		} catch (e) {
+			if (byteArray.byteLength === 0) {
+				console.error("[VGM] Zip worker failed after buffer transfer:", e);
+				return;
+			}
+			console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
+		}
+
+		const yieldEvery = 50;
+		let sinceYield = 0;
+		const maybeYield = async () => {
+			sinceYield++;
+			if (sinceYield >= yieldEvery) {
+				sinceYield = 0;
+				await this._yieldToUI();
+			}
+		};
+
+		this.mz = new Minizip(byteArray);
+		var fileList = this.mz.list();
+		const entries = Array.isArray(fileList)
+			? fileList
+			: (fileList && (fileList.files || fileList.filelist || fileList.entries))
+				? (fileList.files || fileList.filelist || fileList.entries)
+				: Object.values(fileList || {});
+
+		let hasKss = false;
+		for (const entry of entries) {
+			if (!entry || !entry.filepath) continue;
+			const lower = entry.filepath.toLowerCase();
+			if (this._isKssFile(lower)) {
+				hasKss = true;
+				break;
+			}
+			await maybeYield();
+		}
+
+		if (!hasKss) {
+			var m3uFile;
+			var txtFile;
+			var pngFile;
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+
+			for (const entry of entries) {
+				if (!entry || !entry.filepath) continue;
+				const relPath = entry.filepath;
+				const fileArray = this.mz.extract(relPath);
+				const fullPath = gamePath + "/" + relPath;
+
+				const lastSlash = fullPath.lastIndexOf('/');
+				if (lastSlash > gamePath.length) {
+					this._makedirs(fullPath.substring(0, lastSlash));
+				}
+
+				entry.filepath = fullPath;
+				try {
+					const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+					const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+					FS.createDataFile(parent, name, fileArray, true, true);
+				} catch (e) {
+					console.error("Error creating file in FS:", e);
+				}
+				const lower = relPath.toLowerCase();
+				if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
+					const txt = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.includes("gameinfo")) {
+						// Store it in a variable since 'game' object isn't created yet
+						this.tempGameInfo = txt;
+					} else {
+						txtFile = txt;
+					}
+				}
+				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+				await maybeYield();
+			}
+
+			const filteredFiles = entries.filter(e => e && e.filepath);
+			const hasMusLmp = filteredFiles.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mus') || l.endsWith('.lmp');
+			});
+			if (hasMusLmp) {
+				filteredFiles.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					return nameA.localeCompare(nameB);
+				});
+			}
+
+			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
+			this.tempGameInfo = null;
+			this.games.push(game);
+			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (!hasPlayable) {
+				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
+			await this.checkEverythingReady();
+			this._scheduleZipRender();
+			return;
+		}
+
+		const gamesInOrder = [];
+		const gamesByKey = {};
+
+		const getGameKey = (relPath) => {
+			const parts = relPath.split('/');
+			if (parts.length > 1) return parts[0];
+			const lower = relPath.toLowerCase();
+			if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo')) {
+				const dot = relPath.lastIndexOf('.');
+				return dot > 0 ? relPath.substring(0, dot) : relPath;
+			}
+			return 'root';
+		};
+
+		const getRelPath = (relPath, gameKey) => {
+			if (relPath.startsWith(gameKey + '/') && gameKey !== 'root') return relPath.substring(gameKey.length + 1);
+			return relPath;
+		};
+
+		const getGame = (gameKey) => {
+			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+			gamesByKey[gameKey] = game;
+			gamesInOrder.push(game);
+			return game;
+		};
+
+		for (const entry of entries) {
+			if (!entry || !entry.filepath) continue;
+			const relPath = entry.filepath;
+			const fileArray = this.mz.extract(relPath);
+			const gameKey = getGameKey(relPath);
+			const game = getGame(gameKey);
+			const gameRelPath = getRelPath(relPath, gameKey);
+			const fullPath = game.path + "/" + gameRelPath;
+
+			const lastSlash = fullPath.lastIndexOf('/');
+			if (lastSlash > game.path.length) {
+				this._makedirs(fullPath.substring(0, lastSlash));
+			}
+
+			entry.filepath = fullPath;
+			try {
+				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+				FS.createDataFile(parent, name, fileArray, true, true);
+			} catch (e) {
+				console.error("Error creating file in FS:", e);
+			}
+
+			game.files.push({ filepath: fullPath });
+
+			const lower = relPath.toLowerCase();
+			const isInfoFile = lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo');
+			if (isInfoFile) {
+				const lastSlash = relPath.lastIndexOf('/');
+				const lastDot = relPath.lastIndexOf('.');
+				const base = relPath.substring(lastSlash + 1, lastDot > lastSlash ? lastDot : relPath.length);
+				try {
+					const txt = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.includes('gameinfo')) {
+						game.gameinfo = txt;
+					} else {
+						game.kssTxtByBase[base] = txt;
+						game.kssTxtOrder.push(base);
+					}
+				} catch (e) {
+					console.error("Failed to read info file:", fullPath, e);
+				}
+			}
+			if (lower.endsWith('.png') && !game.png) {
+				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+			}
+			await maybeYield();
+		}
+
+		let anyPlayable = false;
+		for (const game of gamesInOrder) {
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (hasPlayable) {
+				// Alphabetical sorting for DOOM MUS/LMP archives
+				const hasMusLmp = game.files.some(f => {
+					const l = (f.filepath || "").toLowerCase();
+					return l.endsWith('.mus') || l.endsWith('.lmp');
+				});
+				if (hasMusLmp) {
+					game.files.sort((a, b) => {
+						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+						return nameA.localeCompare(nameB);
+					});
+				}
+
+				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+				game.name = name;
+				this.games.push(game);
+				anyPlayable = true;
+			}
+			await maybeYield();
+		}
+
+		// Sort games alphabetically
+		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+		if (!anyPlayable) {
+			this._addNoPlayableNotice(sourceName || 'Archive');
+		}
+
+		await this.checkEverythingReady();
+		// Clear and re-render all games to maintain sort order
+		this._scheduleZipRender();
+	};
+
+	VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '') {
+		try {
+			const workerResult = await this._extractArchiveWithWorker(byteArray, '7z');
+			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			return;
+		} catch (e) {
+			if (byteArray.byteLength === 0) {
+				console.error("[VGM] 7z worker failed after buffer transfer:", e);
+				return;
+			}
+			console.warn("[VGM] 7z worker failed, falling back to main thread:", e);
+		}
+
+		const sz = await SevenZip({
+			locateFile: (path) => this.baseURL + path,
+			print: () => { },
+			printErr: () => { }
+		});
+
+		// Create a temp file in 7z-wasm's MEMFS
+		const archiveName = "archive.7z";
+		sz.FS.writeFile(archiveName, byteArray);
+
+		// List files (using direct FS access if possible or calling 7zz?)
+		// Actually, sevenzip-wasm usually provides a way to extract.
+		// Looking at use-strict/7z-wasm, we can run commands.
+		sz.callMain(["x", archiveName, "-o/out"]);
+
+		const gamesInOrder = [];
+		const gamesByKey = {};
+		const allEntries = [];
+		let hasKss = false;
+
+		const getGameKey = (relPath) => {
+			const parts = relPath.split('/');
+			if (parts.length > 1) return parts[0];
+			const lower = relPath.toLowerCase();
+			if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
+				const dot = relPath.lastIndexOf('.');
+				return dot > 0 ? relPath.substring(0, dot) : relPath;
+			}
+			return 'root';
+		};
+
+		const getRelPath = (relPath, gameKey) => {
+			if (relPath.startsWith(gameKey + '/') && gameKey !== 'root') return relPath.substring(gameKey.length + 1);
+			return relPath;
+		};
+
+		// Helper: parse archive filename to extract title (before first '(')
+		const parseArchiveTitle = (filename) => {
+			if (!filename) return "Archive";
+			// Remove extension
+			let name = filename;
+			const dot = name.lastIndexOf('.');
+			if (dot !== -1) name = name.substring(0, dot);
+			// Find first '('
+			const p1 = name.indexOf('(');
+			if (p1 === -1) return name.trim();
+			let title = name.substring(0, p1);
+			// Trim whitespace
+			title = title.replace(/^\s+|\s+$/g, '');
+			return title || "Archive";
+		};
+
+		const getGame = (gameKey) => {
+			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+			const parsedName = parseArchiveTitle(sourceName);
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, name: parsedName };
+			gamesByKey[gameKey] = game;
+			gamesInOrder.push(game);
+			return game;
+		};
+
+		const recurseFS = (path, relativePath = "") => {
+			const entries = sz.FS.readdir(path);
+			for (const entry of entries) {
+				if (entry === "." || entry === "..") continue;
+				const fullSZPath = path + "/" + entry;
+				const fullRelPath = relativePath ? relativePath + "/" + entry : entry;
+				const stat = sz.FS.stat(fullSZPath);
+				if (sz.FS.isDir(stat.mode)) {
+					recurseFS(fullSZPath, fullRelPath);
+				} else {
+					allEntries.push(fullRelPath);
+					if (!hasKss && this._isKssFile(fullRelPath.toLowerCase())) {
+						hasKss = true;
+					}
+					const data = sz.FS.readFile(fullSZPath);
+					const gameKey = getGameKey(fullRelPath);
+					const game = getGame(gameKey);
+					const gameRelPath = getRelPath(fullRelPath, gameKey);
+					const fsPath = game.path + "/" + gameRelPath;
+					const lastSlash = fsPath.lastIndexOf('/');
+					if (lastSlash > game.path.length) {
+						this._makedirs(fsPath.substring(0, lastSlash));
+					}
+					const name = fsPath.substring(fsPath.lastIndexOf('/') + 1);
+					const parent = fsPath.substring(0, fsPath.lastIndexOf('/'));
+					FS.createDataFile(parent, name, data, true, true);
+					game.files.push({ filepath: fsPath });
+
+					const lower = fullRelPath.toLowerCase();
+					if (lower.endsWith('.txt') || lower.endsWith('.trackinfo')) {
+						const base = fullRelPath.substring(fullRelPath.lastIndexOf('/') + 1, fullRelPath.lastIndexOf('.'));
+						const txt = FS.readFile(fsPath, { encoding: "utf8" });
+						game.kssTxtByBase[base] = txt;
+						game.kssTxtOrder.push(base);
+					}
+					if (lower.endsWith('.png') && !game.png) {
+						game.png = new Blob([FS.readFile(fsPath)], { type: "image/png" });
+					}
+				}
+			}
+		};
+
+		recurseFS("/out");
+
+		if (!hasKss) {
+			const gamePath = "/game_" + (++this.amountOfGamesLoaded);
+			this._makedirs(gamePath);
+			const fileList = [];
+			let m3uFile;
+			let txtFile;
+			let pngFile;
+
+			for (const relPath of allEntries) {
+				const data = sz.FS.readFile("/out/" + relPath);
+				const fsPath = gamePath + "/" + relPath;
+				const lastSlash = fsPath.lastIndexOf('/');
+				if (lastSlash > gamePath.length) {
+					this._makedirs(fsPath.substring(0, lastSlash));
+				}
+				const name = fsPath.substring(fsPath.lastIndexOf('/') + 1);
+				const parent = fsPath.substring(0, fsPath.lastIndexOf('/'));
+				FS.createDataFile(parent, name, data, true, true);
+				fileList.push({ filepath: fsPath });
+				const lower = relPath.toLowerCase();
+				if (lower.includes("m3u")) m3uFile = FS.readFile(fsPath, { encoding: "utf8" });
+				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo")) txtFile = FS.readFile(fsPath, { encoding: "utf8" });
+				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fsPath)], { type: "image/png" });
+			}
+
+			const parsedName = parseArchiveTitle(sourceName);
+			const derivedName = this._deriveVgmGameName(fileList, parsedName);
+			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, archiveName: sourceName, name: derivedName };
+
+			// Alphabetical sorting for DOOM MUS/LMP archives
+			const hasMusLmp = fileList.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mus') || l.endsWith('.lmp');
+			});
+			if (hasMusLmp) {
+				fileList.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					return nameA.localeCompare(nameB);
+				});
+			}
+
+			this.games.push(game);
+			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
+			if (!hasPlayable) {
+				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
+			await this.checkEverythingReady();
+			this.showVGMFromZip(game);
+			return;
+		}
+
+		let anyPlayable = false;
+		for (const game of gamesInOrder) {
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (hasPlayable) {
+				// Alphabetical sorting for DOOM MUS/LMP archives
+				const hasMusLmp = game.files.some(f => {
+					const l = (f.filepath || "").toLowerCase();
+					return l.endsWith('.mus') || l.endsWith('.lmp');
+				});
+				if (hasMusLmp) {
+					game.files.sort((a, b) => {
+						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+						return nameA.localeCompare(nameB);
+					});
+				}
+
+				this.games.push(game);
+				anyPlayable = true;
+			}
+		}
+		if (!anyPlayable) {
+			this._addNoPlayableNotice(sourceName || 'Archive');
+		}
+		await this.checkEverythingReady();
+		this._scheduleZipRender();
+	};
+}

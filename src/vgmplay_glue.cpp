@@ -18,6 +18,7 @@
 
 #include "../modules/libkss/src/kss/kss.h"
 #include "../modules/libkss/src/kssplay.h"
+#include "../modules/libkss/src/vm/vm.h"
 #include "../modules/libvgm/emu/EmuStructs.h"
 #include "../modules/libvgm/emu/Resampler.h"
 #include "../modules/libvgm/player/playerbase.hpp"
@@ -1434,6 +1435,56 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
   // For other formats, we'd need to load the file and use player->GetTags.
   // This is heavier but possible. For now, keep it opt-in.
   return "";
+}
+
+int GetKSSPerChSize(void) { return (int)sizeof(KSSPLAY_PER_CH_OUT); }
+
+int GetKSSDeviceMask(void) {
+  if (!isKSS || !gKssPlay || !gKssPlay->vm)
+    return 0;
+  int mask = 0;
+  if (gKssPlay->vm->psg)
+    mask |= 1;
+  if (gKssPlay->vm->scc)
+    mask |= 2;
+  if (gKssPlay->vm->opll)
+    mask |= 4;
+  if (gKssPlay->vm->opl)
+    mask |= 8;
+  if (gKssPlay->vm->sng)
+    mask |= 16;
+  if (gKss && gKss->DA8_enable)
+    mask |= 32;
+  return mask;
+}
+
+void SetKSSChannelMask(int device, int mask) {
+  if (!isKSS || !gKssPlay)
+    return;
+  KSSPLAY_set_channel_mask(gKssPlay, (KSS_DEVICE)device, (uint32_t)mask);
+}
+
+void FillBufferKSSPerCh(float *left, float *right, KSSPLAY_PER_CH_OUT *per_ch, int n) {
+  if (n <= 0)
+    return;
+  if (!isKSS || !gKssPlay) {
+    memset(left, 0, n * sizeof(float));
+    memset(right, 0, n * sizeof(float));
+    if (per_ch)
+      memset(per_ch, 0, sizeof(KSSPLAY_PER_CH_OUT) * n);
+    return;
+  }
+  std::vector<INT16> tmp(n * 2);
+  if (per_ch) {
+    KSSPLAY_calc_with_per_ch(gKssPlay, tmp.data(), per_ch, n);
+  } else {
+    KSSPLAY_calc(gKssPlay, tmp.data(), n);
+  }
+  gKssSamplePos += (uint64_t)n;
+  for (int i = 0; i < n; i++) {
+    left[i] = (float)(tmp[i * 2] / 32768.0f);
+    right[i] = (float)(tmp[i * 2 + 1] / 32768.0f);
+  }
 }
 
 void FillBuffer2(float *left, float *right, int n) {

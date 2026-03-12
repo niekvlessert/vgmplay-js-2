@@ -68,6 +68,28 @@ class VGMPlay_js {
 		this.searchQuery = "";
 		this.searchBarVisible = false;
 		this._searchGlobalKeyHandler = null;
+		this.isKSSActive = false;
+		this.kssAnalyzerActive = false;
+		this.kssOverlayEl = null;
+		this.kssOverlayRows = [];
+		this.kssOverlayDefs = [];
+		this.kssChannelDefs = [];
+		this.kssChannelStates = [];
+		this.kssChannelRows = [];
+		this.kssPerChPtr = 0;
+		this._kssPerChStride = 0;
+		this._kssPerChSamples = 0;
+		this._kssPerChLatest = null;
+		this._kssFft = null;
+		this.kssDeviceActivity = {};
+		this.kssDeviceActiveMask = 0;
+		this.kssDeviceBaseMask = 0;
+		this.kssDeviceDetectedMask = 0;
+		this._kssDeviceScanDefs = null;
+		this._kssDeviceScanPeaks = null;
+		this._kssDeviceScanFrames = 0;
+		this._kssDeviceScanDone = false;
+		this._mousetrapStopCallbackPatched = false;
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
 		this.autoDownloadCount = 0;
@@ -230,7 +252,8 @@ class VGMPlay_js {
 					this.rightPanelMode = this.standaloneSelect.value;
 					this._updateStandaloneRightPanel();
 				});
-				
+				this._updateStandaloneSelectOptions();
+
 				// Memory display
 				this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
 				if (this.memoryDisplay) this.memoryDisplay.style.display = 'none';
@@ -373,13 +396,13 @@ class VGMPlay_js {
 
 	_updateMemoryDisplay() {
 		if (!Module._GetFreeMemory || !Module._GetTotalMemory || !Module._GetUsedMemory || !Module._GetHeapTopUsedMemory) return;
-		
+
 		const usedMem = Module._GetUsedMemory(); // allocator in-use
 		const freeMem = Module._GetFreeMemory(); // allocator free blocks
 		const totalMem = Module._GetTotalMemory(); // wasm heap size
 		const heapTopUsed = Module._GetHeapTopUsedMemory(); // sbrk pointer
 		const heapTopFree = totalMem - heapTopUsed;
-		
+
 		if (this._memoryBaselineUsed === null) {
 			this._memoryBaselineUsed = usedMem;
 		}
@@ -401,7 +424,7 @@ class VGMPlay_js {
 			`;
 		}
 	}
-	
+
 	_resetMobileIdleTimer() {
 		if (!this.isMobile) return;
 		if (this._mobileIdleTimer) clearTimeout(this._mobileIdleTimer);
@@ -1822,127 +1845,33 @@ class VGMPlay_js {
 				? (fileList.files || fileList.filelist || fileList.entries)
 				: Object.values(fileList || {});
 
-			let hasKss = false;
-			for (const entry of entries) {
-				if (!entry || !entry.filepath) continue;
-				const lower = entry.filepath.toLowerCase();
-				if (this._isKssFile(lower)) {
-					hasKss = true;
-					break;
-				}
-				await maybeYield();
+		let hasKss = false;
+		for (const entry of entries) {
+			if (!entry || !entry.filepath) continue;
+			const lower = entry.filepath.toLowerCase();
+			if (this._isKssFile(lower)) {
+				hasKss = true;
+				break;
 			}
+			await maybeYield();
+		}
 
-			if (!hasKss) {
-				var m3uFile;
-				var txtFile;
-				var pngFile;
-				this.amountOfGamesLoaded++;
-				const gamePath = "/game_" + this.amountOfGamesLoaded;
-				this._makedirs(gamePath);
-
-				for (const entry of entries) {
-					if (!entry || !entry.filepath) continue;
-					const relPath = entry.filepath;
-					const fileArray = this.mz.extract(relPath);
-					const fullPath = gamePath + "/" + relPath;
-
-					const lastSlash = fullPath.lastIndexOf('/');
-					if (lastSlash > gamePath.length) {
-						this._makedirs(fullPath.substring(0, lastSlash));
-					}
-
-					entry.filepath = fullPath;
-					try {
-						const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
-						const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
-						FS.createDataFile(parent, name, fileArray, true, true);
-					} catch (e) {
-						console.error("Error creating file in FS:", e);
-					}
-					const lower = relPath.toLowerCase();
-					if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
-					if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
-						const txt = FS.readFile(fullPath, { encoding: "utf8" });
-						if (lower.includes("gameinfo")) {
-							// Store it in a variable since 'game' object isn't created yet
-							this.tempGameInfo = txt;
-						} else {
-							txtFile = txt;
-						}
-					}
-					if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-					await maybeYield();
-				}
-
-				const filteredFiles = entries.filter(e => e && e.filepath);
-				const hasMusLmp = filteredFiles.some(f => {
-					const l = (f.filepath || "").toLowerCase();
-					return l.endsWith('.mus') || l.endsWith('.lmp');
-				});
-				if (hasMusLmp) {
-					filteredFiles.sort((a, b) => {
-						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
-						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
-						return nameA.localeCompare(nameB);
-					});
-				}
-
-				const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
-				var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
-				this.tempGameInfo = null;
-				this.games.push(game);
-				this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-				const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
-				if (!hasPlayable) {
-					this._addNoPlayableNotice(sourceName || 'Archive');
-				}
-				await this.checkEverythingReady();
-				this._scheduleZipRender();
-				return;
-			}
-
-			const gamesInOrder = [];
-			const gamesByKey = {};
-
-			const getGameKey = (relPath) => {
-				const parts = relPath.split('/');
-				if (parts.length > 1) return parts[0];
-				const lower = relPath.toLowerCase();
-				if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo')) {
-					const dot = relPath.lastIndexOf('.');
-					return dot > 0 ? relPath.substring(0, dot) : relPath;
-				}
-				return 'root';
-			};
-
-			const getRelPath = (relPath, gameKey) => {
-				if (relPath.startsWith(gameKey + '/') && gameKey !== 'root') return relPath.substring(gameKey.length + 1);
-				return relPath;
-			};
-
-			const getGame = (gameKey) => {
-				if (gamesByKey[gameKey]) return gamesByKey[gameKey];
-				this.amountOfGamesLoaded++;
-				const gamePath = "/game_" + this.amountOfGamesLoaded;
-				this._makedirs(gamePath);
-				const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
-				gamesByKey[gameKey] = game;
-				gamesInOrder.push(game);
-				return game;
-			};
+		if (!hasKss) {
+			var m3uFile;
+			var txtFile;
+			var pngFile;
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
 
 			for (const entry of entries) {
 				if (!entry || !entry.filepath) continue;
 				const relPath = entry.filepath;
 				const fileArray = this.mz.extract(relPath);
-				const gameKey = getGameKey(relPath);
-				const game = getGame(gameKey);
-				const gameRelPath = getRelPath(relPath, gameKey);
-				const fullPath = game.path + "/" + gameRelPath;
+				const fullPath = gamePath + "/" + relPath;
 
 				const lastSlash = fullPath.lastIndexOf('/');
-				if (lastSlash > game.path.length) {
+				if (lastSlash > gamePath.length) {
 					this._makedirs(fullPath.substring(0, lastSlash));
 				}
 
@@ -1954,68 +1883,162 @@ class VGMPlay_js {
 				} catch (e) {
 					console.error("Error creating file in FS:", e);
 				}
-
-				game.files.push({ filepath: fullPath });
-
 				const lower = relPath.toLowerCase();
-				const isInfoFile = lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo');
-				if (isInfoFile) {
-					const lastSlash = relPath.lastIndexOf('/');
-					const lastDot = relPath.lastIndexOf('.');
-					const base = relPath.substring(lastSlash + 1, lastDot > lastSlash ? lastDot : relPath.length);
-					try {
-						const txt = FS.readFile(fullPath, { encoding: "utf8" });
-						if (lower.includes('gameinfo')) {
-							game.gameinfo = txt;
-						} else {
-							game.kssTxtByBase[base] = txt;
-							game.kssTxtOrder.push(base);
-						}
-					} catch (e) {
-						console.error("Failed to read info file:", fullPath, e);
+				if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
+					const txt = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.includes("gameinfo")) {
+						// Store it in a variable since 'game' object isn't created yet
+						this.tempGameInfo = txt;
+					} else {
+						txtFile = txt;
 					}
 				}
-				if (lower.endsWith('.png') && !game.png) {
-					game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-				}
+				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 				await maybeYield();
 			}
 
-			let anyPlayable = false;
-			for (const game of gamesInOrder) {
-				const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
-				if (hasPlayable) {
-					// Alphabetical sorting for DOOM MUS/LMP archives
-					const hasMusLmp = game.files.some(f => {
-						const l = (f.filepath || "").toLowerCase();
-						return l.endsWith('.mus') || l.endsWith('.lmp');
-					});
-					if (hasMusLmp) {
-						game.files.sort((a, b) => {
-							const nameA = (a.filepath || "").split('/').pop().toLowerCase();
-							const nameB = (b.filepath || "").split('/').pop().toLowerCase();
-							return nameA.localeCompare(nameB);
-						});
-					}
-
-					const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-					game.name = name;
-					this.games.push(game);
-					anyPlayable = true;
-				}
-				await maybeYield();
+			const filteredFiles = entries.filter(e => e && e.filepath);
+			const hasMusLmp = filteredFiles.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mus') || l.endsWith('.lmp');
+			});
+			if (hasMusLmp) {
+				filteredFiles.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					return nameA.localeCompare(nameB);
+				});
 			}
 
-			// Sort games alphabetically
+			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
+			this.tempGameInfo = null;
+			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-			if (!anyPlayable) {
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (!hasPlayable) {
 				this._addNoPlayableNotice(sourceName || 'Archive');
 			}
-
 			await this.checkEverythingReady();
-			// Clear and re-render all games to maintain sort order
 			this._scheduleZipRender();
+			return;
+		}
+
+		const gamesInOrder = [];
+		const gamesByKey = {};
+
+		const getGameKey = (relPath) => {
+			const parts = relPath.split('/');
+			if (parts.length > 1) return parts[0];
+			const lower = relPath.toLowerCase();
+			if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo')) {
+				const dot = relPath.lastIndexOf('.');
+				return dot > 0 ? relPath.substring(0, dot) : relPath;
+			}
+			return 'root';
+		};
+
+		const getRelPath = (relPath, gameKey) => {
+			if (relPath.startsWith(gameKey + '/') && gameKey !== 'root') return relPath.substring(gameKey.length + 1);
+			return relPath;
+		};
+
+		const getGame = (gameKey) => {
+			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+			this.amountOfGamesLoaded++;
+			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			this._makedirs(gamePath);
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+			gamesByKey[gameKey] = game;
+			gamesInOrder.push(game);
+			return game;
+		};
+
+		for (const entry of entries) {
+			if (!entry || !entry.filepath) continue;
+			const relPath = entry.filepath;
+			const fileArray = this.mz.extract(relPath);
+			const gameKey = getGameKey(relPath);
+			const game = getGame(gameKey);
+			const gameRelPath = getRelPath(relPath, gameKey);
+			const fullPath = game.path + "/" + gameRelPath;
+
+			const lastSlash = fullPath.lastIndexOf('/');
+			if (lastSlash > game.path.length) {
+				this._makedirs(fullPath.substring(0, lastSlash));
+			}
+
+			entry.filepath = fullPath;
+			try {
+				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
+				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
+				FS.createDataFile(parent, name, fileArray, true, true);
+			} catch (e) {
+				console.error("Error creating file in FS:", e);
+			}
+
+			game.files.push({ filepath: fullPath });
+
+			const lower = relPath.toLowerCase();
+			const isInfoFile = lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo');
+			if (isInfoFile) {
+				const lastSlash = relPath.lastIndexOf('/');
+				const lastDot = relPath.lastIndexOf('.');
+				const base = relPath.substring(lastSlash + 1, lastDot > lastSlash ? lastDot : relPath.length);
+				try {
+					const txt = FS.readFile(fullPath, { encoding: "utf8" });
+					if (lower.includes('gameinfo')) {
+						game.gameinfo = txt;
+					} else {
+						game.kssTxtByBase[base] = txt;
+						game.kssTxtOrder.push(base);
+					}
+				} catch (e) {
+					console.error("Failed to read info file:", fullPath, e);
+				}
+			}
+			if (lower.endsWith('.png') && !game.png) {
+				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+			}
+			await maybeYield();
+		}
+
+		let anyPlayable = false;
+		for (const game of gamesInOrder) {
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (hasPlayable) {
+				// Alphabetical sorting for DOOM MUS/LMP archives
+				const hasMusLmp = game.files.some(f => {
+					const l = (f.filepath || "").toLowerCase();
+					return l.endsWith('.mus') || l.endsWith('.lmp');
+				});
+				if (hasMusLmp) {
+					game.files.sort((a, b) => {
+						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+						return nameA.localeCompare(nameB);
+					});
+				}
+
+				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+				game.name = name;
+				this.games.push(game);
+				anyPlayable = true;
+			}
+			await maybeYield();
+		}
+
+		// Sort games alphabetically
+		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+		if (!anyPlayable) {
+			this._addNoPlayableNotice(sourceName || 'Archive');
+		}
+
+		await this.checkEverythingReady();
+		// Clear and re-render all games to maintain sort order
+		this._scheduleZipRender();
 	}
 
 	/**
@@ -3046,6 +3069,10 @@ class VGMPlay_js {
 			this.GetDeviceVolume = Module.cwrap('GetDeviceVolume', 'number', ['number']);
 			this.SetDeviceVolume = Module.cwrap('SetDeviceVolume', 'void', ['number', 'number']);
 			this.PrefillPSF = Module.cwrap('PrefillPSF', 'void', ['number', 'number']);
+			this.FillBufferKSSPerCh = Module.cwrap('FillBufferKSSPerCh', 'void', ['number', 'number', 'number', 'number']);
+			this.GetKSSPerChSize = Module.cwrap('GetKSSPerChSize', 'number');
+			this.GetKSSDeviceMask = Module.cwrap('GetKSSDeviceMask', 'number');
+			this.SetKSSChannelMask = Module.cwrap('SetKSSChannelMask', 'void', ['number', 'number']);
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
@@ -3162,19 +3189,520 @@ class VGMPlay_js {
 		if (!this.standalone || !this.standaloneAnalyzerEl) return;
 		const mode = this.rightPanelMode || 'bars';
 		const isSpectrum = mode === 'bars' || mode === 'lines' || mode === 'dual' ||
-			mode === 'oct6' || mode === 'radialApple' || mode === 'linePrism';
+			mode === 'oct6' || mode === 'radialApple' || mode === 'linePrism' || mode === 'prismPerChannel';
 
 		this.standaloneAnalyzerEl.style.display = isSpectrum ? 'block' : 'none';
 
 		if (isSpectrum) {
-			this.analyzerPreset = mode;
-			this._ensureAudioMotion().then(() => {
-				this._initStandaloneAnalyzer(true);
-			});
+			if (this.isKSSActive && mode === 'prismPerChannel') {
+				this.standaloneAnalyzerEl.style.display = 'flex';
+				this._initKssChannelAnalyzer();
+				if (this._audiomotion && typeof this._audiomotion.destroy === 'function') {
+					try { this._audiomotion.destroy(); } catch (e) { }
+					this._audiomotion = null;
+				}
+			} else {
+				this.standaloneAnalyzerEl.style.display = 'block';
+				if (this.kssAnalyzerEl) {
+					this.kssAnalyzerEl.remove();
+					this.kssAnalyzerEl = null;
+				}
+				this.kssAnalyzerActive = false;
+				this.standaloneAnalyzerEl.classList.remove('kssActive');
+				this.analyzerPreset = mode;
+				this._ensureAudioMotion().then(() => {
+					this._initStandaloneAnalyzer(true);
+				});
+			}
+			const showOverlay = this.isKSSActive && mode !== 'prismPerChannel';
+			if (showOverlay) {
+				this._initKssOverlay();
+			} else if (this.kssOverlayEl) {
+				this.kssOverlayEl.style.display = 'none';
+			}
 		} else if (this._audiomotion && typeof this._audiomotion.destroy === 'function') {
 			try { this._audiomotion.destroy(); } catch (e) { }
 			this._audiomotion = null;
+			if (this.kssAnalyzerEl) this.kssAnalyzerEl.style.display = 'none';
+			this.kssAnalyzerActive = false;
+			this.standaloneAnalyzerEl.classList.remove('kssActive');
+			if (this.kssOverlayEl) this.kssOverlayEl.style.display = 'none';
 		}
+	}
+	_updateStandaloneSelectOptions() {
+		if (!this.standaloneSelect) return;
+		const current = this.standaloneSelect.value;
+		let html = `
+			<option value="off">Off</option>
+			<option value="bars">Big Bars</option>
+			<option value="lines">Lines</option>
+			<option value="dual">Dual</option>
+			<option value="oct6">1/6 Octave</option>
+			<option value="radialApple">Radial (Apple ][)</option>
+			<option value="linePrism">Line Prism (Dual Vertical)</option>
+		`;
+		if (this.isKSSActive) {
+			html += `<option value="prismPerChannel">Prism per channel</option>`;
+		}
+		this.standaloneSelect.innerHTML = html;
+
+		// Restore selection if possible
+		const options = Array.from(this.standaloneSelect.options).map(o => o.value);
+		if (options.includes(current)) {
+			this.standaloneSelect.value = current;
+		} else {
+			this.standaloneSelect.value = 'linePrism';
+			this.rightPanelMode = 'linePrism';
+		}
+	}
+
+
+	_buildKssChannelDefs(mask) {
+		const defs = [];
+		const OFF_PSG = 0;
+		const OFF_SCC = 3;
+		const OFF_OPLL = 8;
+		const OFF_OPL = 23;
+
+		if (mask & 1) {
+			for (let i = 0; i < 3; i++) {
+				defs.push({ label: `PSG #${i + 1}`, offset: OFF_PSG + i, device: 0, maskBit: i, chip: 'psg' });
+			}
+		}
+		if (mask & 2) {
+			for (let i = 0; i < 5; i++) {
+				defs.push({ label: `SCC #${i + 1}`, offset: OFF_SCC + i, device: 1, maskBit: i, chip: 'scc' });
+			}
+		}
+		if (mask & 4) {
+			for (let i = 0; i < 9; i++) {
+				defs.push({ label: `OPLL #${i + 1}`, offset: OFF_OPLL + i, device: 2, maskBit: i, chip: 'opll' });
+			}
+			defs.push({ label: 'OPLL BD', offset: OFF_OPLL + 9, device: 2, maskBit: 13, chip: 'opll' });
+			defs.push({ label: 'OPLL HH', offset: OFF_OPLL + 10, device: 2, maskBit: 9, chip: 'opll' });
+			defs.push({ label: 'OPLL SD', offset: OFF_OPLL + 11, device: 2, maskBit: 12, chip: 'opll' });
+			defs.push({ label: 'OPLL TOM', offset: OFF_OPLL + 12, device: 2, maskBit: 11, chip: 'opll' });
+			defs.push({ label: 'OPLL CYM', offset: OFF_OPLL + 13, device: 2, maskBit: 10, chip: 'opll' });
+		}
+		if (mask & 8) {
+			for (let i = 0; i < 9; i++) {
+				defs.push({ label: `OPL #${i + 1}`, offset: OFF_OPL + i, device: 3, maskBit: i, chip: 'opl' });
+			}
+			defs.push({ label: 'OPL BD', offset: OFF_OPL + 9, device: 3, maskBit: 13, chip: 'opl' });
+			defs.push({ label: 'OPL HH', offset: OFF_OPL + 10, device: 3, maskBit: 9, chip: 'opl' });
+			defs.push({ label: 'OPL SD', offset: OFF_OPL + 11, device: 3, maskBit: 12, chip: 'opl' });
+			defs.push({ label: 'OPL TOM', offset: OFF_OPL + 12, device: 3, maskBit: 11, chip: 'opl' });
+			defs.push({ label: 'OPL CYM', offset: OFF_OPL + 13, device: 3, maskBit: 10, chip: 'opl' });
+			defs.push({ label: 'OPL ADPCM', offset: OFF_OPL + 14, device: 3, maskBit: 14, chip: 'opl' });
+		}
+		if (mask & 16) {
+			defs.push({ label: 'SNG #1', offset: 38, device: 0, maskBit: 0, chip: 'sng' });
+			defs.push({ label: 'SNG #2', offset: 39, device: 0, maskBit: 1, chip: 'sng' });
+			defs.push({ label: 'SNG #3', offset: 40, device: 0, maskBit: 2, chip: 'sng' });
+			defs.push({ label: 'SNG Noise', offset: 41, device: 0, maskBit: 3, chip: 'sng' });
+		}
+		return defs;
+	}
+
+	_resetKssDeviceScan() {
+		this.kssDeviceBaseMask = this.GetKSSDeviceMask ? this.GetKSSDeviceMask() : 0;
+		this.kssDeviceDetectedMask = 0;
+		this._kssDeviceScanFrames = 0;
+		this._kssDeviceScanDone = false;
+		this._kssDeviceScanDefs = this._buildKssChannelDefs(this.kssDeviceBaseMask);
+		this._kssDeviceScanPeaks = {
+			psg: 0,
+			scc: 0,
+			opll: 0,
+			opl: 0,
+			sng: 0,
+			dac: 0
+		};
+	}
+
+	_scanKssDevicesIfNeeded(perCh, stride, sampleCount) {
+		if (this._kssDeviceScanDone || !perCh || !this._kssDeviceScanDefs) return;
+		const defs = this._kssDeviceScanDefs;
+		const peaks = this._kssDeviceScanPeaks;
+		const step = 4;
+		const start = Math.max(0, sampleCount - 512);
+
+		defs.forEach((def) => {
+			let peak = 0;
+			for (let n = start; n < sampleCount; n += step) {
+				const v = Math.abs(perCh[n * stride + def.offset] || 0);
+				if (v > peak) peak = v;
+			}
+			const chip = def.chip || 'psg';
+			if (peak > peaks[chip]) peaks[chip] = peak;
+		});
+
+		this._kssDeviceScanFrames += 1;
+		if (this._kssDeviceScanFrames < 6) return;
+
+		const chipBits = { psg: 1, scc: 2, opll: 4, opl: 8, sng: 16, dac: 32 };
+		let mask = 0;
+		const threshold = 250;
+		Object.keys(chipBits).forEach((chip) => {
+			if (peaks[chip] > threshold) mask |= chipBits[chip];
+		});
+		if (!mask) mask = this.kssDeviceBaseMask || 0;
+		this.kssDeviceDetectedMask = mask;
+		this.kssDeviceActiveMask = mask;
+		this._kssDeviceScanDone = true;
+		this._initKssChannelAnalyzer(true);
+		this._initKssOverlay(true);
+	}
+
+	_initKssChannelAnalyzer(forceRebuild = false) {
+		if (this.rightPanelMode !== 'prismPerChannel') return;
+		if (!this.standaloneAnalyzerEl || !this.GetKSSDeviceMask) return;
+		const baseMask = this.kssDeviceBaseMask || (this.GetKSSDeviceMask ? this.GetKSSDeviceMask() : 0);
+		const mask = this.kssDeviceDetectedMask ? this.kssDeviceDetectedMask : baseMask;
+		const defs = this._buildKssChannelDefs(mask);
+		const needsRebuild = forceRebuild || !this.kssAnalyzerEl || this.kssChannelDefs.length !== defs.length || this.kssDeviceActiveMask !== mask;
+
+		if (needsRebuild) {
+			this.kssAnalyzerEl = document.createElement('div');
+			this.kssAnalyzerEl.className = 'vgmplayKssAnalyzer';
+			this.kssAnalyzerEl.innerHTML = '';
+			this.kssChannelDefs = defs;
+			this.kssDeviceActiveMask = mask;
+			this.kssChannelStates = defs.map(() => ({ mute: false, solo: false }));
+			this.kssChannelRows = [];
+			this.standaloneAnalyzerEl.innerHTML = '';
+			this.standaloneAnalyzerEl.appendChild(this.kssAnalyzerEl);
+			this.kssDeviceActivity = {};
+
+			const chipGroups = {};
+			const chipOrder = [];
+			const addGroup = (key, title, cols) => {
+				if (chipGroups[key]) return;
+				const group = document.createElement('div');
+				group.className = 'vgmplayKssChipGroup';
+				group.dataset.cols = String(cols);
+				const header = document.createElement('div');
+				header.className = 'vgmplayKssChipHeader';
+				header.textContent = title;
+				const grid = document.createElement('div');
+				grid.className = 'vgmplayKssChipGrid';
+				group.appendChild(header);
+				group.appendChild(grid);
+				chipGroups[key] = { group, grid, cols };
+				chipOrder.push(group);
+			};
+
+			// Create chip groups based on detected devices
+			if (mask & 1) addGroup('psg', 'PSG', 3);
+			if (mask & 2) addGroup('scc', 'SCC', 5);
+			if (mask & 4) addGroup('opll', 'OPLL', 5);
+			if (mask & 8) addGroup('opl', 'OPL', 5);
+			if (mask & 16) addGroup('sng', 'SNG', 4);
+			if (mask & 32) addGroup('dac', 'DAC', 2);
+
+			chipOrder.forEach((group) => this.kssAnalyzerEl.appendChild(group));
+
+			defs.forEach((def, idx) => {
+				const tile = document.createElement('div');
+				tile.className = 'vgmplayKssChannelTile';
+
+				const canvas = document.createElement('canvas');
+				canvas.className = 'vgmplayKssChannelCanvas';
+				canvas.width = 240;
+				canvas.height = 40;
+
+				const label = document.createElement('div');
+				label.className = 'vgmplayKssChannelLabel';
+				const name = document.createElement('span');
+				name.className = 'vgmplayKssChannelName';
+				name.textContent = def.label;
+
+				const muteBtn = document.createElement('button');
+				muteBtn.className = 'vgmplayKssChannelBtn';
+				muteBtn.textContent = 'M';
+				muteBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this._toggleKssChannelMute(idx);
+				});
+
+				const soloBtn = document.createElement('button');
+				soloBtn.className = 'vgmplayKssChannelBtn';
+				soloBtn.textContent = 'S';
+				soloBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this._toggleKssChannelSolo(idx);
+				});
+
+				label.appendChild(name);
+				label.appendChild(muteBtn);
+				label.appendChild(soloBtn);
+
+				tile.appendChild(canvas);
+				tile.appendChild(label);
+
+				const groupKey = def.chip || null;
+
+				if (groupKey && chipGroups[groupKey]) {
+					chipGroups[groupKey].grid.appendChild(tile);
+				} else {
+					this.kssAnalyzerEl.appendChild(tile);
+				}
+
+				this.kssChannelRows.push({
+					tile,
+					canvas,
+					ctx: canvas.getContext('2d'),
+					muteBtn,
+					soloBtn,
+					spectrum: new Float32Array(64),
+					timeDomain: new Float32Array(256)
+				});
+			});
+		}
+
+		this.kssAnalyzerEl.style.display = 'flex';
+		this.kssAnalyzerActive = true;
+		this.standaloneAnalyzerEl.classList.add('kssActive');
+		this._applyKssChannelMasks();
+		this._updateKssChannelButtons();
+	}
+
+	_initKssOverlay(forceRebuild = false) {
+		if (!this.standalone || !this.standaloneAnalyzerEl) return;
+		if (!this.isKSSActive || !this.GetKSSDeviceMask) {
+			if (this.kssOverlayEl) this.kssOverlayEl.style.display = 'none';
+			return;
+		}
+
+		const baseMask = this.kssDeviceBaseMask || (this.GetKSSDeviceMask ? this.GetKSSDeviceMask() : 0);
+		const mask = this.kssDeviceDetectedMask ? this.kssDeviceDetectedMask : baseMask;
+		const defs = this._buildKssChannelDefs(mask);
+		const needsRebuild = forceRebuild ||
+			!this.kssOverlayEl ||
+			!this.kssOverlayEl.isConnected ||
+			this.kssOverlayDefs.length !== defs.length ||
+			this.kssDeviceActiveMask !== mask;
+
+		if (needsRebuild) {
+			const prevStates = new Map();
+			this.kssChannelDefs.forEach((def, idx) => {
+				prevStates.set(`${def.device}:${def.offset}`, this.kssChannelStates[idx]);
+			});
+
+			this.kssOverlayDefs = defs;
+			this.kssChannelDefs = defs;
+			this.kssDeviceActiveMask = mask;
+			this.kssChannelStates = defs.map((def) => {
+				const key = `${def.device}:${def.offset}`;
+				const prev = prevStates.get(key);
+				return prev ? { mute: !!prev.mute, solo: !!prev.solo } : { mute: false, solo: false };
+			});
+
+			if (!this.kssOverlayEl) {
+				this.kssOverlayEl = document.createElement('div');
+				this.kssOverlayEl.className = 'vgmplayKssOverlay';
+				this.kssOverlayEl.style.position = 'absolute';
+				this.kssOverlayEl.style.top = '8px';
+				this.kssOverlayEl.style.left = '40px';
+				this.kssOverlayEl.style.zIndex = '6';
+				this.kssOverlayEl.style.pointerEvents = 'auto';
+			}
+			if (!this.kssOverlayEl.isConnected) {
+				this.standaloneAnalyzerEl.style.position = 'relative';
+				this.standaloneAnalyzerEl.appendChild(this.kssOverlayEl);
+			}
+
+			this.kssOverlayEl.innerHTML = '';
+			this.kssOverlayRows = [];
+
+			defs.forEach((def, idx) => {
+				const row = document.createElement('div');
+				row.className = 'vgmplayKssOverlayRow';
+
+				const label = document.createElement('span');
+				label.className = 'vgmplayKssOverlayLabel';
+				label.textContent = def.label;
+
+				const muteBtn = document.createElement('button');
+				muteBtn.className = 'vgmplayKssChannelBtn';
+				muteBtn.textContent = 'M';
+				muteBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this._toggleKssChannelMute(idx);
+				});
+
+				const soloBtn = document.createElement('button');
+				soloBtn.className = 'vgmplayKssChannelBtn';
+				soloBtn.textContent = 'S';
+				soloBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this._toggleKssChannelSolo(idx);
+				});
+
+				row.appendChild(label);
+				row.appendChild(muteBtn);
+				row.appendChild(soloBtn);
+
+				this.kssOverlayEl.appendChild(row);
+				this.kssOverlayRows.push({ muteBtn, soloBtn });
+			});
+		}
+
+		this.kssOverlayEl.style.display = 'block';
+		this._updateKssChannelButtons();
+	}
+
+	_toggleKssChannelMute(idx) {
+		const state = this.kssChannelStates[idx];
+		if (!state) return;
+		state.mute = !state.mute;
+		if (state.mute) state.solo = false;
+		this._applyKssChannelMasks();
+		this._updateKssChannelButtons();
+	}
+
+	_toggleKssChannelSolo(idx) {
+		const state = this.kssChannelStates[idx];
+		if (!state) return;
+		state.solo = !state.solo;
+		if (state.solo) state.mute = false;
+		this._applyKssChannelMasks();
+		this._updateKssChannelButtons();
+	}
+
+	_updateKssChannelButtons() {
+		const updateRows = (rows) => {
+			rows.forEach((row, idx) => {
+				const state = this.kssChannelStates[idx];
+				if (!state) return;
+				row.muteBtn.classList.toggle('active', !!state.mute);
+				row.soloBtn.classList.toggle('active', !!state.solo);
+			});
+		};
+		updateRows(this.kssChannelRows);
+		updateRows(this.kssOverlayRows);
+	}
+
+	_applyKssChannelMasks() {
+		if (!this.isKSSActive || !this.SetKSSChannelMask) return;
+		const soloActive = this.kssChannelStates.some((s) => s.solo);
+		const deviceMasks = { 0: 0, 1: 0, 2: 0, 3: 0 };
+
+		this.kssChannelDefs.forEach((def, idx) => {
+			const state = this.kssChannelStates[idx];
+			const shouldMute = state.mute || (soloActive && !state.solo);
+			if (shouldMute && def.maskBit != null) {
+				deviceMasks[def.device] |= (1 << def.maskBit);
+			}
+		});
+
+		this.SetKSSChannelMask(0, deviceMasks[0]);
+		this.SetKSSChannelMask(1, deviceMasks[1]);
+		this.SetKSSChannelMask(2, deviceMasks[2]);
+		this.SetKSSChannelMask(3, deviceMasks[3]);
+	}
+
+	_ensureKssFftTables(size, bins) {
+		if (this._kssFft && this._kssFft.size === size && this._kssFft.bins === bins) return;
+		const cos = [];
+		const sin = [];
+		const window = new Float32Array(size);
+		for (let n = 0; n < size; n++) {
+			window[n] = 0.5 - 0.5 * Math.cos((2 * Math.PI * n) / (size - 1));
+		}
+		for (let k = 0; k < bins; k++) {
+			const cosRow = new Float32Array(size);
+			const sinRow = new Float32Array(size);
+			for (let n = 0; n < size; n++) {
+				const angle = (2 * Math.PI * k * n) / size;
+				cosRow[n] = Math.cos(angle);
+				sinRow[n] = Math.sin(angle);
+			}
+			cos.push(cosRow);
+			sin.push(sinRow);
+		}
+		this._kssFft = { size, bins, cos, sin, window };
+	}
+
+	_drawKssAnalyzer() {
+		if (!this.kssAnalyzerActive || !this._kssPerChLatest || !this.kssChannelRows.length) return;
+		const fftSize = 256;
+		const bins = 64;
+		this._ensureKssFftTables(fftSize, bins);
+		const { cos, sin, window } = this._kssFft;
+		const perCh = this._kssPerChLatest;
+		const stride = this._kssPerChStride;
+		const sampleCount = this._kssPerChSamples;
+		const start = Math.max(0, sampleCount - fftSize);
+
+		const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+		this.kssChannelRows.forEach((row, idx) => {
+			const def = this.kssChannelDefs[idx];
+			const ctx = row.ctx;
+			const canvas = row.canvas;
+			const width = Math.floor(canvas.clientWidth || canvas.width);
+			const height = Math.floor(canvas.clientHeight || canvas.height);
+			if (canvas.width !== width) canvas.width = width;
+			if (canvas.height !== height) canvas.height = height;
+
+			let peak = 0;
+			for (let n = 0; n < fftSize; n++) {
+				const sampleIdx = (start + n) * stride + def.offset;
+				const v = (perCh[sampleIdx] || 0) / 32768.0;
+				row.timeDomain[n] = v;
+				const av = Math.abs(v);
+				if (av > peak) peak = av;
+			}
+
+			for (let k = 0; k < bins; k++) {
+				let re = 0;
+				let im = 0;
+				const cosRow = cos[k];
+				const sinRow = sin[k];
+				for (let n = 0; n < fftSize; n++) {
+					const v = row.timeDomain[n] * window[n];
+					re += v * cosRow[n];
+					im -= v * sinRow[n];
+				}
+				const mag = Math.sqrt(re * re + im * im) / fftSize;
+				const val = Math.min(1, mag * 12);
+				// Exponential smoothing to reduce "jumping"
+				row.spectrum[k] = (row.spectrum[k] * 0.4) + (val * 0.6);
+			}
+
+			ctx.fillStyle = '#000000';
+			ctx.fillRect(0, 0, width, height);
+
+			const gradient = ctx.createLinearGradient(0, height, 0, 0);
+			gradient.addColorStop(0, '#0b1b2a');
+			gradient.addColorStop(0.2, '#0bc');
+			gradient.addColorStop(0.4, '#2cb');
+			gradient.addColorStop(0.6, '#9d5');
+			gradient.addColorStop(0.8, '#ed0');
+			gradient.addColorStop(1, '#e94');
+			ctx.strokeStyle = gradient;
+			ctx.lineWidth = 1.5;
+
+			const binCount = bins;
+			const mid = width / 2;
+			ctx.beginPath();
+			// Draw right expansion
+			for (let k = 0; k < binCount; k++) {
+				const x = mid + (k / (binCount - 1)) * mid;
+				const v = Math.min(row.spectrum[k] * 2.8, 1);
+				const y = height - v * height;
+				if (k === 0) ctx.moveTo(x, y);
+				else ctx.lineTo(x, y);
+			}
+			// Draw left expansion (mirrored)
+			for (let k = 0; k < binCount; k++) {
+				const x = mid - (k / (binCount - 1)) * mid;
+				const v = Math.min(row.spectrum[k] * 2.8, 1);
+				const y = height - v * height;
+				ctx.lineTo(x, y);
+			}
+			ctx.stroke();
+		});
 	}
 
 	generateBuffer() {
@@ -3183,7 +3711,23 @@ class VGMPlay_js {
 			this.PrefillPSF(4096, 1);
 		}
 		// Always create fresh views from Module.HEAPU8.buffer in case it was reallocated (detached)
-		this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
+		if (this.isKSSActive && this.FillBufferKSSPerCh && this.GetKSSPerChSize) {
+			const perChSize = this.GetKSSPerChSize();
+			const stride = Math.floor(perChSize / 2);
+			if (!this.kssPerChPtr || this._kssPerChSamples !== N || this._kssPerChStride !== stride) {
+				if (this.kssPerChPtr) Module._free(this.kssPerChPtr);
+				this.kssPerChPtr = Module._malloc(N * perChSize);
+				this._kssPerChSamples = N;
+				this._kssPerChStride = stride;
+			}
+			this.FillBufferKSSPerCh(this.dataPtrs[0], this.dataPtrs[1], this.kssPerChPtr, N);
+			const perChHeap = new Int16Array(Module.HEAPU8.buffer, this.kssPerChPtr, N * this._kssPerChStride);
+			this._kssPerChLatest = new Int16Array(perChHeap);
+			this._scanKssDevicesIfNeeded(this._kssPerChLatest, this._kssPerChStride, N);
+		} else {
+			this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
+			this._kssPerChLatest = null;
+		}
 
 		const leftHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[0], N);
 		const rightHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[1], N);
@@ -3396,6 +3940,14 @@ class VGMPlay_js {
 		}
 		this.isVGMPlaying = false;
 		this.isVGMLoaded = false;
+		this.isKSSActive = false;
+		this.kssDeviceBaseMask = 0;
+		this.kssDeviceDetectedMask = 0;
+		this._kssDeviceScanDefs = null;
+		this._kssDeviceScanPeaks = null;
+		this._kssDeviceScanFrames = 0;
+		this._kssDeviceScanDone = false;
+		this._updateStandaloneRightPanel();
 
 		this.isPlaybackPaused = true;
 		this.visualSamplePosition = 0;
@@ -3444,6 +3996,19 @@ class VGMPlay_js {
 			console.error("[VGM] Failed to open file:", fileName);
 		}
 		this.isVGMLoaded = ok;
+		this.isKSSActive = ok && this._isKssFile(fileName);
+		if (this.isKSSActive) {
+			this._resetKssDeviceScan();
+		} else {
+			this.kssDeviceBaseMask = 0;
+			this.kssDeviceDetectedMask = 0;
+			this._kssDeviceScanDefs = null;
+			this._kssDeviceScanPeaks = null;
+			this._kssDeviceScanFrames = 0;
+			this._kssDeviceScanDone = false;
+		}
+		this._updateStandaloneSelectOptions();
+		if (ok) this._updateStandaloneRightPanel();
 		this._updateMemoryDisplay();
 		return ok;
 	}
@@ -3478,6 +4043,9 @@ class VGMPlay_js {
 
 	_drawSpectrum() {
 		if (!this.analyserLeft || !this.analyserRight || !this.spectrumCtx) return;
+		if (this.kssAnalyzerActive) {
+			this._drawKssAnalyzer();
+		}
 
 		const ctx = this.spectrumCtx;
 		const canvas = this.spectrumCanvas;
@@ -3517,7 +4085,7 @@ class VGMPlay_js {
 		const barWidth = Math.floor(totalWidthPerChannel / barCount) - 1;
 		const gap = 1;
 
-		// Draw Channels
+		// Draw Channels (left-to-right for both channels)
 		const drawChannel = (data, xOffset) => {
 			for (let i = 0; i < barCount; i++) {
 				let sum = 0;
@@ -3527,6 +4095,7 @@ class VGMPlay_js {
 				}
 				const avg = sum / binsPerBar;
 				const barHeight = (avg / 255) * h;
+
 				const x = xOffset + i * (barWidth + gap);
 				const y = h - barHeight;
 

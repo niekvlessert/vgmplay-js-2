@@ -146,6 +146,8 @@ export function installQueue(VGMPlay_js) {
 								const lower = job.data.toLowerCase();
 								if (lower.endsWith('.7z')) {
 									classContext.process7zBuffer(byteArray, job.name).then(next);
+								} else if (lower.endsWith('.rar')) {
+									classContext.processRarBuffer(byteArray, job.name).then(next);
 								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 									classContext.processPSFBuffer(byteArray, job.data).then(next);
 								} else if (lower.endsWith('.zip')) {
@@ -168,6 +170,8 @@ export function installQueue(VGMPlay_js) {
 				const lower = (job.name || '').toLowerCase();
 				if (lower.endsWith('.7z')) {
 					classContext.process7zBuffer(job.data, job.name).then(next);
+				} else if (lower.endsWith('.rar')) {
+					classContext.processRarBuffer(job.data, job.name).then(next);
 				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 					classContext.processPSFBuffer(job.data, job.name).then(next);
 				} else if (lower.endsWith('.zip')) {

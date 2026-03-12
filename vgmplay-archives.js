@@ -3,17 +3,23 @@ export function installArchives(VGMPlay_js) {
 		if (this.archiveWorker) return this.archiveWorker;
 		if (typeof Worker === 'undefined') return null;
 		try {
+			const cacheSuffix = this._cacheBust ? ('v=' + Date.now()) : '';
+			const withCache = (url) => {
+				if (!cacheSuffix) return url;
+				return url + (url.includes('?') ? '&' : '?') + cacheSuffix;
+			};
 			let workerUrl = null;
 			if (this.baseURL) {
 				const candidate = new URL('archive-worker.js', this.baseURL);
 				if (typeof window === 'undefined' || candidate.origin === window.location.origin) {
-					workerUrl = candidate;
+					workerUrl = new URL(withCache(candidate.toString()));
 				}
 			}
 			if (!workerUrl && typeof window !== 'undefined') {
-				workerUrl = new URL('archive-worker.js', window.location.href);
+				workerUrl = new URL(withCache(new URL('archive-worker.js', window.location.href).toString()));
 			}
-			const worker = new Worker(workerUrl ? workerUrl.toString() : (this.baseURL + 'archive-worker.js'));
+			const fallback = this.baseURL + 'archive-worker.js';
+			const worker = new Worker(workerUrl ? workerUrl.toString() : withCache(fallback));
 			worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
 			worker.onerror = (e) => {
 				console.error("[VGM] Archive worker error:", e);
@@ -509,5 +515,21 @@ export function installArchives(VGMPlay_js) {
 		}
 		await this.checkEverythingReady();
 		this._scheduleZipRender();
+	};
+
+	VGMPlay_js.prototype.processRarBuffer = async function (byteArray, sourceName = '') {
+		try {
+			const workerResult = await this._extractArchiveWithWorker(byteArray, 'rar');
+			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			return;
+		} catch (e) {
+			if (byteArray.byteLength === 0) {
+				console.error("[VGM] RAR worker failed after buffer transfer:", e);
+				return;
+			}
+			console.warn("[VGM] RAR worker failed:", e);
+		}
+
+		console.error("[VGM] RAR extraction requires the archive worker.");
 	};
 }

@@ -1034,7 +1034,7 @@ class VGMPlay_js {
 	}
 
 	_isArchiveUrl(lower) {
-		return lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.vigamup');
+		return lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.rar') || lower.endsWith('.vigamup');
 	}
 
 	_parseKssTxt(text) {

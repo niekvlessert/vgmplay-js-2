@@ -8,6 +8,7 @@ function _ensureLoaded(baseURL) {
 	_baseURL = baseURL || _baseURL || '';
 	importScripts(_baseURL + 'minizip-asm.min.js');
 	importScripts(_baseURL + '7zz.umd.js');
+	importScripts(_baseURL + 'unrar.min.js');
 	_loaded = true;
 }
 
@@ -96,6 +97,36 @@ async function _handle7z(id, buffer) {
 	self.postMessage({ type: 'done', id });
 }
 
+async function _handleRar(id, buffer) {
+	if (typeof Unrar === 'undefined') {
+		throw new Error('Unrar library not available');
+	}
+	const rar = new Unrar(new Uint8Array(buffer));
+	const entries = rar.getEntries ? rar.getEntries() : [];
+	const paths = [];
+	let hasKss = false;
+
+	for (const entry of entries) {
+		if (!entry || entry.isDirectory && entry.isDirectory()) continue;
+		const name = entry.name || '';
+		if (!name) continue;
+		paths.push(name);
+		if (!hasKss && _isKssFile(name.toLowerCase())) {
+			hasKss = true;
+		}
+	}
+	self.postMessage({ type: 'meta', id, entries: paths, hasKss });
+
+	for (const relPath of paths) {
+		const data = rar.decompress(relPath);
+		if (data && data.buffer) {
+			self.postMessage({ type: 'file', id, path: relPath, data }, [data.buffer]);
+		}
+	}
+	if (rar.close) rar.close();
+	self.postMessage({ type: 'done', id });
+}
+
 self.onmessage = async (e) => {
 	const msg = e.data || {};
 	if (msg.type !== 'extract') return;
@@ -105,6 +136,8 @@ self.onmessage = async (e) => {
 			await _handleZip(msg.id, msg.buffer);
 		} else if (msg.kind === '7z') {
 			await _handle7z(msg.id, msg.buffer);
+		} else if (msg.kind === 'rar') {
+			await _handleRar(msg.id, msg.buffer);
 		} else {
 			throw new Error('Unknown archive kind: ' + msg.kind);
 		}

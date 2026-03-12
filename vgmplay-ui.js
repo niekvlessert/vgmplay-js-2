@@ -139,6 +139,9 @@ export function installUi(VGMPlay_js) {
 		this.spectrumCanvas.height = 64;
 		this.playerWindow.appendChild(this.spectrumCanvas);
 		this.spectrumCtx = this.spectrumCanvas.getContext('2d');
+		if (this.isKSSActive && this._initKssMiniOverlay) {
+			this._initKssMiniOverlay(true);
+		}
 
 		this.samplesGenerated = 0;
 	};

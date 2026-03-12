@@ -72,6 +72,9 @@ class VGMPlay_js {
 		this.kssAnalyzerActive = false;
 		this.kssOverlayEl = null;
 		this.kssOverlayRows = [];
+		this.kssMiniOverlayEl = null;
+		this.kssMiniOverlayRows = [];
+		this._kssMiniOverlayResizeBound = false;
 		this.kssOverlayDefs = [];
 		this.kssChannelDefs = [];
 		this.kssChannelStates = [];
@@ -127,9 +130,21 @@ class VGMPlay_js {
 				}
 			} catch (e) { }
 			if (!this.baseURL) {
-				this.baseURL = 'https://niekvlessert.github.io/vgmplay-js-2/';
+				const baseHref = document.baseURI || window.location.href;
+				this.baseURL = baseHref.substring(0, baseHref.lastIndexOf('/') + 1);
 			}
 		}
+		let cacheBust = false;
+		try {
+			if (typeof options.cacheBust !== 'undefined') {
+				cacheBust = !!options.cacheBust;
+			} else if (typeof window !== 'undefined' && window.location) {
+				const host = window.location.hostname || '';
+				cacheBust = host === 'localhost' || host === '127.0.0.1';
+			}
+		} catch (e) { }
+		this._cacheBust = cacheBust;
+		const cacheSuffix = this._cacheBust ? ('?v=' + Date.now()) : '';
 
 		// Define Emscripten Module object before loading vgmplay-js.js
 		if (typeof window !== 'undefined') {
@@ -140,8 +155,8 @@ class VGMPlay_js {
 			window.Module.print = (text) => { console.log(text); };
 			window.Module.printErr = (text) => { console.error(text); };
 			window.Module.locateFile = function (path, prefix) {
-				if (path.endsWith(".data")) return base + path;
-				return prefix + path;
+				if (path.endsWith(".data") || path.endsWith(".wasm")) return base + path + cacheSuffix;
+				return prefix + path + cacheSuffix;
 			};
 			window.Module.onRuntimeInitialized = function () {
 				if (window.vgmplay_js && window.vgmplay_js.loadWhenReady) {
@@ -152,11 +167,11 @@ class VGMPlay_js {
 
 		// Load core scripts
 		var script = document.createElement("script");
-		script.src = this.baseURL + "vgmplay-js.js";
+		script.src = this.baseURL + "vgmplay-js.js" + cacheSuffix;
 		var script3 = document.createElement("script");
-		script3.src = this.baseURL + "minizip-asm.min.js";
+		script3.src = this.baseURL + "minizip-asm.min.js" + cacheSuffix;
 		var script4 = document.createElement("script");
-		script4.src = this.baseURL + "7zz.umd.js";
+		script4.src = this.baseURL + "7zz.umd.js" + cacheSuffix;
 
 		document.head.appendChild(script);
 		document.head.appendChild(script3);
@@ -171,7 +186,7 @@ class VGMPlay_js {
 			var link = document.createElement('link');
 			link.rel = 'stylesheet';
 			link.type = 'text/css';
-			link.href = this.baseURL + 'css/style.css';
+			link.href = this.baseURL + 'css/style.css' + cacheSuffix;
 
 			// Inject styles into Head or Shadow Root
 			if (options.shadowRoot) {
@@ -367,9 +382,6 @@ class VGMPlay_js {
 		return coarse || small;
 	}
 
-	// ---- UI (mobile) ----
-	// Moved to vgmplay-ui.js (ES module POC)
-
 	_updateMemoryDisplay() {
 		if (!Module._GetFreeMemory || !Module._GetTotalMemory || !Module._GetUsedMemory || !Module._GetHeapTopUsedMemory) return;
 
@@ -409,9 +421,6 @@ class VGMPlay_js {
 			this._setMobileView('analyzer');
 		}, 5000);
 	}
-
-	// ---- UI (window positions) ----
-	// Moved to vgmplay-ui.js (ES module POC)
 
 	_normalizeBool(value) {
 		if (value === true) return true;
@@ -476,18 +485,6 @@ class VGMPlay_js {
 		});
 	}
 
-	_bindScrollProxy(el) {
-		if (!el) return;
-		el.addEventListener('wheel', (e) => {
-			if (!this.tracksContainer || !this.zipFileListWindow) return;
-			if (!this.standalone || this.libraryState !== 1) return;
-			const list = this.zipFileListWindow;
-			if (list.scrollHeight <= list.clientHeight) return;
-			list.scrollTop += e.deltaY;
-			e.preventDefault();
-		}, { passive: false });
-	}
-
 	loadWhenReady() {
 		this.elms = document.getElementsByTagName("a");
 		this.len = this.elms.length;
@@ -499,85 +496,6 @@ class VGMPlay_js {
 		}
 		this.setKeyBindings();
 	}
-
-	dragStart(e) {
-		// Don't drag if clicking interactive elements
-		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'A' || e.target.classList.contains('vgmplayProgressBar') || e.target.classList.contains('vgmplayProgressFill') || e.target.classList.contains('vgmplayChipVolume')) {
-			return;
-		}
-		e.preventDefault();
-		this.pos3 = e.clientX;
-		this.pos4 = e.clientY;
-		if (this.standalone && this.libraryState === 1) {
-			this.dragTargetWindow = this.standaloneGroup || null;
-			if (this.dragTargetWindow) {
-				this.dragTargetWindow.style.width = '266px';
-			}
-		}
-		window.addEventListener('mousemove', this.elementDrag);
-		window.addEventListener('mouseup', this.stopDrag);
-	}
-
-	elementDrag(e) {
-		e.preventDefault();
-		this.pos1 = this.pos3 - e.clientX;
-		this.pos2 = this.pos4 - e.clientY;
-		this.pos3 = e.clientX;
-		this.pos4 = e.clientY;
-		if (this.standalone && this.libraryState === 1 && this.dragTargetWindow) {
-			this.standaloneGroupTransformX -= this.pos1;
-			this.standaloneGroupTransformY -= this.pos2;
-			this.dragTargetWindow.style.transform = `translate(${this.standaloneGroupTransformX}px, ${this.standaloneGroupTransformY}px)`;
-		} else {
-			this.vgmplayContainer.style.top = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
-			this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
-		}
-
-		if (this.libraryState === 1 && !this.standalone) {
-			this.trackListTransformX += this.pos1;
-			this.trackListTransformY += this.pos2;
-			if (this.tracksContainer) this.tracksContainer.style.transform = `translate(${this.trackListTransformX}px, ${this.trackListTransformY}px)`;
-		}
-	}
-
-	stopDrag() {
-		window.removeEventListener('mousemove', this.elementDrag);
-		window.removeEventListener('mouseup', this.stopDrag);
-		this.dragTargetWindow = null;
-	}
-
-	_dragStartWindow(e) {
-		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'A') {
-			return;
-		}
-		e.preventDefault();
-		this.windowDragTarget = e.currentTarget;
-		this.windowPos3 = e.clientX;
-		this.windowPos4 = e.clientY;
-		window.addEventListener('mousemove', this._elementDragWindow);
-		window.addEventListener('mouseup', this._stopDragWindow);
-	}
-
-	_elementDragWindow(e) {
-		if (!this.windowDragTarget) return;
-		e.preventDefault();
-		this.windowPos1 = this.windowPos3 - e.clientX;
-		this.windowPos2 = this.windowPos4 - e.clientY;
-		this.windowPos3 = e.clientX;
-		this.windowPos4 = e.clientY;
-		const target = this.windowDragTarget;
-		target.style.top = (target.offsetTop - this.windowPos2) + "px";
-		target.style.left = (target.offsetLeft - this.windowPos1) + "px";
-	}
-
-	_stopDragWindow() {
-		window.removeEventListener('mousemove', this._elementDragWindow);
-		window.removeEventListener('mouseup', this._stopDragWindow);
-		this.windowDragTarget = null;
-	}
-
-	// ---- UI (player + drop zone) ----
-	// Moved to vgmplay-ui.js (ES module POC)
 
 	_yieldToUI() {
 		return new Promise((resolve) => {
@@ -630,35 +548,6 @@ class VGMPlay_js {
 			this._setInfoLoading(false);
 		}
 	}
-
-	// ---- UI (game list rendering) ----
-	// Moved to vgmplay-library.js (ES module POC)
-
-	_setInfoLoading(isLoading) {
-		if (!this.titleWindow) return;
-		if (isLoading) {
-			this.titleWindow.classList.add('vgmplayInfoLoading');
-		} else {
-			this.titleWindow.classList.remove('vgmplayInfoLoading');
-		}
-	}
-
-	_setMemoryStatsVisible(isVisible) {
-		this.showMemoryStats = !!isVisible;
-		if (!this.titleWindow) return;
-		if (this.showMemoryStats) {
-			this.titleWindow.classList.add('vgmplayMemoryVisible');
-			if (this.titleContent) this.titleContent.innerHTML = "";
-			this._memoryBaselineUsed = null;
-			this._updateMemoryDisplay();
-		} else {
-			this.titleWindow.classList.remove('vgmplayMemoryVisible');
-			this.getVGMTag();
-		}
-	}
-
-	// ---- Archive Worker ----
-	// Moved to vgmplay-archives.js (ES module POC)
 
 	async _processArchiveEntries(entries, fileDataByPath, sourceName = '', hasKss = false) {
 		const yieldEvery = 50;
@@ -859,395 +748,6 @@ class VGMPlay_js {
 		}
 	}
 
-	toggleDisplayZipFileListWindow() {
-		this.libraryState = (this.libraryState + 1) % 3;
-
-		if (this.libraryState === 0) {
-			// Attached
-			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
-			this.showZipFileListWindow = true;
-			this.trackListTransformX = 0;
-			this.trackListTransformY = 0;
-			if (this.tracksContainer) this.tracksContainer.style.transform = `translate(0px, 0px)`;
-			this._resetWindowPositions();
-			if (this.btnLibrary) {
-				this.btnLibrary.classList.remove('active');
-				this.btnLibrary.classList.remove('blue-active');
-			}
-		} else if (this.libraryState === 1) {
-			// Floating
-			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
-			this.showZipFileListWindow = true;
-			if (this.standalone && this.tracksContainer) {
-				this.trackListTransformX = 0;
-				this.trackListTransformY = 0;
-				this.tracksContainer.style.transform = 'none';
-			}
-			// Keep current transform
-
-			if (this.btnLibrary) {
-				this.btnLibrary.classList.add('active');
-				this.btnLibrary.classList.remove('blue-active');
-			}
-		} else if (this.libraryState === 2) {
-			// Hidden
-			if (this.tracksContainer) this.tracksContainer.style.display = 'none';
-			this.showZipFileListWindow = false;
-
-			if (this.btnLibrary) {
-				this.btnLibrary.classList.remove('active');
-				this.btnLibrary.classList.add('blue-active');
-			}
-		}
-	}
-
-	getVGMTag() {
-		if (this.showMemoryStats) {
-			if (this.titleContent) this.titleContent.innerHTML = "";
-			this._updateMemoryDisplay();
-			return;
-		}
-		if (this.titleWindow) {
-			const titleStr = this.ShowTitle();
-			if (!titleStr) return;
-			this.VGMTag = titleStr.split("|||");
-			this.tagType = 0;
-			const titleTarget = this.titleContent || this.titleWindow;
-			titleTarget.innerHTML = "";
-
-			// KSS gameinfo support (moved to top for visibility)
-			if (this.activeGame && this.activeGame.gameinfo) {
-				const info = this.activeGame.gameinfo;
-				const fields = {};
-				info.split('\n').forEach(line => {
-					const colon = line.indexOf(':');
-					if (colon > 0) {
-						const key = line.substring(0, colon).trim().toLowerCase();
-						const val = line.substring(colon + 1).trim();
-						fields[key] = val;
-					}
-				});
-
-				let infoHtml = "<br/><b>Game Info:</b><br/>";
-				let hasFields = false;
-				if (fields.full_title || fields.title) {
-					infoHtml += "Full Title: " + (fields.full_title || fields.title) + "<br/>";
-					hasFields = true;
-				}
-				if (fields.year) {
-					infoHtml += "Release Year: " + fields.year + "<br/>";
-					hasFields = true;
-				}
-				if (fields.vendor) {
-					infoHtml += "Publisher: " + fields.vendor + "<br/>";
-					hasFields = true;
-				}
-
-				if (hasFields) {
-					titleTarget.innerHTML += infoHtml;
-				} else if (info.trim()) {
-					titleTarget.innerHTML += "<br/><b>Game Info:</b><br/>" + info.replace(/\n/g, '<br/>') + "<br/>";
-				}
-			}
-
-			let systemShown = false;
-			for (this.i = 0; this.i < this.VGMTag.length; this.i++) {
-				switch (this.i) {
-					case 1:
-						if (this.VGMTag[1] || this.VGMTag[3]) titleTarget.innerHTML += "Title: ";
-						if (this.VGMTag[1]) titleTarget.innerHTML += this.VGMTag[1];
-						//if (this.VGMTag[1] && this.VGMTag[3]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[3]) titleTarget.innerHTML += " (" + this.VGMTag[3] + ")";
-						if (this.VGMTag[1] || this.VGMTag[3]) titleTarget.innerHTML += "<br/>";
-						//this.titleWindow.innerHTML += "Length: " + this.trackLengthHumanReadeable + "<br/>";
-						break;
-					case 5:
-						if (this.VGMTag[5] || this.VGMTag[7]) titleTarget.innerHTML += "Game: ";
-						if (this.VGMTag[5]) titleTarget.innerHTML += this.VGMTag[5];
-						//if (this.VGMTag[5] && this.VGMTag[7]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[7]) titleTarget.innerHTML += " (" + this.VGMTag[7] + ")";
-						if (this.VGMTag[17]) titleTarget.innerHTML += ", " + this.VGMTag[17];
-						if (this.VGMTag[5] || this.VGMTag[7]) titleTarget.innerHTML += "<br/>";
-						break;
-					case 8:
-						if (this.VGMTag[9] && this.VGMTag[9].trim()) {
-							titleTarget.innerHTML += "System: " + this.VGMTag[9] + "<br/>";
-							systemShown = true;
-						}
-						break;
-					case 13:
-						if (this.VGMTag[13] || this.VGMTag[15]) titleTarget.innerHTML += "Author: ";
-						if (this.VGMTag[13]) titleTarget.innerHTML += this.VGMTag[13];
-						//if (this.VGMTag[13] && this.VGMTag[15]) this.titleWindow.innerHTML += ", ";
-						if (this.VGMTag[15]) titleTarget.innerHTML += " (" + this.VGMTag[15] + ")";
-						if (this.VGMTag[13] || this.VGMTag[13]) titleTarget.innerHTML += "<br/>";
-						break;
-					case 19:
-						if (this.VGMTag[19]) {
-							titleTarget.innerHTML += "VGM Creator: ";
-							titleTarget.innerHTML += this.VGMTag[19];
-							titleTarget.innerHTML += "<br/>";
-						}
-						break;
-					case 20:
-						if (this.VGMTag[21] && this.VGMTag[21].length > 1) {
-							titleTarget.innerHTML += "Comments: ";
-							titleTarget.innerHTML += this.VGMTag[21];
-							titleTarget.innerHTML += "<br/>";
-						}
-						break;
-				}
-
-			}
-
-			// For PSF files, add System fallback if not yet shown
-			if (!systemShown && this.currentFileKey !== "" && this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
-				const path = this.activeGame.playableList[this.currentFileKey].filepath || "";
-				const lower = path.toLowerCase();
-				if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-					titleTarget.innerHTML += "System: Playstation<br/>";
-				}
-				if (lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
-					titleTarget.innerHTML += "System: Nintendo 64<br/>";
-				}
-			}
-
-			// Show file format as last info line
-			if (this.currentFileKey !== "" && this.activeGame && this.activeGame.playableList && this.activeGame.playableList[this.currentFileKey]) {
-				const path = this.activeGame.playableList[this.currentFileKey].filepath || "";
-				const clean = path.split('|track=')[0];
-				const dot = clean.lastIndexOf('.');
-				if (dot >= 0) {
-					const ext = clean.substring(dot + 1).toUpperCase();
-					if (ext) {
-						titleTarget.innerHTML += "Format: " + ext + "<br/>";
-					}
-				}
-			}
-		}
-
-
-		if (this.titleWindow) {
-			const titleTarget = this.titleContent || this.titleWindow;
-			// Display chips with volume sliders as the last entry of the top frame
-			const chipCount = this.GetDeviceCount ? this.GetDeviceCount() : 0;
-			if (chipCount > 0) {
-				const chipStrip = document.createElement('div');
-				chipStrip.className = "vgmplayChipStrip";
-				for (let i = 0; i < chipCount; i++) {
-					const name = this.GetDeviceName(i);
-					const vol = this.GetDeviceVolume(i);
-
-					const chipControl = document.createElement('div');
-					chipControl.className = "vgmplayChipControl";
-					chipControl.title = name;
-					chipControl.innerHTML = `
-							<div class="vgmplayChipName">${name}</div>
-							<input type="range" min="0" max="512" value="${vol}" 
-								class="vgmplayChipVolume" 
-								oninput="vgmPlayInstance._setChipVolume(${i}, this.value)"
-								onmousedown="event.stopPropagation()"
-								onclick="event.stopPropagation()">
-						`;
-					chipStrip.appendChild(chipControl);
-				}
-				titleTarget.appendChild(chipStrip);
-			}
-		}
-	}
-
-	_setChipVolume(id, vol) {
-		if (this.SetDeviceVolume) {
-			this.SetDeviceVolume(id, parseInt(vol));
-		}
-	}
-
-	// ---- UI (skipped downloads window) ----
-	// Moved to vgmplay-ui.js (ES module POC)
-
-	// ---- UI (skipped downloads rendering) ----
-	// Moved to vgmplay-ui.js (ES module POC)
-
-	async _getRemoteFileSize(url) {
-		try {
-			const res = await fetch(url, { method: 'HEAD' });
-			if (!res.ok) return null;
-			const len = res.headers.get('content-length');
-			if (!len) return null;
-			const size = parseInt(len, 10);
-			if (!Number.isFinite(size)) return null;
-			return size;
-		} catch (e) {
-			return null;
-		}
-	}
-
-	_formatMB(bytes) {
-		const mb = bytes / (1024 * 1024);
-		const rounded = Math.round(mb * 10) / 10;
-		return (rounded % 1 === 0) ? String(rounded.toFixed(0)) : String(rounded);
-	}
-
-	async _shouldDownload(url, forceLarge) {
-		if (forceLarge) return true;
-		if (this.standalone) return true;
-		const size = await this._getRemoteFileSize(url);
-		if (!size || size <= this.largeDownloadLimitBytes) return true;
-		this._addSkippedDownload(url, size);
-		return false;
-	}
-
-	_queueURL(url, forceLarge = false, isAuto = false) {
-		if (this.zipURLLoaded.includes(url)) return;
-		if (this.zipURLPending.includes(url)) return;
-		if (isAuto && this.autoDownloadCount >= this.autoDownloadLimit) {
-			this._queueAutoOverflow(url);
-			return;
-		}
-		this.zipURLPending.push(url);
-		this.zipQueue.push({ type: 'url', data: url, forceLarge, name: this._getFileNameFromUrl(url) });
-		if (isAuto) this.autoDownloadCount++;
-		this._processQueue();
-	}
-
-	_queueAutoOverflow(url) {
-		if (!this.autoOverflowURLs.includes(url)) {
-			this.autoOverflowURLs.push(url);
-		}
-		this._showSkippedWindow();
-		this._renderSkippedDownloads();
-		this._checkLargeOverflow(url);
-	}
-
-	async _checkLargeOverflow(url) {
-		if (this.standalone) return;
-		const size = await this._getRemoteFileSize(url);
-		if (!size || size <= this.largeDownloadLimitBytes) return;
-		this._addSkippedDownload(url, size);
-	}
-
-	loadVGMFromURL(url) {
-		return new Promise((resolve, reject) => {
-			const parts = url.split('/');
-			const originalFilename = parts[parts.length - 1].split('?')[0].split('#')[0];
-			const destPath = "/" + (originalFilename || "remote_file.vgm");
-
-			try {
-				FS.unlink(destPath);
-			} catch (err) { }
-
-			var xhr = new XMLHttpRequest();
-			xhr.responseType = "arraybuffer";
-
-			const classContext = this;
-			classContext._shouldDownload(url, false).then((ok) => {
-				if (!ok) {
-					resolve(null);
-					return;
-				}
-				xhr.onreadystatechange = function () {
-					if (xhr.readyState == XMLHttpRequest.DONE) {
-						if (xhr.status === 200) {
-							var arrayBuffer = xhr.response;
-							var byteArray = new Uint8Array(arrayBuffer);
-							try {
-								FS.createDataFile("/", originalFilename || "remote_file.vgm", byteArray, true, true);
-								resolve(destPath);
-							} catch (e) {
-								console.error("FS Error loading direct file:", e);
-								resolve(null);
-							}
-						} else {
-							resolve(null);
-						}
-					}
-				}
-				xhr.open('GET', url, true);
-				xhr.send(null);
-			});
-		});
-	}
-
-	loadZIPWithVGMFromURL(url, forceLarge = false) {
-		this._queueURL(url, forceLarge);
-	}
-
-	_processQueue() {
-		if (this.isProcessingQueue || this.zipQueue.length === 0) {
-			if (this.loader && this.zipQueue.length === 0) this.loader.style.display = 'none';
-			if (this.zipQueue.length === 0) this._setInfoLoading(false);
-			return;
-		}
-
-		if (this.loader) this.loader.style.display = 'block';
-		this._setInfoLoading(true);
-
-		this.isProcessingQueue = true;
-		const job = this.zipQueue.shift();
-
-		const next = () => {
-			this.isProcessingQueue = false;
-			if (this.zipQueue.length === 0) this._setInfoLoading(false);
-			if (this.zipQueue.length === 0 && this.pendingZipRender) {
-				this.pendingZipRender = false;
-				this._renderZipGamesNow();
-			}
-			// Yield to UI before next job
-			setTimeout(() => this._processQueue(), 100);
-		};
-
-		const classContext = this;
-		this.checkEverythingReady().then(() => {
-			if (job.type === 'url') {
-				classContext._shouldDownload(job.data, job.forceLarge).then((ok) => {
-					if (!ok) {
-						classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
-						next();
-						return;
-					}
-					var xhr = new XMLHttpRequest();
-					xhr.responseType = "arraybuffer";
-					xhr.onreadystatechange = function () {
-						if (xhr.readyState == XMLHttpRequest.DONE) {
-							if (xhr.status === 200) {
-								var arrayBuffer = xhr.response;
-								var byteArray = new Uint8Array(arrayBuffer);
-								const lower = job.data.toLowerCase();
-								if (lower.endsWith('.7z')) {
-									classContext.process7zBuffer(byteArray, job.name).then(next);
-								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-									classContext.processPSFBuffer(byteArray, job.data).then(next);
-								} else if (lower.endsWith('.zip')) {
-									classContext.processZipBuffer(byteArray, job.name).then(next);
-								} else {
-									classContext.processSingleBuffer(byteArray, job.name).then(next);
-								}
-								classContext.zipURLLoaded.push(job.data);
-							} else {
-								console.error("Failed to load archive from URL:", job.data);
-								next();
-							}
-							classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
-						}
-					}
-					xhr.open('GET', job.data, true);
-					xhr.send(null);
-				});
-			} else if (job.type === 'file') {
-				const lower = (job.name || '').toLowerCase();
-				if (lower.endsWith('.7z')) {
-					classContext.process7zBuffer(job.data, job.name).then(next);
-				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-					classContext.processPSFBuffer(job.data, job.name).then(next);
-				} else if (lower.endsWith('.zip')) {
-					classContext.processZipBuffer(job.data, job.name).then(next);
-				} else {
-					classContext.processSingleBuffer(job.data, job.name).then(next);
-				}
-			}
-		});
-	}
-
 	_makedirs(path) {
 		const parts = path.split('/');
 		let current = "";
@@ -1264,16 +764,6 @@ class VGMPlay_js {
 		}
 	}
 
-	GetVGMTagDirect(path, tagIndex) {
-		if (this.functionsWrapped && this._GetVGMTagDirectNative) {
-			return this._GetVGMTagDirectNative(path, tagIndex) || "";
-		}
-		return "";
-	}
-
-	// ---- UI (search helpers) ----
-	// Moved to vgmplay-ui.js (ES module POC)
-
 	_collapseAllGames() {
 		for (const game of this.games) {
 			if (!game || !game.uiElement) continue;
@@ -1282,26 +772,6 @@ class VGMPlay_js {
 			game.uiElement.classList.add('vgmplayGameCollapsed');
 		}
 	}
-
-	_deriveVgmGameName(files, fallbackName) {
-		let name = fallbackName || "Archive";
-		if (!files || !this.GetVGMTagDirect) return name;
-		for (const f of files) {
-			if (!f || !f.filepath) continue;
-			const lower = f.filepath.toLowerCase();
-			if (!this.isPlayable(lower)) continue;
-			if (!lower.endsWith('.vgm') && !lower.endsWith('.vgz')) continue;
-			const tag = this.GetVGMTagDirect(f.filepath, 2);
-			if (tag && tag.trim()) {
-				name = tag.trim();
-				break;
-			}
-		}
-		return name;
-	}
-
-	// ---- Archive Processing (ZIP) ----
-	// Moved to vgmplay-archives.js (ES module POC)
 
 	/**
 	 * Purges all extracted game files from MEMFS to reclaim memory.
@@ -1383,9 +853,6 @@ class VGMPlay_js {
 		});
 	}
 
-	// ---- Archive Processing (7z) ----
-	// Moved to vgmplay-archives.js (ES module POC)
-
 	async processPSFBuffer(byteArray, fileName) {
 		this.amountOfGamesLoaded++;
 		const gamePath = "/game_" + this.amountOfGamesLoaded;
@@ -1412,9 +879,6 @@ class VGMPlay_js {
 			}
 		});
 	}
-
-	// ---- UI (game list rendering) ----
-	// Moved to vgmplay-library.js (ES module POC)
 
 	_updateHighlight() {
 		// Remove highlight from all elements
@@ -1755,165 +1219,6 @@ class VGMPlay_js {
 		return this._initPromise;
 	}
 
-	async _doInit() {
-		// Wait for Emscripten to be fully loaded and FS to be ready
-		await new Promise(resolve => {
-			const check = () => {
-				if (typeof Module !== 'undefined' && Module.calledRun && typeof FS !== 'undefined') {
-					resolve();
-				} else {
-					setTimeout(check, 100);
-				}
-			};
-			check();
-		});
-
-		if (!this.isWebAudioInitialized) {
-			window.AudioContext = window.AudioContext || window.webkitAudioContext;
-			this.context = new AudioContext();
-			this.destination = this.destination || this.context.destination;
-			this.sampleRate = this.context.sampleRate;
-
-			// Set up AnalyserNodes for dual channel spectrum display
-			this.analyserLeft = this.context.createAnalyser();
-			this.analyserLeft.fftSize = 256;
-			this.analyserLeft.smoothingTimeConstant = 0.7;
-			this.analyserDataLeft = new Uint8Array(this.analyserLeft.frequencyBinCount);
-
-			this.analyserRight = this.context.createAnalyser();
-			this.analyserRight.fftSize = 256;
-			this.analyserRight.smoothingTimeConstant = 0.7;
-			this.analyserDataRight = new Uint8Array(this.analyserRight.frequencyBinCount);
-
-			this.splitter = this.context.createChannelSplitter(2);
-
-			// Create Master Gain for fade out
-			this.masterGain = this.context.createGain();
-			this.masterGain.connect(this.destination);
-
-			// Load AudioWorklet processor
-			try {
-				await this.context.audioWorklet.addModule(this.baseURL + 'vgmplay-audio-processor.js?v=' + Date.now());
-				this.workletNode = new AudioWorkletNode(this.context, 'vgmplay-processor', {
-					outputChannelCount: [2]
-				});
-
-				// Route: worklet -> masterGain -> destination
-				// Route: masterGain -> splitter -> analysers (so visualizer fades too)
-				// Create audio enhancement nodes
-				this.bassBoost = this.context.createBiquadFilter();
-				this.bassBoost.type = "lowshelf";
-				this.bassBoost.frequency.value = 200;
-				this.bassBoost.gain.value = this.bassBoostEnabled ? 12 : 0;
-
-				this.compressor = this.context.createDynamicsCompressor();
-				this.compressor.threshold.setValueAtTime(-24, this.context.currentTime);
-				this.compressor.knee.setValueAtTime(30, this.context.currentTime);
-				this.compressor.ratio.setValueAtTime(12, this.context.currentTime);
-				this.compressor.attack.setValueAtTime(0.003, this.context.currentTime);
-				this.compressor.release.setValueAtTime(0.25, this.context.currentTime);
-
-				this.reverb = this.context.createConvolver();
-				this._generateReverbImpulse();
-				this.reverbGain = this.context.createGain();
-				this.reverbGain.gain.value = this.reverbEnabled ? 0.35 : 0;
-
-				// Route: worklet -> bassBoost -> compressor -> masterGain -> destination
-				this.workletNode.connect(this.bassBoost);
-				this.bassBoost.connect(this.compressor);
-				this.compressor.connect(this.masterGain);
-
-				// Route: worklet -> reverb -> reverbGain -> masterGain
-				this.workletNode.connect(this.reverb);
-				this.reverb.connect(this.reverbGain);
-				this.reverbGain.connect(this.masterGain);
-
-				this.masterGain.connect(this.splitter);
-				this.splitter.connect(this.analyserLeft, 0);
-				this.splitter.connect(this.analyserRight, 1);
-
-				// Handle data requests from the worklet
-				this.workletNode.port.onmessage = (e) => {
-					if (e.data.type === 'need-data') {
-						this._pumpBuffers();
-					}
-				};
-			} catch (err) {
-				console.error('AudioWorklet failed to load:', err);
-				return false;
-			}
-
-			this.isWebAudioInitialized = true;
-			await this._ensureAudioMotion();
-			this._updateStandaloneRightPanel();
-		}
-		if (!this.functionsWrapped) {
-			this.FillBuffer = Module.cwrap('FillBuffer2', 'void', ['number', 'number', 'number']);
-			this.OpenVGMFile = Module.cwrap('OpenVGMFile', 'number', ['string']);
-			this.LoadGENMIDI = Module.cwrap('LoadGENMIDI', 'void', ['number', 'number']);
-			this.MUSPlaying = Module.cwrap('MUSPlaying', 'number');
-			this.CloseVGMFile = Module.cwrap('CloseVGMFile');
-			this.PlayVGM = Module.cwrap('PlayVGM');
-			this.StopVGM = Module.cwrap('StopVGM');
-			this.VGMEnded = Module.cwrap('VGMEnded');
-			this.GetTrackLength = Module.cwrap('GetTrackLength');
-			this.GetTrackLengthDirect = Module.cwrap('GetTrackLengthDirect', 'number', ['string']);
-			this.GetGMETrackCountDirect = Module.cwrap('GetGMETrackCountDirect', 'number', ['string']);
-			this.GetKSSTrackCountDirect = Module.cwrap('GetKSSTrackCountDirect', 'number', ['string']);
-			this.GetKSSTrackMinDirect = Module.cwrap('GetKSSTrackMinDirect', 'number', ['string']);
-			this.GetKSSTrackMaxDirect = Module.cwrap('GetKSSTrackMaxDirect', 'number', ['string']);
-			this.GetGMETrackNameDirect = Module.cwrap('GetGMETrackNameDirect', 'string', ['string', 'number']);
-			this.GetKSSTrackNameDirect = Module.cwrap('GetKSSTrackNameDirect', 'string', ['string', 'number']);
-			this.GetVGMTagDirect = Module.cwrap('GetVGMTagDirect', 'string', ['string', 'number']);
-			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
-			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);
-			this.SetSampleRate = Module.cwrap('SetSampleRate', 'number', ['number']);
-			this.SetLoopCount = Module.cwrap('SetLoopCount', 'number', ['number']);
-			this.SamplePlayback2VGM = Module.cwrap('SamplePlayback2VGM', 'number', ['number']);
-			this.ShowTitle = Module.cwrap('ShowTitle', 'string');
-			this.GetChipInfoString = Module.cwrap('GetChipInfoString', 'string');
-			this.GetDeviceCount = Module.cwrap('GetDeviceCount', 'number');
-			this.GetDeviceName = Module.cwrap('GetDeviceName', 'string', ['number']);
-			this.GetDeviceVolume = Module.cwrap('GetDeviceVolume', 'number', ['number']);
-			this.SetDeviceVolume = Module.cwrap('SetDeviceVolume', 'void', ['number', 'number']);
-			this.PrefillPSF = Module.cwrap('PrefillPSF', 'void', ['number', 'number']);
-			this.FillBufferKSSPerCh = Module.cwrap('FillBufferKSSPerCh', 'void', ['number', 'number', 'number', 'number']);
-			this.GetKSSPerChSize = Module.cwrap('GetKSSPerChSize', 'number');
-			this.GetKSSDeviceMask = Module.cwrap('GetKSSDeviceMask', 'number');
-			this.SetKSSChannelMask = Module.cwrap('SetKSSChannelMask', 'void', ['number', 'number']);
-
-			this.dataPtrs = [];
-			this.dataPtrs[0] = Module._malloc(16384 * 2);
-			this.dataPtrs[1] = Module._malloc(16384 * 2);
-
-			this.results = [];
-
-			this.SetSampleRate(this.sampleRate);
-
-			this.functionsWrapped = true;
-		}
-
-
-		return true;
-	}
-
-	_startPsfPrefill() {
-		if (this._psfPrefillTimer) return;
-		this._psfPrefillTimer = setInterval(() => {
-			if (!this.isVGMPlaying || this.isPlaybackPaused) return;
-			if (this.PrefillPSF) {
-				this.PrefillPSF(16384, 4);
-			}
-		}, 15);
-	}
-
-	_stopPsfPrefill() {
-		if (this._psfPrefillTimer) {
-			clearInterval(this._psfPrefillTimer);
-			this._psfPrefillTimer = null;
-		}
-	}
-
 	_initStandaloneAnalyzer(forceRecreate = false) {
 		if (!this.standalone || !this.standaloneAnalyzerEl) return;
 		if (typeof window === 'undefined' || !window.AudioMotionAnalyzer) return;
@@ -2065,275 +1370,6 @@ class VGMPlay_js {
 	}
 
 
-	// ---- KSS Analyzer / Overlay ----
-	// Moved to vgmplay-kss.js (ES module POC)
-
-	generateBuffer() {
-		const N = 2048; // Even smaller batch size to reduce main-thread blocking
-		if (this.PrefillPSF) {
-			this.PrefillPSF(4096, 1);
-		}
-		// Always create fresh views from Module.HEAPU8.buffer in case it was reallocated (detached)
-		if (this.isKSSActive && this.FillBufferKSSPerCh && this.GetKSSPerChSize) {
-			const perChSize = this.GetKSSPerChSize();
-			const stride = Math.floor(perChSize / 2);
-			if (!this.kssPerChPtr || this._kssPerChSamples !== N || this._kssPerChStride !== stride) {
-				if (this.kssPerChPtr) Module._free(this.kssPerChPtr);
-				this.kssPerChPtr = Module._malloc(N * perChSize);
-				this._kssPerChSamples = N;
-				this._kssPerChStride = stride;
-			}
-			this.FillBufferKSSPerCh(this.dataPtrs[0], this.dataPtrs[1], this.kssPerChPtr, N);
-			const perChHeap = new Int16Array(Module.HEAPU8.buffer, this.kssPerChPtr, N * this._kssPerChStride);
-			this._kssPerChLatest = new Int16Array(perChHeap);
-			this._scanKssDevicesIfNeeded(this._kssPerChLatest, this._kssPerChStride, N);
-		} else {
-			this.FillBuffer(this.dataPtrs[0], this.dataPtrs[1], N);
-			this._kssPerChLatest = null;
-		}
-
-		const leftHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[0], N);
-		const rightHeap = new Float32Array(Module.HEAPU8.buffer, this.dataPtrs[1], N);
-
-		// Clone the data to buffers that can be transferred to the worklet
-		const left = new Float32Array(leftHeap);
-		const right = new Float32Array(rightHeap);
-
-		this.samplesGenerated += N;
-		return { left, right };
-	}
-
-	_pumpBuffers() {
-		if (this._isLoadingFile || !this.isVGMPlaying || this.isPlaybackPaused) return;
-
-		// Check for end of track (crucial for background advancement)
-		this._checkTrackEnd();
-
-		// Check if VGM ended (for formats without length info)
-		if (this.VGMEnded()) {
-			if (!this.emulatorFinished) {
-				this.emulatorFinished = true;
-				const nowMs = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-				if (this._lastSeekWasMUS && (nowMs - this._lastSeekAt) < 2000) {
-					this.stop();
-					return;
-				}
-				if (this.loopMode === 1 && this.currentTrackSupportsLoop) {
-					const list = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList : null;
-					const entry = list && list[this.currentFileKey];
-					if (this.currentFileKey && this._loopBaseSamplesByTrack && !this._loopBaseSamplesByTrack.has(this.currentFileKey)) {
-						const baseLen = this.samplesGenerated || this.totalSampleCount || 0;
-						if (baseLen > 0) this._loopBaseSamplesByTrack.set(this.currentFileKey, baseLen);
-					}
-					if (entry && entry.filepath && !this._loopRestarting) {
-						this._loopRestarting = true;
-						setTimeout(async () => {
-							await this.playFileFromFS(false, entry.filepath, this.games.indexOf(this.activeGame) + 1, this.currentFileKey);
-							this._loopRestarting = false;
-						}, 0);
-					}
-					return;
-				}
-				this.stop();
-				setTimeout(() => {
-					if (this.loopMode === 1 && !this.currentTrackSupportsLoop) {
-						this.loopMode = 0;
-						this._applyLoopMode();
-						this.changeTrack("next");
-						return;
-					}
-					if (this.loopMode === 2) this._changeTrackInGame('next');
-					else if (this.isRandomEnabled) this.playRandom();
-					else this.changeTrack("next");
-				}, 100);
-			}
-			return;
-		}
-
-		// Generate and send a few buffers
-		for (let i = 0; i < 2; i++) {
-			const buf = this.generateBuffer();
-			this.workletNode.port.postMessage({
-				type: 'buffer',
-				left: buf.left,
-				right: buf.right
-			}, [buf.left.buffer, buf.right.buffer]);
-		}
-	}
-
-	_withLoadLock(fn) {
-		this._loadLock = this._loadLock.then(fn, fn);
-		return this._loadLock;
-	}
-
-	play() {
-		if (this.buttonTogglePlayback) {
-			this.buttonTogglePlayback.innerHTML = "||";
-		}
-		if (window.Android) window.Android.updatePlaybackState(true);
-		this.samplesGenerated = 0;
-		this.isPlaybackPaused = false;
-
-		// Reset tracking if not resuming
-		if (!this.isVGMPlaying) {
-			this.startSample = 0;
-			this.visualSamplePosition = 0;
-			this.emulatorFinished = false;
-		} else {
-			// Resuming: set start sample to where we left off
-			this.startSample = this.visualSamplePosition;
-		}
-
-		if (this.context) {
-			this.playbackStartTime = this.context.currentTime;
-		}
-
-		if (!this.isVGMPlaying) {
-			this.PlayVGM();
-			this.isVGMPlaying = true;
-		}
-		this._startPsfPrefill();
-		if (this.isMobile) {
-			this._resetMobileIdleTimer();
-		}
-
-		// Reconnect audio graph (stop() disconnects it)
-		try {
-			this.workletNode.connect(this.bassBoost);
-			this.bassBoost.connect(this.compressor);
-			this.compressor.connect(this.masterGain);
-
-			this.workletNode.connect(this.reverb);
-			this.reverb.connect(this.reverbGain);
-			this.reverbGain.connect(this.masterGain);
-
-			this.masterGain.connect(this.splitter);
-			this.splitter.connect(this.analyserLeft, 0);
-			this.splitter.connect(this.analyserRight, 1);
-			this.masterGain.connect(this.destination);
-
-			// Reset fade state carefully with a short fade-in to avoid clicks
-			const now = this.context.currentTime;
-			this.isFadingOut = false;
-			this.masterGain.gain.cancelScheduledValues(now);
-			this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-			this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
-		} catch { }
-
-		// Resume audio context if suspended (autoplay policy)
-		if (this.context.state === 'suspended') {
-			this.context.resume();
-		}
-
-		// Tell the worklet to start outputting
-		this.workletNode.port.postMessage({ type: 'start' });
-
-		if (!this.generatingAudio) {
-			// Pump initial buffers
-			this._pumpBuffers();
-			this.generatingAudio = true;
-		}
-
-		// Start spectrum analyser animation
-		if (!this.useAsLibrary) {
-			this._startSpectrumAnimation();
-		}
-	}
-
-	pause() {
-		this.isPlaybackPaused = true;
-		if (window.Android) window.Android.updatePlaybackState(false);
-		if (this.buttonTogglePlayback) {
-			this.buttonTogglePlayback.innerHTML = "&#9654;";
-		}
-		if (this.isMobile) {
-			this._setMobileView('ui');
-		}
-
-		// Update visual position one last time to save state
-		if (this.context) {
-			const elapsed = this.context.currentTime - this.playbackStartTime;
-			this.visualSamplePosition = this.startSample + (elapsed * this.sampleRate);
-		}
-
-		// Tell worklet to stop outputting (keeps buffers)
-		this.workletNode.port.postMessage({ type: 'pause' });
-
-		if (this.context && this.context.state === 'running') {
-			this.context.suspend();
-		}
-
-		if (!this.useAsLibrary) {
-			this._stopSpectrumAnimation();
-		}
-		this._stopPsfPrefill();
-	}
-
-	stop() {
-		if (this.buttonTogglePlayback) {
-			this.buttonTogglePlayback.innerHTML = "&#9654;";
-		}
-		if (window.Android) window.Android.updatePlaybackState(false);
-		if (this.isMobile) {
-			this._setMobileView('ui');
-		}
-
-		if (this.workletNode) {
-			this.workletNode.port.postMessage({ type: 'stop' });
-		}
-		this._stopPsfPrefill();
-
-		// Don't close AudioContext — just disconnect and reset state
-		// This avoids expensive re-initialization of worklet module
-		try {
-			if (this.workletNode) {
-				this.workletNode.disconnect();
-				this.analyserLeft.disconnect();
-				this.analyserRight.disconnect();
-				this.splitter.disconnect();
-				// Ideally disconnect masterGain too, but it's fine.
-			}
-		} catch { }
-
-		this.generatingAudio = false;
-
-		this.StopVGM();
-		if (this.CloseVGMFile) {
-			this.CloseVGMFile();
-		}
-		this.isVGMPlaying = false;
-		this.isVGMLoaded = false;
-		this.isKSSActive = false;
-		this.kssDeviceBaseMask = 0;
-		this.kssDeviceDetectedMask = 0;
-		this._kssDeviceScanDefs = null;
-		this._kssDeviceScanPeaks = null;
-		this._kssDeviceScanFrames = 0;
-		this._kssDeviceScanDone = false;
-		this._updateStandaloneRightPanel();
-
-		this.isPlaybackPaused = true;
-		this.visualSamplePosition = 0;
-		this.startSample = 0;
-		this.emulatorFinished = false;
-
-		this.isFadingOut = false;
-		if (this.masterGain) {
-			try {
-				// Avoid immediate jump to 1.0 which causes clicks
-				const now = this.context.currentTime;
-				this.masterGain.gain.cancelScheduledValues(now);
-				this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-				this.masterGain.gain.linearRampToValueAtTime(0, now + 0.01);
-				// We don't reset to 1.0 here; play() will handle the fade-in.
-			} catch (e) { }
-		}
-
-		this._stopSpectrumAnimation();
-		this._clearSpectrum();
-		this._resetProgressBar();
-	}
-
 	load(fileName) {
 		// Determine archive name if this file belongs to a game from an archive
 		let archiveName = '';
@@ -2360,6 +1396,9 @@ class VGMPlay_js {
 		}
 		this.isVGMLoaded = ok;
 		this.isKSSActive = ok && this._isKssFile(fileName);
+		if (this.isKSSActive && this._ensureKssBindings) {
+			this._ensureKssBindings();
+		}
 		if (this.isKSSActive) {
 			this._resetKssDeviceScan();
 		} else {
@@ -2372,12 +1411,14 @@ class VGMPlay_js {
 		}
 		this._updateStandaloneSelectOptions();
 		if (ok) this._updateStandaloneRightPanel();
+		if (this._initKssMiniOverlay) {
+			if (this.isKSSActive) this._initKssMiniOverlay(true);
+			else if (this.kssMiniOverlayEl) this.kssMiniOverlayEl.style.display = 'none';
+		}
 		this._updateMemoryDisplay();
 		return ok;
 	}
 
-	// ---- Spectrum Analyser ----
-	// Moved to vgmplay-spectrum.js (ES module POC)
 }
 // ---- Progress bar & seek ----
 VGMPlay_js.prototype._updateProgressBar = function () {
@@ -2393,76 +1434,6 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 		const elapsedSec = Math.floor(currentSample / this.sampleRate);
 		const totalSec = Math.floor(this.totalSampleCount / this.sampleRate);
 		this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
-	}
-};
-
-VGMPlay_js.prototype._checkTrackEnd = function () {
-	if (!this.isVGMPlaying || !this.totalSampleCount) return;
-
-	let currentSample;
-	if (this.isPlaybackPaused) {
-		currentSample = this.visualSamplePosition;
-	} else if (this.context) {
-		const elapsed = this.context.currentTime - this.playbackStartTime;
-		currentSample = this.startSample + (elapsed * this.sampleRate);
-	} else {
-		currentSample = 0;
-	}
-
-	// Clamp to legitimate range
-	if (currentSample < 0) currentSample = 0;
-	if (currentSample > this.totalSampleCount) currentSample = this.totalSampleCount;
-
-	this.visualSamplePosition = currentSample;
-
-	// If loop mode is track and the track supports looping, keep playing
-	if (this.loopMode === 1 && this.currentTrackSupportsLoop) {
-		// We can optionally reset visual progress or just let it pin to 100%
-		return;
-	}
-
-	// Fade out logic
-	const FADE_DURATION = 2.0; // seconds
-	const fadeStartSample = this.totalSampleCount - (FADE_DURATION * this.sampleRate);
-
-	if (!this.isPlaybackPaused && !this.isFadingOut && currentSample >= fadeStartSample && this.totalSampleCount > (FADE_DURATION * this.sampleRate)) {
-		this.isFadingOut = true;
-		const now = this.context.currentTime;
-		const remaining = (this.totalSampleCount - currentSample) / this.sampleRate;
-		const duration = remaining > 0 ? remaining : 0.1;
-
-		this.masterGain.gain.cancelScheduledValues(now);
-		this.masterGain.gain.setValueAtTime(1.0, now);
-		this.masterGain.gain.linearRampToValueAtTime(0, now + duration);
-	}
-
-	// Check for end of track
-	if (!this.isPlaybackPaused && currentSample >= this.totalSampleCount) {
-		if (this.loopMode === 1 && this.currentTrackSupportsLoop) {
-			const list = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList : null;
-			const entry = list && list[this.currentFileKey];
-			if (entry && entry.filepath && !this._loopRestarting) {
-				this._loopRestarting = true;
-				setTimeout(async () => {
-					await this.playFileFromFS(false, entry.filepath, this.games.indexOf(this.activeGame) + 1, this.currentFileKey);
-					this._loopRestarting = false;
-				}, 0);
-			}
-			return;
-		}
-		this.stop();
-		// Small delay to let the user "see" the end
-		setTimeout(() => {
-			if (this.loopMode === 1 && !this.currentTrackSupportsLoop) {
-				this.loopMode = 0;
-				this._applyLoopMode();
-				this.changeTrack("next");
-				return;
-			}
-			if (this.loopMode === 2) this._changeTrackInGame('next');
-			else if (this.isRandomEnabled) this.playRandom();
-			else this.changeTrack("next");
-		}, 100);
 	}
 };
 
@@ -2569,45 +1540,6 @@ VGMPlay_js.prototype._setLoopButtonState = function () {
 	this.btnLoop.classList.toggle('blue-active', this.loopMode === 2);
 };
 
-VGMPlay_js.prototype._trackSupportsLoop = function () {
-	const isKss = () => {
-		if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
-		const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
-		if (!path) return false;
-		const clean = path.toLowerCase().split('|track=')[0];
-		return clean.endsWith('.kss') || clean.endsWith('.kssx') || clean.endsWith('.kscc') ||
-			clean.endsWith('.mgs') || clean.endsWith('.bgm') || clean.endsWith('.opx') ||
-			clean.endsWith('.mpk') || clean.endsWith('.mbm');
-	};
-	const isPsfUsf = () => {
-		if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
-		const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
-		if (!path) return false;
-		const clean = path.toLowerCase().split('|track=')[0];
-		return clean.endsWith('.psf') || clean.endsWith('.minipsf') || clean.endsWith('.usf') || clean.endsWith('.miniusf') || clean.endsWith('.mus') || clean.endsWith('.lmp');
-	};
-	if (this.GetLoopPoint) {
-		try {
-			if (this.GetLoopPoint() > 0) return true;
-		} catch (e) { }
-	}
-	// KSS and PSF/USF don't always expose loop points; allow software looping
-	return isKss() || isPsfUsf();
-};
-
-VGMPlay_js.prototype._applyLoopMode = function () {
-	if (this.loopMode === 1) {
-		this._loopCount = 0;
-		if (this.SetLoopCount) this.SetLoopCount(0);
-		if (this.progressContainer) this.progressContainer.style.display = 'none';
-	} else {
-		this._loopCount = 1;
-		if (this.SetLoopCount) this.SetLoopCount(1);
-		if (this.progressContainer) this.progressContainer.style.display = '';
-	}
-	this._setLoopButtonState();
-};
-
 VGMPlay_js.prototype.toggleLoopMode = function () {
 	this.loopMode = (this.loopMode + 1) % 3;
 	this._applyLoopMode();
@@ -2654,23 +1586,6 @@ VGMPlay_js.prototype.playRandom = function () {
 	this.playFileFromFS(false, playableList[fileIndex].filepath, gameIndex + 1, fileIndex);
 };
 
-VGMPlay_js.prototype._generateReverbImpulse = function () {
-	const length = this.sampleRate * 2.5;
-	const impulse = this.context.createBuffer(2, length, this.sampleRate);
-	const left = impulse.getChannelData(0);
-	const right = impulse.getChannelData(1);
-
-	for (let i = 0; i < length; i++) {
-		const decay = Math.pow(1 - i / length, 4.0);
-		left[i] = (Math.random() * 2 - 1) * decay;
-		right[i] = (Math.random() * 2 - 1) * decay;
-	}
-	this.reverb.buffer = impulse;
-};
-
-// ---- UI (tooltips) ----
-// Moved to vgmplay-ui.js (ES module POC)
-
 if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id)) {
 	const scriptEl = document.currentScript;
 	const data = scriptEl ? scriptEl.dataset : {};
@@ -2702,9 +1617,13 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 
 		await loadModule('./vgmplay-spectrum.js', 'installSpectrum', 'spectrum');
 		await loadModule('./vgmplay-ui.js', 'installUi', 'ui');
+		await loadModule('./vgmplay-metadata.js', 'installMetadata', 'metadata');
+		await loadModule('./vgmplay-layout.js', 'installLayout', 'layout');
 		await loadModule('./vgmplay-library.js', 'installLibrary', 'library');
 		await loadModule('./vgmplay-kss.js', 'installKss', 'kss');
 		await loadModule('./vgmplay-archives.js', 'installArchives', 'archives');
+		await loadModule('./vgmplay-audio.js', 'installAudio', 'audio');
+		await loadModule('./vgmplay-queue.js', 'installQueue', 'queue');
 
 		installers.forEach((fn) => fn(VGMPlay_js));
 		var vgmplay_js = new VGMPlay_js(options);

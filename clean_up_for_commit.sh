@@ -56,6 +56,17 @@ FILES_TO_REMOVE=(
     "unrar.min.js"
 )
 
+# Remove extra VGMPlay modules (vgmplay-*.js) except core files already listed
+for file in vgmplay-*.js; do
+    case "$file" in
+        "vgmplay-js.js"|"vgmplay-js-glue.js")
+            ;;
+        *)
+            FILES_TO_REMOVE+=("$file")
+            ;;
+    esac
+done
+
 for file in "${FILES_TO_REMOVE[@]}"; do
     rm -f "extension/$file"
     rm -f "ff_extension/$file"

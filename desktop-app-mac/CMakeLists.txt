@@ -35,6 +35,12 @@ set(ROOT_DIR "${CMAKE_SOURCE_DIR}/..")
 set(ASSET_FILES
     vgmplay-js-glue.js
     vgmplay-js.js
+    vgmplay-audio.js
+    vgmplay-archives.js
+    vgmplay-kss.js
+    vgmplay-library.js
+    vgmplay-spectrum.js
+    vgmplay-ui.js
     vgmplay-js.wasm
     vgmplay-js.data
     vgmplay-audio-processor.js
@@ -69,4 +75,3 @@ add_custom_command(TARGET VGMPlay POST_BUILD
         $<TARGET_FILE_DIR:VGMPlay>/css
     COMMENT "Symlinking css/"
 )
-

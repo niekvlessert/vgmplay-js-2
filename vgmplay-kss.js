@@ -51,7 +51,8 @@ export function installKss(VGMPlay_js) {
 		this.kssDeviceDetectedMask = 0;
 		this._kssDeviceScanFrames = 0;
 		this._kssDeviceScanDone = false;
-		this._kssDeviceScanDefs = this._buildKssChannelDefs(this.kssDeviceBaseMask);
+		const scanMask = this.kssDeviceBaseMask || (1 | 2 | 4 | 8 | 16);
+		this._kssDeviceScanDefs = this._buildKssChannelDefs(scanMask);
 		this._kssDeviceScanPeaks = {
 			psg: 0,
 			scc: 0,
@@ -63,7 +64,13 @@ export function installKss(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._scanKssDevicesIfNeeded = function (perCh, stride, sampleCount) {
-		if (this._kssDeviceScanDone || !perCh || !this._kssDeviceScanDefs) return;
+		if (this._kssDeviceScanDone || !perCh || !this._kssDeviceScanDefs) {
+			if (!perCh && !this._kssDebugLogged) {
+				this._kssDebugLogged = true;
+				// No per-channel data available for device scan (older build).
+			}
+			return;
+		}
 		const defs = this._kssDeviceScanDefs;
 		const peaks = this._kssDeviceScanPeaks;
 		const step = 4;
@@ -92,8 +99,13 @@ export function installKss(VGMPlay_js) {
 		this.kssDeviceDetectedMask = mask;
 		this.kssDeviceActiveMask = mask;
 		this._kssDeviceScanDone = true;
+		if (!mask && !this._kssDebugLogged) {
+			this._kssDebugLogged = true;
+			// Device scan found no active chips (silently ignore).
+		}
 		this._initKssChannelAnalyzer(true);
 		this._initKssOverlay(true);
+		this._initKssMiniOverlay(true);
 	};
 
 	VGMPlay_js.prototype._initKssChannelAnalyzer = function (forceRebuild = false) {
@@ -294,6 +306,106 @@ export function installKss(VGMPlay_js) {
 		this._updateKssChannelButtons();
 	};
 
+	VGMPlay_js.prototype._positionKssMiniOverlay = function () {
+		if (!this.kssMiniOverlayEl || !this.spectrumCanvas || !this.playerWindow) return;
+		const top = this.spectrumCanvas.offsetTop + 2;
+		const left = this.spectrumCanvas.offsetLeft + 40;
+		this.kssMiniOverlayEl.style.top = `${top}px`;
+		this.kssMiniOverlayEl.style.left = `${left}px`;
+	};
+
+	VGMPlay_js.prototype._initKssMiniOverlay = function (forceRebuild = false) {
+		if (this.standalone) return;
+		if (!this.playerWindow || !this.spectrumCanvas) return;
+		if (!this.isKSSActive || !this.GetKSSDeviceMask) {
+			if (this.kssMiniOverlayEl) this.kssMiniOverlayEl.style.display = 'none';
+			return;
+		}
+
+		const baseMask = this.kssDeviceBaseMask || (this.GetKSSDeviceMask ? this.GetKSSDeviceMask() : 0);
+		const mask = this.kssDeviceDetectedMask ? this.kssDeviceDetectedMask : baseMask;
+		const defs = this._buildKssChannelDefs(mask);
+		const needsRebuild = forceRebuild ||
+			!this.kssMiniOverlayEl ||
+			!this.kssMiniOverlayEl.isConnected ||
+			this.kssOverlayDefs.length !== defs.length ||
+			this.kssDeviceActiveMask !== mask;
+
+		if (needsRebuild) {
+			const prevStates = new Map();
+			this.kssChannelDefs.forEach((def, idx) => {
+				prevStates.set(`${def.device}:${def.offset}`, this.kssChannelStates[idx]);
+			});
+
+			this.kssOverlayDefs = defs;
+			this.kssChannelDefs = defs;
+			this.kssDeviceActiveMask = mask;
+			this.kssChannelStates = defs.map((def) => {
+				const key = `${def.device}:${def.offset}`;
+				const prev = prevStates.get(key);
+				return prev ? { mute: !!prev.mute, solo: !!prev.solo } : { mute: false, solo: false };
+			});
+
+			if (!this.kssMiniOverlayEl) {
+				this.kssMiniOverlayEl = document.createElement('div');
+				this.kssMiniOverlayEl.className = 'vgmplayKssOverlay vgmplayKssOverlayMini';
+				this.kssMiniOverlayEl.style.position = 'absolute';
+				this.kssMiniOverlayEl.style.zIndex = '6';
+				this.kssMiniOverlayEl.style.pointerEvents = 'auto';
+				this.kssMiniOverlayEl.style.maxWidth = '220px';
+				this.kssMiniOverlayEl.style.maxHeight = '90px';
+				this.kssMiniOverlayEl.style.overflow = 'auto';
+			}
+			if (!this.kssMiniOverlayEl.isConnected) {
+				this.playerWindow.style.position = this.playerWindow.style.position || 'relative';
+				this.playerWindow.appendChild(this.kssMiniOverlayEl);
+			}
+
+			this.kssMiniOverlayEl.innerHTML = '';
+			this.kssMiniOverlayRows = [];
+
+			defs.forEach((def, idx) => {
+				const row = document.createElement('div');
+				row.className = 'vgmplayKssOverlayRow';
+
+				const label = document.createElement('span');
+				label.className = 'vgmplayKssOverlayLabel';
+				label.textContent = def.label;
+
+				const muteBtn = document.createElement('button');
+				muteBtn.className = 'vgmplayKssChannelBtn';
+				muteBtn.textContent = 'M';
+				muteBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this._toggleKssChannelMute(idx);
+				});
+
+				const soloBtn = document.createElement('button');
+				soloBtn.className = 'vgmplayKssChannelBtn';
+				soloBtn.textContent = 'S';
+				soloBtn.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this._toggleKssChannelSolo(idx);
+				});
+
+				row.appendChild(label);
+				row.appendChild(muteBtn);
+				row.appendChild(soloBtn);
+
+				this.kssMiniOverlayEl.appendChild(row);
+				this.kssMiniOverlayRows.push({ muteBtn, soloBtn });
+			});
+		}
+
+		this.kssMiniOverlayEl.style.display = 'block';
+		this._positionKssMiniOverlay();
+		if (!this._kssMiniOverlayResizeBound && typeof window !== 'undefined') {
+			this._kssMiniOverlayResizeBound = true;
+			window.addEventListener('resize', () => this._positionKssMiniOverlay());
+		}
+		this._updateKssChannelButtons();
+	};
+
 	VGMPlay_js.prototype._toggleKssChannelMute = function (idx) {
 		const state = this.kssChannelStates[idx];
 		if (!state) return;
@@ -323,6 +435,7 @@ export function installKss(VGMPlay_js) {
 		};
 		updateRows(this.kssChannelRows);
 		updateRows(this.kssOverlayRows);
+		updateRows(this.kssMiniOverlayRows);
 	};
 
 	VGMPlay_js.prototype._applyKssChannelMasks = function () {

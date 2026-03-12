@@ -24,6 +24,17 @@ FILES_TO_COPY=(
     "audiomotion-analyzer.js"
 )
 
+# Include extra VGMPlay modules (vgmplay-*.js) without duplicating core files
+for file in vgmplay-*.js; do
+    case "$file" in
+        "vgmplay-js.js"|"vgmplay-js-glue.js")
+            ;;
+        *)
+            FILES_TO_COPY+=("$file")
+            ;;
+    esac
+done
+
 # Optional files
 if [ -f "vgmplay-js.data" ]; then
     FILES_TO_COPY+=("vgmplay-js.data")

@@ -188,6 +188,9 @@ export function installArchives(VGMPlay_js) {
 
 			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
 			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
+			if (this._applyExternalGameImage && sourceName) {
+				this._applyExternalGameImage(game, sourceName, false);
+			}
 			this.tempGameInfo = null;
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));

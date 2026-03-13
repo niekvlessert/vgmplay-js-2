@@ -50,21 +50,25 @@ Then put it on your webserver or run a server with Python 3 or something. On loc
 
 By default a player is shown and the html file will be scanned for .zip files. If available they're unpacked into the Emscripten filesystem, then a player will be displayed.
 
-Loading files is as easy as putting them on the webserver and offer them in the index.html, then include the glue and the player will be pick them up, see below:
+Loading files is as easy as putting them on the webserver and offer them in the index.html, then include the glue and the player will be pick them up, see below. Or just put the files in the dist directory relative to the home directory and let the player pick them up.
 
 ```html
 <html>
 <body>
 Download this amazing MSX music: <a href="https://192.168.1.18/01.zip">Xak</a><br/>
 Download this amazing MSX music: <a href="https://192.168.1.18/02.zip">SD Snatcher</a>
-<script src="vgmplay-js-glue.js"></script>
+<script src="vgmplay-js-glue.js" data-standalone="true"></script>
 </body>
 </html>
 ```
 
 But you can also drag and drop them at the bottom of the player.
 
+## UI
+
 It has many shortcuts, look at the tooltips from the buttons (mousepointer on button and wait a few seconds).
+
+Many games don't include an image in the sound archives. We need images of course in the playlist, looks much better. :) You can put a file with the exact name of an archive or file with an image extension like ping in the dist directory, or insert the file with insert music file/archive.
 
 ## Supported Libraries & Formats
 
@@ -80,12 +84,13 @@ The full build of `vgmplay-js` includes the following libraries and supports the
 | **miniaudio** | `.mp3`, `.flac`, `.ogg`, `.wav` (Modern Audio Formats) |
 | **libmusdoom** | `.mus`, `.lmp` (Doom) |
 | **Archives** | `.zip`, `.7z`, `.rar`, `.vigamup` (via 7zz, unrar, minizip) |
+| **Adlmidi** | OPL3 midi files |
+| **Munt** | MT32 midi (support is not that good) |
+| **vgmstream**|  format list: see `FORMATS.md`. |
 
-Full vgmstream format list: see `FORMATS.md`.
+## Extension for Chrome & Firefox
 
-## Extension from Chrome & Firefox
-
-A Chrome Extension is also available. Don't forget to run prepare_for_usage.sh. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence!
+A Chrome Extension is also available. Don't forget to run `prepare_for_usage.sh` if you build locally. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence! They're both in the github artifacts as well.
 
 ## Vigamup format for KSS files
 
@@ -112,8 +117,6 @@ Two examples of trackinfo entries under here. The syntax is: `<kss id to play>,<
 
 The minimal library build has been split out into its own repository at https://github.com/niekvlessert/libvgm-js/
 
----
-
 ## macOS Desktop App
 
 A native macOS wrapper using `WKWebView` is provided in the `desktop-app-mac` directory. It features:
@@ -131,3 +134,5 @@ cmake ..
 make
 open VGMPlay.app
 ```
+
+You can also build a dmg using `build_dmg.sh`. It's also an artifact on github.

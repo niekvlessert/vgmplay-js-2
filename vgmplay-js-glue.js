@@ -103,6 +103,7 @@ class VGMPlay_js {
 		this._autoScanDistDone = false;
 		this._pendingRomLoads = [];
 		this._pendingRomRetryScheduled = false;
+		this._pendingExternalGameImages = {};
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -544,10 +545,15 @@ class VGMPlay_js {
 			const lower = file.name.toLowerCase();
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
 			const romType = this._getRomType ? this._getRomType(file.name) : null;
-			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi || romType) {
+			const isExtImage = this._isExternalGameImage ? this._isExternalGameImage(file.name) : false;
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi || romType || isExtImage) {
 				const byteArray = await this._readFileAsUint8(file);
 				if (romType) {
 					this.saveRomFile(byteArray, file.name, romType);
+					queued++;
+				} else if (isExtImage) {
+					this._registerExternalGameImage(file.name, byteArray);
+					this._applyExternalGameImageToExistingGames(file.name);
 					queued++;
 				} else {
 					this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
@@ -635,6 +641,9 @@ class VGMPlay_js {
 
 			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
 			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
+			if (this._applyExternalGameImage && sourceName) {
+				this._applyExternalGameImage(game, sourceName, false);
+			}
 			this.tempGameInfo = null;
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -763,6 +772,9 @@ class VGMPlay_js {
 
 				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
 				game.name = name;
+				if (this._applyExternalGameImage) {
+					this._applyExternalGameImage(game, name, true);
+				}
 				this.games.push(game);
 				anyPlayable = true;
 			}
@@ -855,19 +867,36 @@ class VGMPlay_js {
 		return new Promise((resolve) => {
 			let game;
 			const miscGameName = "Misc";
+			const fileName = sourceName || "track_" + Date.now();
+			const lowerName = fileName.toLowerCase();
+			const isNsf = lowerName.endsWith('.nsf') || lowerName.endsWith('.nsfe');
 
-			// Find existing "Misc" game or create new one
-			game = this.games.find(g => g.name === miscGameName);
-
-			if (!game) {
+			if (isNsf) {
 				this.amountOfGamesLoaded++;
 				const gamePath = "/game_" + this.amountOfGamesLoaded;
 				this._makedirs(gamePath);
-				game = { files: [], path: gamePath, name: miscGameName };
+				const displayName = this._normalizeGameTitle ? (this._normalizeGameTitle(fileName) || fileName) : fileName;
+				game = { files: [], path: gamePath, name: displayName };
+				if (this._applyExternalGameImage) {
+					this._applyExternalGameImage(game, fileName, false);
+				}
 				this.games.push(game);
+			} else {
+				// Find existing "Misc" game or create new one
+				game = this.games.find(g => g.name === miscGameName);
+
+				if (!game) {
+					this.amountOfGamesLoaded++;
+					const gamePath = "/game_" + this.amountOfGamesLoaded;
+					this._makedirs(gamePath);
+					game = { files: [], path: gamePath, name: miscGameName };
+					this.games.push(game);
+				}
+				if (this._applyExternalGameImage) {
+					this._applyExternalGameImage(game, miscGameName, false);
+				}
 			}
 
-			const fileName = sourceName || "track_" + Date.now();
 			const fsPath = game.path + "/" + fileName;
 
 			// Overwrite if exists, but we use timestamps/unique names mostly
@@ -898,6 +927,10 @@ class VGMPlay_js {
 
 			this.checkEverythingReady().then(() => {
 				this.showVGMFromZip(game);
+				if (isNsf) {
+					this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+					this._renderZipGamesNow();
+				}
 				resolve();
 			});
 		});
@@ -912,7 +945,10 @@ class VGMPlay_js {
 		FS.createDataFile(gamePath, fileName, byteArray, true, true);
 
 		const fileList = [{ filepath: fsPath }];
-		var game = { files: fileList, path: gamePath };
+		var game = { files: fileList, path: gamePath, name: this._normalizeGameTitle ? (this._normalizeGameTitle(fileName) || fileName) : fileName };
+		if (this._applyExternalGameImage) {
+			this._applyExternalGameImage(game, fileName, false);
+		}
 		this.games.push(game);
 		await this.checkEverythingReady();
 		this.showVGMFromZip(game);
@@ -1180,6 +1216,94 @@ class VGMPlay_js {
 		return links;
 	}
 
+	_baseNameNoExt(p) {
+		const file = String(p || '').split('/').pop();
+		const dot = file.lastIndexOf('.');
+		return dot > 0 ? file.substring(0, dot) : file;
+	}
+
+	_isExternalGameImage(p) {
+		const lower = String(p || '').toLowerCase();
+		return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp');
+	}
+
+	_registerExternalGameImage(name, byteArray) {
+		if (!name || !byteArray) return;
+		const key = this._baseNameNoExt(name).toLowerCase();
+		if (!key) return;
+		if (!this._pendingExternalGameImages) this._pendingExternalGameImages = {};
+		try {
+			let mime = 'image/png';
+			const lower = name.toLowerCase();
+			if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+			else if (lower.endsWith('.webp')) mime = 'image/webp';
+			else if (lower.endsWith('.png')) mime = 'image/png';
+			this._pendingExternalGameImages[key] = new Blob([byteArray], { type: mime });
+		} catch (e) {
+			console.error('[VGM] Failed to cache external game image', name, e);
+		}
+	}
+
+	_applyExternalGameImage(game, archiveName, overrideOnly) {
+		if (!game || !archiveName || !this._pendingExternalGameImages) return;
+		const key = this._baseNameNoExt(archiveName).toLowerCase();
+		const blob = this._pendingExternalGameImages[key];
+		if (!blob) return;
+		if (!overrideOnly || !game.png) {
+			game.png = blob;
+		}
+	}
+
+	_applyExternalGameImageToExistingGames(imageName) {
+		if (!this.games || !this.games.length) return;
+		const key = this._baseNameNoExt(imageName).toLowerCase();
+		if (!key) return;
+		let anyUpdated = false;
+		for (const game of this.games) {
+			if (!game) continue;
+			const archiveName = game.archiveName || game.name || '';
+			const base = this._baseNameNoExt(archiveName).toLowerCase();
+			if (base === key) {
+				this._applyExternalGameImage(game, archiveName, false);
+				anyUpdated = true;
+				if (game.uiElement) {
+					const img = game.uiElement.querySelector('img.vgmplayGameToggle');
+					if (img && game.png) {
+						try {
+							img.src = URL.createObjectURL(game.png);
+						} catch (e) { }
+						continue;
+					}
+					if (game.uiElement.parentNode) {
+						game.uiElement.parentNode.removeChild(game.uiElement);
+					}
+					game.uiElement = null;
+				}
+				if (this.showVGMFromZip) {
+					this.showVGMFromZip(game);
+				}
+			}
+		}
+		if (anyUpdated && this._renderZipGamesNow) {
+			this._renderZipGamesNow();
+		}
+	}
+
+	_tryLoadMiscImageFromFS() {
+		if (typeof FS === 'undefined' || !FS.analyzePath || !FS.readFile) return;
+		const candidates = ['misc.png', 'misc.jpg', 'misc.jpeg', 'misc.webp'];
+		for (const name of candidates) {
+			try {
+				if (FS.analyzePath('/' + name).exists) {
+					const bytes = FS.readFile('/' + name);
+					this._registerExternalGameImage(name, bytes);
+					this._applyExternalGameImageToExistingGames(name);
+					return;
+				}
+			} catch (e) { }
+		}
+	}
+
 	async _getDistFilesFromManifest(distBase) {
 		try {
 			const url = new URL('manifest.json', distBase);
@@ -1238,9 +1362,9 @@ class VGMPlay_js {
 		} catch (e) { }
 
 		// auto-scan /dist
-		let files = await this._getDistFilesFromManifest(distBase);
+		let files = await this._getDistFilesFromListing(distBase);
 		if (!files.length) {
-			files = await this._getDistFilesFromListing(distBase);
+			files = await this._getDistFilesFromManifest(distBase);
 		}
 		// discovered files
 		if (!files.length) return;
@@ -1254,14 +1378,25 @@ class VGMPlay_js {
 			if (this._isArchiveUrl(lower)) {
 				this._queueURL(url, false, true);
 			} else {
-				const name = url.split('/').pop().split('?')[0].split('#')[0];
+				const rawName = url.split('/').pop().split('?')[0].split('#')[0];
+				let name = rawName;
+				try {
+					name = decodeURIComponent(rawName);
+				} catch (e) { }
 				const romType = this._getRomType ? this._getRomType(name) : null;
+				const isExtImage = this._isExternalGameImage ? this._isExternalGameImage(name) : false;
 				if (romType) {
 					const bytes = await this._fetchUrlAsUint8(url);
 					if (bytes) {
 						this.saveRomFile(bytes, name, romType);
 					} else {
 						console.warn('ROM fetch failed', url);
+					}
+				} else if (isExtImage) {
+					const bytes = await this._fetchUrlAsUint8(url);
+					if (bytes) {
+						this._registerExternalGameImage(name, bytes);
+						this._applyExternalGameImageToExistingGames(name);
 					}
 				} else if (this.isPlayable(lower) || (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower)) {
 					this._queueURL(url, false, true);
@@ -1878,7 +2013,21 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 		const installers = [];
 		const loadModule = async (path, fnName, label) => {
 			try {
-				const mod = await import(path + cacheSuffix);
+				const tryImport = async (p) => {
+					return await import(p + cacheSuffix);
+				};
+				let mod = null;
+				try {
+					mod = await tryImport(path);
+				} catch (e1) {
+					// Fallback: use baseURL if relative import fails (e.g. GitHub Pages).
+					if (typeof window !== 'undefined' && window.vgmPlayInstance && window.vgmPlayInstance.baseURL && path.startsWith('./')) {
+						const alt = window.vgmPlayInstance.baseURL + path.substring(2);
+						mod = await tryImport(alt);
+					} else {
+						throw e1;
+					}
+				}
 				const fn = mod && mod[fnName];
 				if (typeof fn === 'function') {
 					installers.push(fn);
@@ -1912,7 +2061,12 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 		window.vgmPlayInstance = vgmplay_js;
 		if (vgmplay_js && vgmplay_js._autoScanDist) {
 			setTimeout(() => {
-				vgmplay_js.checkEverythingReady().then(() => vgmplay_js._autoScanDist());
+				vgmplay_js.checkEverythingReady().then(() => {
+					vgmplay_js._autoScanDist();
+					if (vgmplay_js._tryLoadMiscImageFromFS) {
+						vgmplay_js._tryLoadMiscImageFromFS();
+					}
+				});
 			}, 0);
 		}
 	})();

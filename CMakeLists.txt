@@ -198,14 +198,29 @@ set(LINK_FLAGS "\
     -s EXPORTED_FUNCTIONS=\"[${EXPORT_STR}]\" \
 ")
 
-set(LINK_FLAGS "${LINK_FLAGS} --preload-file ${PROJECT_SOURCE_DIR}/files@/")
+set(PRELOAD_DIR "${PROJECT_SOURCE_DIR}/files")
+if (EXISTS "${PRELOAD_DIR}")
+  file(GLOB_RECURSE PRELOAD_FILES "${PRELOAD_DIR}/*")
+  if (PRELOAD_FILES)
+    set(LINK_FLAGS "${LINK_FLAGS} --preload-file ${PRELOAD_DIR}@/")
+    set(PRELOAD_ENABLED TRUE)
+  endif()
+endif()
 
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LINK_FLAGS}")
 
 # Post-build copy
-add_custom_command(TARGET vgmplay-js POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
-  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.data ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.data
-  COMMENT "Copying build artifacts to project root"
-)
+if (PRELOAD_ENABLED)
+  add_custom_command(TARGET vgmplay-js POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.data ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.data
+    COMMENT "Copying build artifacts to project root"
+  )
+else()
+  add_custom_command(TARGET vgmplay-js POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
+    COMMENT "Copying build artifacts to project root"
+  )
+endif()

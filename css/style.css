@@ -378,6 +378,13 @@
   z-index: 20;
   max-width: calc(100vw - 20px);
   max-height: calc(100vh - 20px);
+  opacity: 1;
+  transition: opacity 0.6s ease;
+}
+
+.vgmplayContainer .vgmplaySkippedWindow.vgmplaySkippedFading {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .vgmplayContainer .vgmplaySkippedHeader {
@@ -441,6 +448,32 @@
   line-height: 16px;
   padding: 0;
   text-align: center;
+}
+
+.vgmplayContainer .vgmplaySkippedCountdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 6px;
+  font-size: 10px;
+  color: #cfcfcf;
+  font-family: monospace;
+}
+
+.vgmplayContainer .vgmplaySkippedSpinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #00ff66;
+  border-radius: 50%;
+  animation: vgmplaySpin 0.8s linear infinite;
+}
+
+@keyframes vgmplaySpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .vgmplayContainer .vgmplaySkippedList {

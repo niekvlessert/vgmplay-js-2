@@ -195,11 +195,17 @@ export function installUi(VGMPlay_js) {
 		this.skippedHeader = document.createElement('div');
 		this.skippedHeader.className = 'vgmplaySkippedHeader';
 		this.skippedHeader.innerHTML = `
-			<span class="vgmplaySkippedTitle">Skipped Downloads</span>
+			<span class="vgmplaySkippedTitle">ADDITIONAL INFORMATION</span>
+			<span class="vgmplaySkippedCountdown" style="display:none;">
+				<span class="vgmplaySkippedSpinner"></span>
+				<span class="vgmplaySkippedCountdownNum">10</span>
+			</span>
 			<button class="vgmplaySkippedClose" title="Close">×</button>
 		`;
 		this.skippedWindow.appendChild(this.skippedHeader);
 		this.skippedTitleEl = this.skippedHeader.querySelector('.vgmplaySkippedTitle');
+		this.skippedCountdownEl = this.skippedHeader.querySelector('.vgmplaySkippedCountdown');
+		this.skippedCountdownNumEl = this.skippedHeader.querySelector('.vgmplaySkippedCountdownNum');
 
 		this.skippedNotice = document.createElement('div');
 		this.skippedNotice.className = 'vgmplaySkippedNotice';
@@ -222,8 +228,7 @@ export function installUi(VGMPlay_js) {
 
 		this.skippedHeader.addEventListener('mousedown', this._dragStartWindow);
 		this.skippedHeader.querySelector('.vgmplaySkippedClose').addEventListener('click', () => {
-			this.skippedWindow.style.display = 'none';
-			this.skippedWindowVisible = false;
+			this._hideSkippedWindow(false);
 		});
 
 		this._renderSkippedDownloads();
@@ -383,19 +388,72 @@ export function installUi(VGMPlay_js) {
 		}
 
 		this._positionSkippedWindow();
+		this._updateSkippedAutoHide();
 	};
 
 	VGMPlay_js.prototype._updateSkippedTitle = function () {
 		if (!this.skippedTitleEl) return;
-		const hasBig = this.skippedDownloads.length > 0;
-		const hasLots = this.autoOverflowURLs.length > 0;
-		let title = 'Skipped Downloads';
-		if (hasLots && !hasBig) {
-			title = 'Lots of files';
-		} else if (hasLots && hasBig) {
-			title = 'Skipped Downloads & Lots of Files';
+		this.skippedTitleEl.textContent = 'ADDITIONAL INFORMATION';
+	};
+
+	VGMPlay_js.prototype._clearSkippedAutoHide = function () {
+		if (this._skippedAutoHideTimer) {
+			clearTimeout(this._skippedAutoHideTimer);
+			this._skippedAutoHideTimer = null;
 		}
-		this.skippedTitleEl.textContent = title;
+		if (this._skippedCountdownTimer) {
+			clearInterval(this._skippedCountdownTimer);
+			this._skippedCountdownTimer = null;
+		}
+	};
+
+	VGMPlay_js.prototype._hideSkippedWindow = function (fade = true) {
+		this._clearSkippedAutoHide();
+		if (!this.skippedWindow) return;
+		if (fade) {
+			this.skippedWindow.classList.add('vgmplaySkippedFading');
+			setTimeout(() => {
+				if (!this.skippedWindow) return;
+				this.skippedWindow.style.display = 'none';
+				this.skippedWindowVisible = false;
+				this.skippedWindow.classList.remove('vgmplaySkippedFading');
+				if (this.skippedCountdownEl) this.skippedCountdownEl.style.display = 'none';
+			}, 600);
+		} else {
+			this.skippedWindow.style.display = 'none';
+			this.skippedWindowVisible = false;
+			this.skippedWindow.classList.remove('vgmplaySkippedFading');
+			if (this.skippedCountdownEl) this.skippedCountdownEl.style.display = 'none';
+		}
+	};
+
+	VGMPlay_js.prototype._updateSkippedAutoHide = function () {
+		if (!this.skippedWindowVisible) return;
+		const needsAction = this.skippedDownloads.length > 0 || this.autoOverflowURLs.length > 0;
+		const hasNotices = this.noPlayableNotices.length > 0;
+
+		if (needsAction || !hasNotices) {
+			this._clearSkippedAutoHide();
+			if (this.skippedCountdownEl) this.skippedCountdownEl.style.display = 'none';
+			return;
+		}
+
+		if (this._skippedCountdownTimer || this._skippedAutoHideTimer) return;
+		if (this.skippedCountdownEl) this.skippedCountdownEl.style.display = 'inline-flex';
+
+		let remaining = 10;
+		if (this.skippedCountdownNumEl) this.skippedCountdownNumEl.textContent = String(remaining);
+		this._skippedCountdownTimer = setInterval(() => {
+			remaining -= 1;
+			if (this.skippedCountdownNumEl) this.skippedCountdownNumEl.textContent = String(Math.max(0, remaining));
+			if (remaining <= 0) {
+				this._hideSkippedWindow(true);
+			}
+		}, 1000);
+
+		this._skippedAutoHideTimer = setTimeout(() => {
+			this._hideSkippedWindow(true);
+		}, 10000);
 	};
 
 	VGMPlay_js.prototype._updateSkippedNotice = function () {
@@ -429,6 +487,7 @@ export function installUi(VGMPlay_js) {
 	VGMPlay_js.prototype._showSkippedWindow = function () {
 		if (!this.skippedWindow) return;
 		if (!this.skippedWindowVisible) {
+			this.skippedWindow.classList.remove('vgmplaySkippedFading');
 			this.skippedWindow.style.display = 'block';
 			this.skippedWindowVisible = true;
 			this._positionSkippedWindow();
@@ -450,6 +509,11 @@ export function installUi(VGMPlay_js) {
 		let msg = `${safeName} did not contain playable music for VGMPlay!`;
 		if (opts && opts.isMuntRom) {
 			msg = `Munt ROM file ${safeName} uploaded and saved to root.`;
+		} else if (opts && opts.isRom) {
+			const lower = String(safeName).toLowerCase();
+			if (lower === 'yrw801.rom') {
+				msg = `yrw801.rom loaded, playback of VGM files using YMF278B will work now.`;
+			}
 		} else if (opts && opts.isMidiArchive) {
 			msg = `${safeName} contains MIDI only. Playback not supported yet.`;
 		} else if ((opts && opts.isMidi) || (this._isMidiFile && this._isMidiFile(safeName))) {

@@ -98,6 +98,11 @@ class VGMPlay_js {
 		this.autoDownloadCount = 0;
 		this.autoOverflowURLs = [];
 		this.noPlayableNotices = [];
+		this.autoScanDist = (typeof options.autoScanDist === 'undefined') ? true : !!options.autoScanDist;
+		this.autoScanDistBase = options.autoScanDistBase || '/dist/';
+		this._autoScanDistDone = false;
+		this._pendingRomLoads = [];
+		this._pendingRomRetryScheduled = false;
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -538,11 +543,11 @@ class VGMPlay_js {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
-			const isRom = this._isMuntRom(file.name);
-			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi || isRom) {
+			const romType = this._getRomType ? this._getRomType(file.name) : null;
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi || romType) {
 				const byteArray = await this._readFileAsUint8(file);
-				if (isRom) {
-					this.saveRomFile(byteArray, file.name);
+				if (romType) {
+					this.saveRomFile(byteArray, file.name, romType);
 					queued++;
 				} else {
 					this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
@@ -695,6 +700,12 @@ class VGMPlay_js {
 				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
 				FS.createDataFile(parent, name, fileArray, true, true);
+				if (this._getRomType) {
+					const romType = this._getRomType(name);
+					if (romType) {
+						this.saveRomFile(fileArray, name, romType);
+					}
+				}
 			} catch (e) {
 				console.error("Error creating file in FS:", e);
 			}
@@ -1150,6 +1161,126 @@ class VGMPlay_js {
 		return { entries, oneBased };
 	}
 
+	_extractLinksFromHtml(html) {
+		const links = [];
+		const re = /href=["']([^"']+)["']/gi;
+		let match;
+		while ((match = re.exec(html))) {
+			links.push(match[1]);
+		}
+		return links;
+	}
+
+	async _getDistFilesFromManifest(distBase) {
+		try {
+			const url = new URL('manifest.json', distBase);
+			const resp = await fetch(url.toString(), { cache: 'no-store' });
+			if (!resp.ok) {
+				console.warn('[dist] manifest fetch failed', resp.status, url.toString());
+				return [];
+			}
+			const data = await resp.json();
+			if (!Array.isArray(data)) {
+				console.warn('[dist] manifest is not an array', url.toString());
+				return [];
+			}
+			return data
+				.map((p) => new URL(p, distBase).toString())
+				.filter((u) => u.includes('/dist/'));
+		} catch (e) {
+			console.warn('[dist] manifest fetch error', e);
+			return [];
+		}
+	}
+
+	async _getDistFilesFromListing(distBase) {
+		try {
+			const resp = await fetch(distBase, { cache: 'no-store' });
+			if (!resp.ok) {
+				console.warn('[dist] listing fetch failed', resp.status, distBase);
+				return [];
+			}
+			const html = await resp.text();
+			if (!html || html.length < 16) {
+				console.warn('[dist] listing empty', distBase);
+			}
+			const links = this._extractLinksFromHtml(html);
+			const out = [];
+			for (const href of links) {
+				if (!href || href === '../') continue;
+				const url = new URL(href, distBase);
+				if (!url.pathname.startsWith('/dist/')) continue;
+				if (url.pathname.endsWith('/')) continue;
+				out.push(url.toString());
+			}
+			if (out.length === 0) {
+				console.warn('[dist] listing contained no files', distBase);
+			}
+			return out;
+		} catch (e) {
+			console.warn('[dist] listing error', e);
+			return [];
+		}
+	}
+
+	async _fetchUrlAsUint8(url) {
+		try {
+			const resp = await fetch(url, { cache: 'no-store' });
+			if (!resp.ok) return null;
+			const buf = await resp.arrayBuffer();
+			return new Uint8Array(buf);
+		} catch (e) {
+			return null;
+		}
+	}
+
+	async _autoScanDist() {
+		if (!this.autoScanDist || this._autoScanDistDone) return;
+		this._autoScanDistDone = true;
+		if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+		let distBase = this.autoScanDistBase || '/dist/';
+		try {
+			distBase = new URL(distBase, window.location.href).toString();
+		} catch (e) { }
+
+		console.log('[dist] auto-scan start', distBase);
+		let files = await this._getDistFilesFromManifest(distBase);
+		if (!files.length) {
+			files = await this._getDistFilesFromListing(distBase);
+		}
+		console.log('[dist] discovered', files.length, 'file(s)');
+		if (!files.length) return;
+
+		const seen = new Set();
+		for (const url of files) {
+			if (!url) continue;
+			if (seen.has(url)) continue;
+			seen.add(url);
+			const lower = url.toLowerCase().split('?')[0].split('#')[0];
+			if (this._isArchiveUrl(lower)) {
+				console.log('[dist] queue archive', url);
+				this._queueURL(url, false, true);
+			} else {
+				const name = url.split('/').pop().split('?')[0].split('#')[0];
+				const romType = this._getRomType ? this._getRomType(name) : null;
+				if (romType) {
+					console.log('[dist] load rom', url);
+					const bytes = await this._fetchUrlAsUint8(url);
+					if (bytes) {
+						this.saveRomFile(bytes, name, romType);
+					} else {
+						console.warn('[dist] rom fetch failed', url);
+					}
+				} else if (this.isPlayable(lower) || (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower)) {
+					console.log('[dist] queue playable', url);
+					this._queueURL(url, false, true);
+				} else {
+					console.log('[dist] skip non-archive', url);
+				}
+			}
+		}
+	}
+
 	_getKssMetaForFile(game, fileName) {
 		if (!game || !game.kssTxtByBase) return null;
 		const dot = fileName.lastIndexOf('.');
@@ -1468,24 +1599,105 @@ class VGMPlay_js {
 		return ok;
 	}
 
-	_isMuntRom(name) {
+	_getRomType(name) {
 		const n = String(name || '').toUpperCase();
-		return n === 'MT32_CONTROL.ROM' || n === 'MT32_PCM.ROM';
+		if (n === 'MT32_CONTROL.ROM' || n === 'MT32_PCM.ROM') return 'munt';
+		if (n === 'YRW801.ROM') return 'opl4';
+		return null;
 	}
 
-	saveRomFile(byteArray, name) {
-		const n = String(name || '').toUpperCase();
-		if (typeof FS !== 'undefined') {
-			try {
-				if (FS.analyzePath('/' + n).exists) {
-					FS.unlink('/' + n);
-				}
-				FS.createDataFile('/', n, byteArray, true, true);
-				this._addNoPlayableNotice(name, { typeLabel: 'Munt ROM', isMuntRom: true });
-			} catch (e) {
-				console.error("Error saving ROM file:", e);
-			}
+	saveRomFile(byteArray, name, romType) {
+		const type = romType || this._getRomType(name);
+		if (!type) return;
+		this._romLoaded = this._romLoaded || {};
+
+		let bytes = byteArray;
+		if (bytes instanceof ArrayBuffer) {
+			bytes = new Uint8Array(bytes);
+		} else if (Array.isArray(bytes)) {
+			bytes = Uint8Array.from(bytes);
 		}
+		if (bytes && !(bytes instanceof Uint8Array)) {
+			try {
+				if (Number.isFinite(bytes.length)) {
+					bytes = Uint8Array.from(bytes);
+				}
+			} catch (e) { }
+		}
+		if (!bytes || !bytes.buffer) {
+			console.error('Error saving ROM file: invalid data for', name);
+			return;
+		}
+
+		if (typeof FS === 'undefined' || !FS.createDataFile) {
+			this._queueRomRetry(bytes, name, type);
+			return;
+		}
+
+		let targetName = '';
+		let label = '';
+		let key = '';
+		if (type === 'munt') {
+			targetName = String(name || '').toUpperCase();
+			label = 'Munt ROM';
+			key = 'munt:' + targetName;
+			this._romLoaded = this._romLoaded || {};
+		} else if (type === 'opl4') {
+			targetName = 'yrw801.rom';
+			label = 'OPL4 ROM (YRW801)';
+			key = 'opl4:yrw801.rom';
+		} else {
+			return;
+		}
+
+		try {
+			const path = '/' + targetName;
+			if (FS.analyzePath(path).exists) {
+				FS.unlink(path);
+			}
+			FS.createDataFile('/', targetName, bytes, true, true);
+			if (!this._romLoaded[key]) {
+				const opts = { typeLabel: label, isRom: true };
+				if (type === 'munt') opts.isMuntRom = true;
+				this._addNoPlayableNotice(name || targetName, opts);
+				this._romLoaded[key] = true;
+			}
+		} catch (e) {
+			console.error("Error saving ROM file:", e);
+			this._queueRomRetry(bytes, name, type);
+		}
+	}
+
+	_queueRomRetry(bytes, name, romType) {
+		if (!bytes || !bytes.buffer) return;
+		if (!this._pendingRomLoads) this._pendingRomLoads = [];
+		this._pendingRomLoads.push({ bytes, name, romType, attempts: 1 });
+		this._schedulePendingRomRetry();
+	}
+
+	_schedulePendingRomRetry() {
+		if (this._pendingRomRetryScheduled) return;
+		this._pendingRomRetryScheduled = true;
+		this.checkEverythingReady().then(() => {
+			this._pendingRomRetryScheduled = false;
+			const pending = this._pendingRomLoads || [];
+			this._pendingRomLoads = [];
+			for (const item of pending) {
+				if (!item || !item.bytes || item.attempts > 2) continue;
+				const nextAttempts = (item.attempts || 1) + 1;
+				try {
+					this.saveRomFile(item.bytes, item.name, item.romType);
+				} catch (e) {
+					if (nextAttempts <= 2) {
+						item.attempts = nextAttempts;
+						this._pendingRomLoads.push(item);
+					}
+				}
+			}
+			if (this._pendingRomLoads.length) {
+				this._schedulePendingRomRetry();
+			}
+		});
 	}
 
 }
@@ -1707,5 +1919,10 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 		installers.forEach((fn) => fn(VGMPlay_js));
 		var vgmplay_js = new VGMPlay_js(options);
 		window.vgmPlayInstance = vgmplay_js;
+		if (vgmplay_js && vgmplay_js._autoScanDist) {
+			setTimeout(() => {
+				vgmplay_js.checkEverythingReady().then(() => vgmplay_js._autoScanDist());
+			}, 0);
+		}
 	})();
 }

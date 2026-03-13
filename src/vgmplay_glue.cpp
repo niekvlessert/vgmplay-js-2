@@ -23,6 +23,10 @@
 #include "../modules/libvgm/emu/Resampler.h"
 #include "../modules/libvgm/player/playerbase.hpp"
 #include "../modules/libvgm/player/vgmplayer.hpp"
+#define MT32EMU_API_TYPE 1
+#include "c_interface/c_interface.h"
+#define BW_MidiSequencer AdlMidiSequencer
+#include "../modules/adlmidi/src/midi_sequencer.hpp"
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
 
@@ -95,6 +99,166 @@ static std::vector<uint8_t> musData;
 static bool isADLMIDI = false;
 static ADL_MIDIPlayer* adlPlayer = nullptr;
 static std::string currentMidiEngine = "adlmidi";
+
+bool isMunt = false;
+bool mt32Enabled = false;
+mt32emu_context mt32Ctx = nullptr;
+BW_MidiSequencer* mt32Smf = nullptr;
+BW_MidiRtInterface mt32RtInterface;
+std::string muntControlRomPath = "/MT32_CONTROL.ROM";
+std::string muntPcmRomPath = "/MT32_PCM.ROM";
+static std::string muntGroupId;
+
+void mt32RtNoteOn(void* userData, uint8_t channel, uint8_t note, uint8_t velocity) {
+    mt32emu_play_msg((mt32emu_context)userData, 0x90 | channel | ((uint32_t)note << 8) | ((uint32_t)velocity << 16));
+}
+void mt32RtNoteOff(void* userData, uint8_t channel, uint8_t note) {
+    mt32emu_play_msg((mt32emu_context)userData, 0x80 | channel | ((uint32_t)note << 8));
+}
+void mt32RtNoteOffVel(void* userData, uint8_t channel, uint8_t note, uint8_t velocity) {
+    mt32emu_play_msg((mt32emu_context)userData, 0x80 | channel | ((uint32_t)note << 8) | ((uint32_t)velocity << 16));
+}
+void mt32RtNoteAfterTouch(void* userData, uint8_t channel, uint8_t note, uint8_t pressure) {
+    mt32emu_play_msg((mt32emu_context)userData, 0xA0 | channel | ((uint32_t)note << 8) | ((uint32_t)pressure << 16));
+}
+void mt32RtChannelAfterTouch(void* userData, uint8_t channel, uint8_t pressure) {
+    mt32emu_play_msg((mt32emu_context)userData, 0xD0 | channel | ((uint32_t)pressure << 8));
+}
+void mt32RtControllerChange(void* userData, uint8_t channel, uint8_t controller, uint8_t value) {
+    mt32emu_play_msg((mt32emu_context)userData, 0xB0 | channel | ((uint32_t)controller << 8) | ((uint32_t)value << 16));
+}
+void mt32RtPatchChange(void* userData, uint8_t channel, uint8_t patch) {
+    mt32emu_play_msg((mt32emu_context)userData, 0xC0 | channel | ((uint32_t)patch << 8));
+}
+void mt32RtPitchBend(void* userData, uint8_t channel, uint8_t msb, uint8_t lsb) {
+    mt32emu_play_msg((mt32emu_context)userData, 0xE0 | channel | ((uint32_t)lsb << 8) | ((uint32_t)msb << 16));
+}
+void mt32RtSysEx(void* userData, const uint8_t* data, size_t size) {
+    if (!data || size == 0) {
+        return;
+    }
+    // mt32emu_play_sysex expects a well-formed SysEx (starts with 0xF0 and ends with 0xF7).
+    // SMF SysEx events often omit the trailing 0xF7 in the payload; normalize to avoid garbage.
+    if (data[0] == 0xF0) {
+        if (data[size - 1] == 0xF7) {
+            mt32emu_play_sysex((mt32emu_context)userData, data, (mt32emu_bit32u)size);
+            return;
+        }
+        std::vector<uint8_t> tmp;
+        tmp.reserve(size + 1);
+        tmp.insert(tmp.end(), data, data + size);
+        tmp.push_back(0xF7);
+        mt32emu_play_sysex((mt32emu_context)userData, tmp.data(), (mt32emu_bit32u)tmp.size());
+        return;
+    }
+    // For escape/continuation SysEx (0xF7) or other non-standard payloads, wrap.
+    std::vector<uint8_t> tmp;
+    tmp.reserve(size + 2);
+    tmp.push_back(0xF0);
+    tmp.insert(tmp.end(), data, data + size);
+    if (tmp.back() != 0xF7) {
+        tmp.push_back(0xF7);
+    }
+    mt32emu_play_sysex((mt32emu_context)userData, tmp.data(), (mt32emu_bit32u)tmp.size());
+}
+
+extern "C" bool CheckMuntRoms() {
+    FILE* f1 = fopen(muntControlRomPath.c_str(), "rb");
+    bool controlOk = (f1 != nullptr);
+    if (f1) fclose(f1);
+    FILE* f2 = fopen(muntPcmRomPath.c_str(), "rb");
+    bool pcmOk = (f2 != nullptr);
+    if (f2) fclose(f2);
+    return controlOk && pcmOk;
+}
+
+void DeinitMunt() {
+  if (mt32Ctx) {
+    mt32emu_free_context(mt32Ctx);
+    mt32Ctx = nullptr;
+  }
+  if (mt32Smf) {
+    delete mt32Smf;
+    mt32Smf = nullptr;
+  }
+  isMunt = false;
+  mt32Enabled = false;
+  muntGroupId.clear();
+}
+
+bool InitializeMunt() {
+  DeinitMunt();
+  if (!CheckMuntRoms()) {
+      printf("InitializeMunt: ROMs missing\n");
+      return false;
+  }
+
+  mt32emu_report_handler_i report_handler;
+  report_handler.v0 = nullptr;
+  mt32Ctx = mt32emu_create_context(report_handler, nullptr);
+  if (!mt32Ctx) {
+      printf("InitializeMunt: mt32emu_create_context failed\n");
+      return false;
+  }
+
+  auto loadRom = [](const std::string& path, mt32emu_context ctx, bool isControl) -> bool {
+    FILE *f = fopen(path.c_str(), "rb");
+    if (!f) { printf("loadRom: cannot open '%s'\n", path.c_str()); return false; }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    unsigned char* data = (unsigned char*)malloc(size);
+    fread(data, 1, size, f);
+    fclose(f);
+    
+    mt32emu_return_code rc;
+    rc = mt32emu_add_rom_data(ctx, (const mt32emu_bit8u*)data, (size_t)size, nullptr);
+    free(data);
+    printf("loadRom: '%s' -> rc=%d (ROM_NOT_IDENTIFIED=%d)\n", path.c_str(), rc, MT32EMU_RC_ROM_NOT_IDENTIFIED);
+    // Success codes are RC_ADDED_CONTROL_ROM(1), RC_ADDED_PCM_ROM(2), RC_ADDED_PARTIAL_*
+    // Failure is RC_ROM_NOT_IDENTIFIED(-1)
+    return rc != MT32EMU_RC_ROM_NOT_IDENTIFIED;
+  };
+
+  if (!loadRom(muntControlRomPath, mt32Ctx, true)) {
+      DeinitMunt();
+      return false;
+  }
+  if (!loadRom(muntPcmRomPath, mt32Ctx, false)) {
+      DeinitMunt();
+      return false;
+  }
+
+  mt32emu_set_stereo_output_samplerate(mt32Ctx, (double)gSampleRate);
+  mt32emu_set_samplerate_conversion_quality(mt32Ctx, MT32EMU_SRCQ_BEST);
+
+  if (mt32emu_open_synth(mt32Ctx) != MT32EMU_RC_OK) {
+      printf("InitializeMunt: mt32emu_open_synth failed\n");
+      DeinitMunt();
+      return false;
+  }
+
+  // Setup sequencer interface
+  memset(&mt32RtInterface, 0, sizeof(BW_MidiRtInterface));
+  mt32RtInterface.rtUserData = mt32Ctx;
+  mt32RtInterface.rt_noteOn = mt32RtNoteOn;
+  mt32RtInterface.rt_noteOff = mt32RtNoteOff;
+  mt32RtInterface.rt_noteOffVel = mt32RtNoteOffVel;
+  mt32RtInterface.rt_noteAfterTouch = mt32RtNoteAfterTouch;
+  mt32RtInterface.rt_channelAfterTouch = mt32RtChannelAfterTouch;
+  mt32RtInterface.rt_controllerChange = mt32RtControllerChange;
+  mt32RtInterface.rt_patchChange = mt32RtPatchChange;
+  mt32RtInterface.rt_pitchBend = mt32RtPitchBend;
+  mt32RtInterface.rt_systemExclusive = mt32RtSysEx;
+
+  mt32Smf = new BW_MidiSequencer();
+  mt32Smf->setInterface(&mt32RtInterface);
+
+  isMunt = true;
+  mt32Enabled = true;
+  printf("InitializeMunt: Success!\n");
+  return true;
+}
 
 static bool isMA = false;
 static ma_decoder gMaDecoder;
@@ -586,6 +750,14 @@ static int parseTrackSuffix(const char *path, std::string &basePath) {
   return track;
 }
 
+static std::string getMuntGroupIdFromPath(const std::string &path) {
+  // Use parent directory as a best-effort "game" grouping for MIDI files.
+  size_t slash = path.find_last_of('/');
+  if (slash == std::string::npos)
+    return "";
+  return path.substr(0, slash);
+}
+
 static bool isKssFormatPath(const std::string &lowerPath) {
   return (lowerPath.find(".kss") != std::string::npos ||
           lowerPath.find(".kssx") != std::string::npos ||
@@ -664,9 +836,16 @@ void SetSampleRate(unsigned int rate) {
 void SetMidiEngine(const char* engine) {
   if (!engine) {
     currentMidiEngine.clear();
+    DeinitMunt();
     return;
   }
-  currentMidiEngine = engine;
+  std::string newEngine = engine;
+  printf("SetMidiEngine: engine choice stored: '%s'\n", newEngine.c_str());
+  // If switching away from munt, deinit immediately
+  if (newEngine != "munt") {
+    DeinitMunt();
+  }
+  currentMidiEngine = newEngine;
 }
 
 void SetLoopCount(unsigned int loops) {
@@ -968,7 +1147,42 @@ int OpenVGMFile(const char *path) {
       (lowerPath.substr(lowerPath.size() - 4) == ".mid" ||
        lowerPath.substr(lowerPath.size() - 5) == ".midi" ||
        lowerPath.substr(lowerPath.size() - 4) == ".rmi")) {
-    if (currentMidiEngine.empty() || currentMidiEngine == "adlmidi") {
+
+    const char* midiEngineToUse = currentMidiEngine.empty() ? "adlmidi" : currentMidiEngine.c_str();
+    printf("OpenVGMFile: MIDI engine: '%s', isMunt=%d, mt32Smf=%p\n", midiEngineToUse, isMunt, (void*)mt32Smf);
+    if (strcmp(midiEngineToUse, "munt") == 0) {
+        const std::string newGroupId = getMuntGroupIdFromPath(basePath);
+        if (!muntGroupId.empty() && muntGroupId != newGroupId) {
+            printf("OpenVGMFile: Munt group changed, resetting MT-32 state\n");
+            DeinitMunt();
+        }
+        // Lazily initialize Munt if not already done
+        if (!isMunt || !mt32Smf) {
+            printf("OpenVGMFile: Munt not yet initialized, calling InitializeMunt\n");
+            // Debug ROM file existence
+            FILE* f1 = fopen(muntControlRomPath.c_str(), "rb");
+            printf("OpenVGMFile: control ROM '%s' %s\n", muntControlRomPath.c_str(), f1 ? "found" : "NOT FOUND");
+            if (f1) fclose(f1);
+            FILE* f2 = fopen(muntPcmRomPath.c_str(), "rb");
+            printf("OpenVGMFile: pcm ROM '%s' %s\n", muntPcmRomPath.c_str(), f2 ? "found" : "NOT FOUND");
+            if (f2) fclose(f2);
+            if (!InitializeMunt()) {
+                printf("OpenVGMFile: Munt initialization failed, falling back to ADLMIDI\n");
+                goto use_adlmidi;
+            }
+        }
+        if (mt32Smf->loadMIDI(basePath.c_str())) {
+            gSampleRate = 44100;
+            printf("OpenVGMFile: Munt loaded MIDI successfully\n");
+            muntGroupId = newGroupId;
+            isADLMIDI = false;
+            return 1;
+        }
+        printf("OpenVGMFile: Munt failed to load MIDI, falling back to ADLMIDI\n");
+    }
+
+    use_adlmidi:
+    if (currentMidiEngine.empty() || currentMidiEngine == "adlmidi" || strcmp(midiEngineToUse, "munt") != 0 || (strcmp(midiEngineToUse, "munt") == 0 && !isMunt)) {
       adlPlayer = adl_init((long)gSampleRate);
       if (!adlPlayer) {
         return 0;
@@ -1121,6 +1335,9 @@ void StopVGM(void) {
 }
 
 int VGMEnded(void) {
+  if (isMunt && mt32Smf) {
+    return mt32Smf->positionAtEnd() ? 1 : 0;
+  }
   if (isADLMIDI) {
     if (!adlPlayer) return 1;
     const int ended = adl_atEnd(adlPlayer);
@@ -1169,6 +1386,12 @@ int VGMEnded(void) {
 }
 
 int GetTrackLength(void) {
+  if (isMunt && mt32Smf) {
+    // Duration from sequencer in seconds
+    double dur = mt32Smf->timeLength();
+    if (dur <= 0.0) return 0;
+    return (int)(dur * 44100.0);
+  }
   if (isADLMIDI) {
     if (!adlPlayer) return 0;
     double dur = adl_totalTimeLength(adlPlayer);
@@ -1750,6 +1973,22 @@ void FillBufferKSSPerCh(float *left, float *right, KSSPLAY_PER_CH_OUT *per_ch, i
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;
+
+  if (isMunt && mt32Enabled && mt32Smf && mt32Ctx) {
+    // Advance MIDI sequencer by n samples, rendering events to mt32 context
+    static int mt32DebugCount = 0;
+    if (mt32DebugCount++ < 5) {
+      printf("FillBuffer2: Munt rendering %d samples\n", n);
+    }
+    mt32Smf->Tick((double)n / (double)gSampleRate, 1.0 / (double)gSampleRate);
+    std::vector<int16_t> renderBuf(n * 2);
+    mt32emu_render_bit16s(mt32Ctx, renderBuf.data(), (mt32emu_bit32u)n);
+    for (int i = 0; i < n; i++) {
+      left[i] = (float)renderBuf[i * 2] / 32768.0f;
+      right[i] = (float)renderBuf[i * 2 + 1] / 32768.0f;
+    }
+    return;
+  }
 
   if (isADLMIDI) {
     if (!adlPlayer) {

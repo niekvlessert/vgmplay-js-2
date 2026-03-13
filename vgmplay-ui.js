@@ -448,7 +448,9 @@ export function installUi(VGMPlay_js) {
 	VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {
 		const safeName = name || 'File';
 		let msg = `${safeName} did not contain playable music for VGMPlay!`;
-		if (opts && opts.isMidiArchive) {
+		if (opts && opts.isMuntRom) {
+			msg = `Munt ROM file ${safeName} uploaded and saved to root.`;
+		} else if (opts && opts.isMidiArchive) {
 			msg = `${safeName} contains MIDI only. Playback not supported yet.`;
 		} else if ((opts && opts.isMidi) || (this._isMidiFile && this._isMidiFile(safeName))) {
 			const typeLabel = (opts && opts.typeLabel) ? opts.typeLabel : 'MIDI';
@@ -456,6 +458,16 @@ export function installUi(VGMPlay_js) {
 		}
 		if (this.noPlayableNotices.includes(msg)) return;
 		this.noPlayableNotices.push(msg);
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._showMuntRomError = function () {
+		const msg = `Munt MT-32 emulation requires 2 ROM files: <b>MT32_CONTROL.ROM</b> and <b>MT32_PCM.ROM</b>.<br/><br/>
+		Please upload these files by dragging them onto the 'Insert music files/archives here!' field.`;
+		if (!this.noPlayableNotices.includes(msg)) {
+			this.noPlayableNotices.push(msg);
+		}
 		this._showSkippedWindow();
 		this._renderSkippedDownloads();
 	};

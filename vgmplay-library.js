@@ -22,6 +22,28 @@ export function installLibrary(VGMPlay_js) {
 			game.name = game.archiveName;
 		}
 		const files = game.files || [];
+		if (!game._midiSorted) {
+			const hasMidi = files.some((f) => {
+				const p = String(f && f.filepath ? f.filepath : "").toLowerCase();
+				return (this._isMidiFile && this._isMidiFile(p)) || this._isMidiExt(p);
+			});
+			if (hasMidi) {
+				const isMidiInit = (name) => {
+					const n = String(name || "").toLowerCase();
+					if (!(n.endsWith('.mid') || n.endsWith('.midi') || n.endsWith('.rmi'))) return false;
+					return n.includes('init');
+				};
+				files.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					const initA = isMidiInit(nameA);
+					const initB = isMidiInit(nameB);
+					if (initA !== initB) return initA ? -1 : 1;
+					return nameA.localeCompare(nameB);
+				});
+			}
+			game._midiSorted = true;
+		}
 		const hasPlayable = files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()));
 		if (!hasPlayable) {
 			if (game.uiElement && game.uiElement.parentNode) {

@@ -538,10 +538,16 @@ class VGMPlay_js {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
-			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi) {
+			const isRom = this._isMuntRom(file.name);
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi || isRom) {
 				const byteArray = await this._readFileAsUint8(file);
-				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
-				queued++;
+				if (isRom) {
+					this.saveRomFile(byteArray, file.name);
+					queued++;
+				} else {
+					this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
+					queued++;
+				}
 				await this._yieldToUI();
 			}
 		}
@@ -1460,6 +1466,26 @@ class VGMPlay_js {
 		}
 		this._updateMemoryDisplay();
 		return ok;
+	}
+
+	_isMuntRom(name) {
+		const n = String(name || '').toUpperCase();
+		return n === 'MT32_CONTROL.ROM' || n === 'MT32_PCM.ROM';
+	}
+
+	saveRomFile(byteArray, name) {
+		const n = String(name || '').toUpperCase();
+		if (typeof FS !== 'undefined') {
+			try {
+				if (FS.analyzePath('/' + n).exists) {
+					FS.unlink('/' + n);
+				}
+				FS.createDataFile('/', n, byteArray, true, true);
+				this._addNoPlayableNotice(name, { typeLabel: 'Munt ROM', isMuntRom: true });
+			} catch (e) {
+				console.error("Error saving ROM file:", e);
+			}
+		}
 	}
 
 }

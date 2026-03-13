@@ -39,6 +39,15 @@ set(BUILD_TESTS OFF CACHE BOOL "Build test programs" FORCE)
 set(BUILD_TOOLS OFF CACHE BOOL "Build tools" FORCE)
 add_subdirectory(modules/libMusDoom)
 
+# Munt MT-32 Emulation
+set(libmt32emu_SHARED OFF CACHE BOOL "Build shared libmt32emu" FORCE)
+set(libmt32emu_CPP_INTERFACE OFF CACHE BOOL "Disable C++ interface" FORCE)
+set(libmt32emu_C_INTERFACE ON CACHE BOOL "Enable C interface" FORCE)
+add_subdirectory(modules/munt/mt32emu)
+
+# libsmf (used as sequencer for Munt) - REMOVED DUE TO GLIB2 DEPENDENCY
+# add_subdirectory(modules/munt/mt32emu_smf2wav/libsmf)
+
 # libADLMIDI
 set(libADLMIDI_STATIC ON CACHE BOOL "Build static libADLMIDI" FORCE)
 set(libADLMIDI_SHARED OFF CACHE BOOL "Build shared libADLMIDI" FORCE)
@@ -94,6 +103,7 @@ target_link_libraries(vgmplay-js musdoom)
 target_link_libraries(vgmplay-js libvgmstream)
 target_link_libraries(vgmplay-js openmpt)
 target_link_libraries(vgmplay-js ADLMIDI_static)
+target_link_libraries(vgmplay-js mt32emu)
 add_dependencies(vgmplay-js openmpt_build)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
@@ -121,6 +131,8 @@ target_include_directories(vgmplay-js PRIVATE
     modules/openmpt/common
     modules/openmpt/src
     modules/openmpt
+    modules/munt/mt32emu/src
+    modules/adlmidi/src
 )
 
 # Exported functions
@@ -168,6 +180,7 @@ list(APPEND VGMPLAY_EXPORTS
     "'_LoadGENMIDI'"
     "'_MUSPlaying'"
     "'_PrefillPSF'"
+    "'_CheckMuntRoms'"
 )
 string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")
 

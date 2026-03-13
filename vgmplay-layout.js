@@ -13,7 +13,7 @@ export function installLayout(VGMPlay_js) {
 
 	VGMPlay_js.prototype.dragStart = function (e) {
 		// Don't drag if clicking interactive elements
-		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'A' || e.target.classList.contains('vgmplayProgressBar') || e.target.classList.contains('vgmplayProgressFill') || e.target.classList.contains('vgmplayChipVolume')) {
+		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'A' || e.target.classList.contains('vgmplayProgressBar') || e.target.classList.contains('vgmplayProgressFill') || e.target.classList.contains('vgmplayChipVolume')) {
 			return;
 		}
 		e.preventDefault();
@@ -58,7 +58,7 @@ export function installLayout(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._dragStartWindow = function (e) {
-		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'A') {
+		if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'A') {
 			return;
 		}
 		e.preventDefault();

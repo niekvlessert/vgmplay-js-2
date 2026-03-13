@@ -120,6 +120,7 @@ export function installAudio(VGMPlay_js) {
 			this.GetDeviceName = Module.cwrap('GetDeviceName', 'string', ['number']);
 			this.GetDeviceVolume = Module.cwrap('GetDeviceVolume', 'number', ['number']);
 			this.SetDeviceVolume = Module.cwrap('SetDeviceVolume', 'void', ['number', 'number']);
+			this.SetMidiEngine = Module.cwrap('SetMidiEngine', 'void', ['string']);
 			this.PrefillPSF = Module.cwrap('PrefillPSF', 'void', ['number', 'number']);
 			this.FillBufferKSSPerCh = Module.cwrap('FillBufferKSSPerCh', 'void', ['number', 'number', 'number', 'number']);
 			this.GetKSSPerChSize = Module.cwrap('GetKSSPerChSize', 'number');

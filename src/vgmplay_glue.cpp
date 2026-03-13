@@ -36,6 +36,8 @@ void psxShutdown(void);
 #include "../modules/game-music-emu/gme/gme.h"
 #include "../modules/lazyusf/usf.h"
 #include "../modules/libMusDoom/src/libmusdoom.h"
+#include "../modules/openmpt/libopenmpt/libopenmpt.h"
+#include "../modules/adlmidi/include/adlmidi.h"
 #include "miniaudio.h"
 #include <map>
 #include <algorithm>
@@ -79,11 +81,20 @@ static usf_state_t *usfState = nullptr;
 static PSFINFO *usfInfo = nullptr;
 static std::vector<int16_t> usfBuffer;
 static int32_t usfSampleRate = 44100;
+static openmpt_module *gOpenMpt = nullptr;
+static bool isOpenMPT = false;
+static bool openmptEnded = false;
+static double openmptDurationSec = 0.0;
+static std::string currentOpenMptPath;
 
 static bool isMUS = false;
 static musdoom_emulator_t *musEmu = nullptr;
 static std::vector<uint8_t> genmidiData;
 static std::vector<uint8_t> musData;
+
+static bool isADLMIDI = false;
+static ADL_MIDIPlayer* adlPlayer = nullptr;
+static std::string currentMidiEngine = "adlmidi";
 
 static bool isMA = false;
 static ma_decoder gMaDecoder;
@@ -425,6 +436,13 @@ static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
 }
 
 static void cleanup(bool keepVGMPlayer) {
+  if (isADLMIDI) {
+    if (adlPlayer) {
+      adl_close(adlPlayer);
+      adlPlayer = nullptr;
+    }
+    isADLMIDI = false;
+  }
   if (isKSS) {
     if (gKssPlay) {
       KSSPLAY_delete(gKssPlay);
@@ -476,6 +494,16 @@ static void cleanup(bool keepVGMPlayer) {
     }
     isUSF = false;
     usfBuffer.clear();
+  }
+  if (isOpenMPT) {
+    if (gOpenMpt) {
+      openmpt_module_destroy(gOpenMpt);
+      gOpenMpt = nullptr;
+    }
+    isOpenMPT = false;
+    openmptEnded = false;
+    openmptDurationSec = 0.0;
+    currentOpenMptPath.clear();
   }
   if (isMUS) {
     if (musEmu) {
@@ -569,6 +597,38 @@ static bool isKssFormatPath(const std::string &lowerPath) {
           lowerPath.find(".mbm") != std::string::npos);
 }
 
+static bool isOpenMptFormatPath(const std::string &lowerPath) {
+  return (lowerPath.find(".mod") != std::string::npos ||
+          lowerPath.find(".s3m") != std::string::npos ||
+          lowerPath.find(".xm") != std::string::npos ||
+          lowerPath.find(".it") != std::string::npos ||
+          lowerPath.find(".itp") != std::string::npos ||
+          lowerPath.find(".mptm") != std::string::npos ||
+          lowerPath.find(".stm") != std::string::npos ||
+          lowerPath.find(".mtm") != std::string::npos ||
+          lowerPath.find(".669") != std::string::npos ||
+          lowerPath.find(".amf") != std::string::npos ||
+          lowerPath.find(".dmf") != std::string::npos ||
+          lowerPath.find(".far") != std::string::npos ||
+          lowerPath.find(".imf") != std::string::npos ||
+          lowerPath.find(".med") != std::string::npos ||
+          lowerPath.find(".okt") != std::string::npos ||
+          lowerPath.find(".ptm") != std::string::npos ||
+          lowerPath.find(".ult") != std::string::npos ||
+          lowerPath.find(".umx") != std::string::npos);
+}
+
+static std::string openmptGetMetadata(openmpt_module *mod, const char *key) {
+  if (!mod || !key)
+    return "";
+  const char *val = openmpt_module_get_metadata(mod, key);
+  if (!val)
+    return "";
+  std::string out = val;
+  openmpt_free_string(val);
+  return out;
+}
+
 static const char *gmeTagByIndex(const gme_info_t *info, int tagIndex) {
   if (!info)
     return "";
@@ -601,6 +661,14 @@ void SetSampleRate(unsigned int rate) {
     player->SetSampleRate(rate);
 }
 
+void SetMidiEngine(const char* engine) {
+  if (!engine) {
+    currentMidiEngine.clear();
+    return;
+  }
+  currentMidiEngine = engine;
+}
+
 void SetLoopCount(unsigned int loops) {
   /* libvgm VGMPlayer doesn't expose a simple loop-count setter;
      the higher-level PlayerA does, but we use VGMPlayer directly.
@@ -611,6 +679,11 @@ void Seek(unsigned int sec, unsigned int ms) {
   UINT64 totalMs = (UINT64)sec * 1000 + (UINT64)ms;
   UINT32 sample = (UINT32)((totalMs * gSampleRate) / 1000);
 
+  if (isOpenMPT && gOpenMpt) {
+    openmpt_module_set_position_seconds(gOpenMpt, (double)totalMs / 1000.0);
+    openmptEnded = false;
+    return;
+  }
   if (isKSS && gKssPlay) {
     KSSPLAY_reset(gKssPlay, gKssTrackIndex, 0);
     const UINT32 CHUNK = 4096;
@@ -633,6 +706,12 @@ void Seek(unsigned int sec, unsigned int ms) {
   }
   if (isMUS && musEmu) {
     musdoom_seek_ms(musEmu, (uint32_t)totalMs);
+    return;
+  }
+  if (isADLMIDI) {
+    if (adlPlayer) {
+      adl_positionSeek(adlPlayer, (double)totalMs / 1000.0);
+    }
     return;
   }
   if (isPSF) {
@@ -850,6 +929,63 @@ int OpenVGMFile(const char *path) {
     return 1;
   }
 
+  if (isOpenMptFormatPath(lowerPath)) {
+    DATA_LOADER *mptLoader = FileLoader_Init(basePath.c_str());
+    if (!mptLoader) {
+      return 0;
+    }
+    if (DataLoader_Load(mptLoader)) {
+      DataLoader_Deinit(mptLoader);
+      return 0;
+    }
+    const UINT8 *fileData = DataLoader_GetData(mptLoader);
+    UINT32 fileSize = DataLoader_GetSize(mptLoader);
+    if (!fileData || fileSize == 0) {
+      DataLoader_Deinit(mptLoader);
+      return 0;
+    }
+    int modErr = 0;
+    const char *modErrStr = nullptr;
+    openmpt_module *mod = openmpt_module_create_from_memory2(
+        fileData, fileSize,
+        nullptr, nullptr,
+        nullptr, nullptr,
+        &modErr, &modErrStr, nullptr);
+    DataLoader_Deinit(mptLoader);
+    if (!mod) {
+      return 0;
+    }
+    openmpt_module_set_repeat_count(mod, 0);
+    gOpenMpt = mod;
+    isOpenMPT = true;
+    openmptEnded = false;
+    openmptDurationSec = openmpt_module_get_duration_seconds(mod);
+    currentOpenMptPath = basePath;
+    return 1;
+  }
+
+  if (lowerPath.size() > 4 &&
+      (lowerPath.substr(lowerPath.size() - 4) == ".mid" ||
+       lowerPath.substr(lowerPath.size() - 5) == ".midi" ||
+       lowerPath.substr(lowerPath.size() - 4) == ".rmi")) {
+    if (currentMidiEngine.empty() || currentMidiEngine == "adlmidi") {
+      adlPlayer = adl_init((long)gSampleRate);
+      if (!adlPlayer) {
+        return 0;
+      }
+      adl_setNumChips(adlPlayer, 2);
+      adl_setBank(adlPlayer, 14);
+      adl_setSoftPanEnabled(adlPlayer, 1);
+      if (adl_openFile(adlPlayer, basePath.c_str()) != 0) {
+        adl_close(adlPlayer);
+        adlPlayer = nullptr;
+        return 0;
+      }
+      isADLMIDI = true;
+      return 1;
+    }
+  }
+
   /* 1. load file data via FileLoader */
   if (lowerPath.size() > 4 &&
       (lowerPath.substr(lowerPath.size() - 4) == ".mus" ||
@@ -985,6 +1121,20 @@ void StopVGM(void) {
 }
 
 int VGMEnded(void) {
+  if (isADLMIDI) {
+    if (!adlPlayer) return 1;
+    const int ended = adl_atEnd(adlPlayer);
+    return ended > 0 ? 1 : 0;
+  }
+  if (isOpenMPT) {
+    if (!gOpenMpt) return 1;
+    if (openmptEnded) return 1;
+    if (openmptDurationSec > 0.0) {
+      double pos = openmpt_module_get_position_seconds(gOpenMpt);
+      if (pos >= (openmptDurationSec - 0.001)) return 1;
+    }
+    return 0;
+  }
   if (isKSS) {
     return gKssPlay ? (KSSPLAY_get_stop_flag(gKssPlay) ? 1 : 0) : 1;
   }
@@ -1019,6 +1169,18 @@ int VGMEnded(void) {
 }
 
 int GetTrackLength(void) {
+  if (isADLMIDI) {
+    if (!adlPlayer) return 0;
+    double dur = adl_totalTimeLength(adlPlayer);
+    if (dur <= 0.0) return 0;
+    return (int)(dur * 44100.0);
+  }
+  if (isOpenMPT) {
+    if (!gOpenMpt) return 0;
+    double dur = openmptDurationSec > 0.0 ? openmptDurationSec : openmpt_module_get_duration_seconds(gOpenMpt);
+    if (dur <= 0.0) return 0;
+    return (int)(dur * 44100.0);
+  }
   if (isKSS) {
     if (gKss && gKss->info && gKss->info_num > 0) {
       for (uint16_t i = 0; i < gKss->info_num; i++) {
@@ -1085,6 +1247,25 @@ int GetTrackLengthDirect(const char *path) {
     return len;
   }
 
+  if (lowerPath.size() > 4 &&
+      (lowerPath.substr(lowerPath.size() - 4) == ".mid" ||
+       lowerPath.substr(lowerPath.size() - 5) == ".midi" ||
+       lowerPath.substr(lowerPath.size() - 4) == ".rmi")) {
+    ADL_MIDIPlayer* temp = adl_init((long)gSampleRate);
+    if (!temp) return 0;
+    adl_setNumChips(temp, 2);
+    adl_setBank(temp, 14);
+    adl_setSoftPanEnabled(temp, 1);
+    if (adl_openFile(temp, basePath.c_str()) != 0) {
+      adl_close(temp);
+      return 0;
+    }
+    double dur = adl_totalTimeLength(temp);
+    adl_close(temp);
+    if (dur <= 0.0) return 0;
+    return (int)(dur * 44100.0);
+  }
+
   if (lowerPath.find(".spc") != std::string::npos ||
       lowerPath.find(".nsf") != std::string::npos ||
       lowerPath.find(".nsfe") != std::string::npos ||
@@ -1111,8 +1292,39 @@ int GetTrackLengthDirect(const char *path) {
       len = 180000;
     int samples = (int)(len * 44.1);
     gme_free_info(info);
-    gme_delete(emu);
-    return samples;
+   gme_delete(emu);
+   return samples;
+  }
+
+  if (isOpenMptFormatPath(lowerPath)) {
+    DATA_LOADER *mptLoader = FileLoader_Init(basePath.c_str());
+    if (!mptLoader)
+      return 0;
+    if (DataLoader_Load(mptLoader)) {
+      DataLoader_Deinit(mptLoader);
+      return 0;
+    }
+    const UINT8 *fileData = DataLoader_GetData(mptLoader);
+    UINT32 fileSize = DataLoader_GetSize(mptLoader);
+    if (!fileData || fileSize == 0) {
+      DataLoader_Deinit(mptLoader);
+      return 0;
+    }
+    int modErr = 0;
+    const char *modErrStr = nullptr;
+    openmpt_module *mod = openmpt_module_create_from_memory2(
+        fileData, fileSize,
+        nullptr, nullptr,
+        nullptr, nullptr,
+        &modErr, &modErrStr, nullptr);
+    DataLoader_Deinit(mptLoader);
+    if (!mod)
+      return 0;
+    double dur = openmpt_module_get_duration_seconds(mod);
+    openmpt_module_destroy(mod);
+    if (dur <= 0.0)
+      return 0;
+    return (int)(dur * 44100.0);
   }
 
   // Try vgmstream for various game audio formats
@@ -1288,6 +1500,54 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     }
     sexy_freepsfinfo(info);
     return "";
+  }
+
+  if (isOpenMptFormatPath(lowerPath)) {
+    DATA_LOADER *mptLoader = FileLoader_Init(basePath.c_str());
+    if (!mptLoader)
+      return "";
+    if (DataLoader_Load(mptLoader)) {
+      DataLoader_Deinit(mptLoader);
+      return "";
+    }
+    const UINT8 *fileData = DataLoader_GetData(mptLoader);
+    UINT32 fileSize = DataLoader_GetSize(mptLoader);
+    if (!fileData || fileSize == 0) {
+      DataLoader_Deinit(mptLoader);
+      return "";
+    }
+    int modErr = 0;
+    const char *modErrStr = nullptr;
+    openmpt_module *mod = openmpt_module_create_from_memory2(
+        fileData, fileSize,
+        nullptr, nullptr,
+        nullptr, nullptr,
+        &modErr, &modErrStr, nullptr);
+    DataLoader_Deinit(mptLoader);
+    if (!mod)
+      return "";
+
+    std::string title = openmptGetMetadata(mod, "title");
+    std::string artist = openmptGetMetadata(mod, "artist");
+    std::string tracker = openmptGetMetadata(mod, "tracker");
+    std::string type = openmptGetMetadata(mod, "type");
+    std::string message = openmptGetMetadata(mod, "message");
+    openmpt_module_destroy(mod);
+
+    static char tagResult[256];
+    const char *val = "";
+    switch (tagIndex) {
+      case 0: val = title.c_str(); break;
+      case 2: val = type.c_str(); break;
+      case 4: val = tracker.c_str(); break;
+      case 6: val = artist.c_str(); break;
+      case 9: val = "OpenMPT"; break;
+      case 10: val = message.c_str(); break;
+      default: val = ""; break;
+    }
+    strncpy(tagResult, val, 255);
+    tagResult[255] = '\0';
+    return tagResult;
   }
 
   if (isKssFormatPath(lowerPath)) {
@@ -1491,6 +1751,40 @@ void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;
 
+  if (isADLMIDI) {
+    if (!adlPlayer) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    std::vector<int16_t> buf(n * 2);
+    int samples = adl_play(adlPlayer, n * 2, buf.data());
+    static int adlLogCounter = 0;
+    if (adlLogCounter < 5) {
+      adlLogCounter++;
+      double pos = adl_positionTell(adlPlayer);
+      int atEnd = adl_atEnd(adlPlayer);
+      const char* err = adl_errorInfo(adlPlayer);
+      printf("ADLMIDI: samples=%d pos=%.3f end=%d err=%s\n", samples, pos, atEnd, err ? err : "");
+    }
+    if (samples <= 0) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    int frames = samples / 2;
+    for (int i = 0; i < n; i++) {
+      if (i < frames) {
+        left[i] = (float)buf[i * 2] / 32768.0f;
+        right[i] = (float)buf[i * 2 + 1] / 32768.0f;
+      } else {
+        left[i] = 0.0f;
+        right[i] = 0.0f;
+      }
+    }
+    return;
+  }
+
   if (isMUS) {
     if (musEmu && musdoom_is_playing(musEmu)) {
       std::vector<int16_t> musBuf(n * 2);
@@ -1502,6 +1796,24 @@ void FillBuffer2(float *left, float *right, int n) {
     } else {
       memset(left, 0, n * sizeof(float));
       memset(right, 0, n * sizeof(float));
+    }
+    return;
+  }
+
+  if (isOpenMPT) {
+    if (!gOpenMpt) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    std::size_t frames = openmpt_module_read_float_stereo(
+        gOpenMpt, (int)gSampleRate, (std::size_t)n, left, right);
+    if (frames < (std::size_t)n) {
+      for (int i = (int)frames; i < n; i++) {
+        left[i] = 0.0f;
+        right[i] = 0.0f;
+      }
+      openmptEnded = true;
     }
     return;
   }
@@ -1833,6 +2145,46 @@ char *ShowTitle(void) {
       s += "Key";
       s += "|||";
       s += gmeTagByIndex(gmeInfo, i);
+      s += "|||";
+    }
+
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
+  if (isOpenMPT) {
+    if (!gOpenMpt)
+      return nullptr;
+    std::string title = openmptGetMetadata(gOpenMpt, "title");
+    std::string artist = openmptGetMetadata(gOpenMpt, "artist");
+    std::string tracker = openmptGetMetadata(gOpenMpt, "tracker");
+    std::string type = openmptGetMetadata(gOpenMpt, "type");
+    std::string message = openmptGetMetadata(gOpenMpt, "message");
+
+    if (title.empty()) {
+      std::string base = currentOpenMptPath;
+      size_t lastSlash = base.find_last_of('/');
+      if (lastSlash != std::string::npos) {
+        base = base.substr(lastSlash + 1);
+      }
+      title = base;
+    }
+
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      const char *val = "";
+      switch (i) {
+        case 0: val = title.c_str(); break;
+        case 2: val = type.c_str(); break;
+        case 4: val = tracker.c_str(); break;
+        case 6: val = artist.c_str(); break;
+        case 9: val = "OpenMPT"; break;
+        case 10: val = message.c_str(); break;
+        default: val = ""; break;
+      }
+      s += val;
       s += "|||";
     }
 

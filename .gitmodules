@@ -22,3 +22,12 @@
 [submodule "modules/vgmstream"]
 	path = modules/vgmstream
 	url = https://github.com/vgmstream/vgmstream.git
+[submodule "modules/openmpt"]
+	path = modules/openmpt
+	url = https://github.com/OpenMPT/openmpt.git
+[submodule "modules/adlmidi"]
+	path = modules/adlmidi
+	url = https://github.com/Wohlstand/libADLMIDI.git
+[submodule "modules/munt"]
+	path = modules/munt
+	url = https://github.com/munt/munt.git

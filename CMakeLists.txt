@@ -39,6 +39,19 @@ set(BUILD_TESTS OFF CACHE BOOL "Build test programs" FORCE)
 set(BUILD_TOOLS OFF CACHE BOOL "Build tools" FORCE)
 add_subdirectory(modules/libMusDoom)
 
+# libADLMIDI
+set(libADLMIDI_STATIC ON CACHE BOOL "Build static libADLMIDI" FORCE)
+set(libADLMIDI_SHARED OFF CACHE BOOL "Build shared libADLMIDI" FORCE)
+set(WITH_ADLMIDI2 OFF CACHE BOOL "Disable ADLMIDI2" FORCE)
+set(USE_DOSBOX_EMULATOR ON CACHE BOOL "Use DOSBox OPL emulator" FORCE)
+set(USE_NUKED_EMULATOR OFF CACHE BOOL "Disable Nuked OPL emulator" FORCE)
+set(USE_OPAL_EMULATOR OFF CACHE BOOL "Disable Opal OPL emulator" FORCE)
+set(USE_JAVA_EMULATOR OFF CACHE BOOL "Disable Java OPL emulator" FORCE)
+set(USE_ESFMU_EMULATOR OFF CACHE BOOL "Disable ESFM emulator" FORCE)
+set(USE_MAME_EMULATOR OFF CACHE BOOL "Disable MAME OPL emulator" FORCE)
+set(USE_YMFM_EMULATOR OFF CACHE BOOL "Disable YMFM emulator" FORCE)
+add_subdirectory(modules/adlmidi)
+
 set(USE_FFMPEG OFF CACHE BOOL "Use FFmpeg for support of many codecs" FORCE)
 set(USE_MPEG OFF CACHE BOOL "Use libmpg123 for support of MPEG" FORCE)
 set(USE_VORBIS OFF CACHE BOOL "Use libvorbis for support of Vorbis" FORCE)
@@ -50,8 +63,25 @@ set(USE_SPEEX OFF CACHE BOOL "Use libspeex for support of SPEEX" FORCE)
 set(BUILD_CLI OFF CACHE BOOL "Build vgmstream CLI" FORCE)
 add_subdirectory(modules/vgmstream)
 
+# Build libopenmpt with its own Makefile (Emscripten)
+set(OPENMPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/openmpt)
+set(OPENMPT_LIB ${OPENMPT_DIR}/bin/libopenmpt.a)
+add_custom_command(
+    OUTPUT ${OPENMPT_LIB}
+    COMMAND make -C ${OPENMPT_DIR} CONFIG=emscripten STATIC_LIB=1 SHARED_LIB=0 EXAMPLES=0 OPENMPT123=0 IN_OPENMPT=0 XMP_OPENMPT=0
+    WORKING_DIRECTORY ${OPENMPT_DIR}
+    COMMENT "Building libopenmpt (emscripten)"
+)
+add_custom_target(openmpt_build DEPENDS ${OPENMPT_LIB})
+add_library(openmpt STATIC IMPORTED)
+set_target_properties(openmpt PROPERTIES IMPORTED_LOCATION ${OPENMPT_LIB})
+add_dependencies(openmpt openmpt_build)
+
 # Main Executable
-add_executable(vgmplay-js src/vgmplay_glue.cpp src/miniaudio_impl.cpp)
+add_executable(vgmplay-js
+    src/vgmplay_glue.cpp
+    src/miniaudio_impl.cpp
+)
 
 # Link against libvgm components and others
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2")
@@ -62,6 +92,9 @@ target_link_libraries(vgmplay-js gme::gme)
 target_link_libraries(vgmplay-js kss)
 target_link_libraries(vgmplay-js musdoom)
 target_link_libraries(vgmplay-js libvgmstream)
+target_link_libraries(vgmplay-js openmpt)
+target_link_libraries(vgmplay-js ADLMIDI_static)
+add_dependencies(vgmplay-js openmpt_build)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
 
@@ -83,6 +116,11 @@ target_include_directories(vgmplay-js PRIVATE
     modules/lazyusf/rsp_hle
     modules/libMusDoom/src
     modules/vgmstream/src
+    modules/adlmidi/include
+    modules/openmpt/libopenmpt
+    modules/openmpt/common
+    modules/openmpt/src
+    modules/openmpt
 )
 
 # Exported functions
@@ -126,6 +164,7 @@ list(APPEND VGMPLAY_EXPORTS
     "'_GetKSSPerChSize'"
     "'_GetKSSDeviceMask'"
     "'_SetKSSChannelMask'"
+    "'_SetMidiEngine'"
     "'_LoadGENMIDI'"
     "'_MUSPlaying'"
     "'_PrefillPSF'"

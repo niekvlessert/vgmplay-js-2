@@ -21,7 +21,16 @@ export function installLibrary(VGMPlay_js) {
 		if (!game.name && game.archiveName) {
 			game.name = game.archiveName;
 		}
-		const files = game.files;
+		const files = game.files || [];
+		const hasPlayable = files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()));
+		if (!hasPlayable) {
+			if (game.uiElement && game.uiElement.parentNode) {
+				game.uiElement.parentNode.removeChild(game.uiElement);
+			}
+			game.uiElement = null;
+			return;
+		}
+		const suppressHeader = false;
 		const gameIndex = this.games.indexOf(game) + 1;
 		let gameDisplayName = game.name || "";
 		let tagGameName = "";
@@ -72,7 +81,7 @@ export function installLibrary(VGMPlay_js) {
 					if (psfGame && (psfGame.toLowerCase().endsWith('.usf') || psfGame.toLowerCase().endsWith('.miniusf'))) {
 						psfGame = ""; // Filter out bad data if it's just the filename
 					}
-					gameDisplayName = game.name || psfGame || "Game " + gameIndex;
+					gameDisplayName = game.name || game.archiveName || psfGame || "Game " + gameIndex;
 					placeholder.textContent = gameDisplayName;
 					placeholder.classList.add('vgmplayGameToggle');
 					gameWrap.appendChild(placeholder);

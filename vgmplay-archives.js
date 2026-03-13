@@ -192,8 +192,16 @@ export function installArchives(VGMPlay_js) {
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			const hasMidi = game.files.some((f) => {
+				const p = (f.filepath || "").toLowerCase();
+				return (this._isMidiFile && this._isMidiFile(p)) || (this._isMidiExt && this._isMidiExt(p));
+			});
 			if (!hasPlayable) {
-				this._addNoPlayableNotice(sourceName || 'Archive');
+				if (hasMidi) {
+					this._addNoPlayableNotice(sourceName || 'Archive', { isMidiArchive: true });
+				} else {
+					this._addNoPlayableNotice(sourceName || 'Archive');
+				}
 			}
 			await this.checkEverythingReady();
 			this._scheduleZipRender();

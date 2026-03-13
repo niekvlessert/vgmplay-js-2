@@ -445,9 +445,15 @@ export function installUi(VGMPlay_js) {
 		this._renderSkippedDownloads();
 	};
 
-	VGMPlay_js.prototype._addNoPlayableNotice = function (name) {
+	VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {
 		const safeName = name || 'File';
-		const msg = `${safeName} did not contain playable music for VGMPlay!`;
+		let msg = `${safeName} did not contain playable music for VGMPlay!`;
+		if (opts && opts.isMidiArchive) {
+			msg = `${safeName} contains MIDI only. Playback not supported yet.`;
+		} else if ((opts && opts.isMidi) || (this._isMidiFile && this._isMidiFile(safeName))) {
+			const typeLabel = (opts && opts.typeLabel) ? opts.typeLabel : 'MIDI';
+			msg = `${safeName} is ${typeLabel}. Playback not supported yet.`;
+		}
 		if (this.noPlayableNotices.includes(msg)) return;
 		this.noPlayableNotices.push(msg);
 		this._showSkippedWindow();
@@ -458,7 +464,7 @@ export function installUi(VGMPlay_js) {
 		const lower = url.toLowerCase();
 		if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 			this.loadZIPWithVGMFromURL(url, true);
-		} else if (this.isPlayable(lower)) {
+		} else if (this.isPlayable(lower) || (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower)) {
 			this._queueURL(url, true);
 		}
 	};
@@ -487,17 +493,38 @@ export function installUi(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._positionSkippedWindow = function () {
-		if (!this.skippedWindow || !this.playerWindow) return;
+		if (!this.skippedWindow || !this.playerWindow || !this.vgmplayContainer) return;
 		if (this.skippedWindowVisible === false) return;
 		requestAnimationFrame(() => {
 			const isMobile = window.innerWidth <= 600;
-			const playerLeft = this.playerWindow.offsetLeft;
-			const playerTop = this.playerWindow.offsetTop;
+			const containerRect = this.vgmplayContainer.getBoundingClientRect();
+			const getOffsetFromContainer = (el) => {
+				let x = 0;
+				let y = 0;
+				let node = el;
+				while (node && node !== this.vgmplayContainer) {
+					x += node.offsetLeft;
+					y += node.offsetTop;
+					node = node.offsetParent;
+				}
+				if (node === this.vgmplayContainer) {
+					return { x, y };
+				}
+				const rect = el.getBoundingClientRect();
+				return {
+					x: rect.left - containerRect.left,
+					y: rect.top - containerRect.top
+				};
+			};
+			const playerOffset = getOffsetFromContainer(this.playerWindow);
+			const playerLeft = playerOffset.x;
+			const playerTop = playerOffset.y;
 			const playerWidth = this.playerWindow.offsetWidth;
 			let gap = 8;
 			if (this.titleWindow) {
-				const titleTop = this.titleWindow.offsetTop;
+				const titleOffset = getOffsetFromContainer(this.titleWindow);
 				const titleHeight = this.titleWindow.offsetHeight;
+				const titleTop = titleOffset.y;
 				const inferred = playerTop - (titleTop + titleHeight);
 				if (Number.isFinite(inferred) && inferred >= 0) {
 					gap = inferred;

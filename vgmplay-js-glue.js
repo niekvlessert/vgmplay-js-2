@@ -490,7 +490,8 @@ class VGMPlay_js {
 		this.len = this.elms.length;
 		for (var ii = 0; ii < this.len; ii++) {
 			const lower = this.elms[ii].href.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
+			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
 				this._queueURL(this.elms[ii].href, false, true);
 			}
 		}
@@ -536,7 +537,8 @@ class VGMPlay_js {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			const lower = file.name.toLowerCase();
-			if (this._isArchiveUrl(lower) || this.isPlayable(lower)) {
+			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi) {
 				const byteArray = await this._readFileAsUint8(file);
 				this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
 				queued++;
@@ -621,8 +623,16 @@ class VGMPlay_js {
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			const hasMidi = game.files.some((f) => {
+				const p = (f.filepath || "").toLowerCase();
+				return (this._isMidiFile && this._isMidiFile(p)) || this._isMidiExt(p);
+			});
 			if (!hasPlayable) {
-				this._addNoPlayableNotice(sourceName || 'Archive');
+				if (hasMidi) {
+					this._addNoPlayableNotice(sourceName || 'Archive', { isMidiArchive: true });
+				} else {
+					this._addNoPlayableNotice(sourceName || 'Archive');
+				}
 			}
 			await this.checkEverythingReady();
 			this._scheduleZipRender();
@@ -736,7 +746,14 @@ class VGMPlay_js {
 		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
 		if (!anyPlayable) {
-			this._addNoPlayableNotice(sourceName || 'Archive');
+			if (gamesInOrder.some((g) => g.files && g.files.some((f) => {
+				const p = (f.filepath || "").toLowerCase();
+				return (this._isMidiFile && this._isMidiFile(p)) || this._isMidiExt(p);
+			}))) {
+				this._addNoPlayableNotice(sourceName || 'Archive', { isMidiArchive: true });
+			} else {
+				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
 		}
 
 		await this.checkEverythingReady();
@@ -843,7 +860,14 @@ class VGMPlay_js {
 
 			const isPlayable = this.isPlayable(fsPath);
 			if (!isPlayable) {
-				this._addNoPlayableNotice(sourceName || 'File');
+				const lower = fsPath.toLowerCase();
+				const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
+				if (isMidi) {
+					const typeLabel = this._getMidiTypeLabel ? this._getMidiTypeLabel(fsPath) : 'MIDI';
+					this._addNoPlayableNotice(sourceName || 'File', { isMidi: true, typeLabel });
+				} else {
+					this._addNoPlayableNotice(sourceName || 'File');
+				}
 			}
 
 			this.checkEverythingReady().then(() => {
@@ -871,7 +895,8 @@ class VGMPlay_js {
 	addHarvestedTracks(urls) {
 		urls.forEach(url => {
 			const lower = url.toLowerCase();
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
+			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
 				this._queueURL(url, false, true);
 			} else if (this.isPlayable(lower)) {
 				// Handle direct links as single files
@@ -922,6 +947,7 @@ class VGMPlay_js {
 			// On-demand GENMIDI loading for DOOM MUS files
 			const lowerFile = file.toLowerCase().split('|track=')[0];
 			const isMusFile = lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp');
+			const isMidiPath = (this._isMidiFile && this._isMidiFile(lowerFile)) || (this._isMidiExt && this._isMidiExt(lowerFile));
 			if (isMusFile) {
 				if (game) {
 					const activeGame = this.games[game - 1];
@@ -940,6 +966,9 @@ class VGMPlay_js {
 						}
 					}
 				}
+			}
+			if (isMidiPath && this.SetMidiEngine && this.midiEngineChoice) {
+				try { this.SetMidiEngine(this.midiEngineChoice); } catch (e) { }
 			}
 
 			this._isLoadingFile = true;
@@ -975,14 +1004,6 @@ class VGMPlay_js {
 					this.totalSampleCount = this.trackLengthSeconds * this.sampleRate;
 				}
 				this.trackLengthHumanReadeable = new Date((this.trackLengthSeconds) * 1000).toISOString().substr(14, 5);
-				if (this.showMemoryStats) {
-					this._memoryBaselineUsed = null;
-					this._setMemoryStatsVisible(true);
-				} else {
-					this.getVGMTag();
-				}
-
-				let gameName = (this.VGMTag && this.VGMTag.length >= 8) ? (this.VGMTag[5] || this.VGMTag[7] || "Unknown Game") : "Unknown Game";
 				let trackName = file.substring(file.lastIndexOf('/') + 1);
 				if (href_object && href_object.dataset && href_object.dataset.trackTitle) {
 					trackName = href_object.dataset.trackTitle;
@@ -990,6 +1011,17 @@ class VGMPlay_js {
 					const pl = this.activeGame.playableList[this.currentFileKey];
 					if (pl && pl.title) trackName = pl.title;
 				}
+				const isMidiFile = (this._isMidiFile && this._isMidiFile(file)) || (this._isMidiExt && this._isMidiExt(file));
+				if (this.showMemoryStats) {
+					this._memoryBaselineUsed = null;
+					this._setMemoryStatsVisible(true);
+				} else if (isMidiFile && this._showMidiInfo) {
+					this._showMidiInfo(file, trackName);
+				} else {
+					this.getVGMTag();
+				}
+
+				let gameName = (this.VGMTag && this.VGMTag.length >= 8) ? (this.VGMTag[5] || this.VGMTag[7] || "Unknown Game") : "Unknown Game";
 				if (window.Android) window.Android.updateMetadata(gameName + " - " + unescape(trackName), this.trackLengthSeconds * 1000);
 
 				//console.log("ChipInfoString: " + this.GetChipInfoString());
@@ -1014,8 +1046,15 @@ class VGMPlay_js {
 			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
 			p.endsWith('.mpk') || p.endsWith('.mbm') ||
 			p.endsWith('.sap') || p.endsWith('.ay') ||
+			p.endsWith('.mod') || p.endsWith('.s3m') || p.endsWith('.xm') ||
+			p.endsWith('.it') || p.endsWith('.itp') || p.endsWith('.mptm') ||
+			p.endsWith('.stm') || p.endsWith('.mtm') || p.endsWith('.669') ||
+			p.endsWith('.amf') || p.endsWith('.dmf') || p.endsWith('.far') ||
+			p.endsWith('.imf') || p.endsWith('.med') || p.endsWith('.okt') ||
+			p.endsWith('.ptm') || p.endsWith('.ult') || p.endsWith('.umx') ||
 			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') ||
 			p.endsWith('.mus') || (p.endsWith('.lmp') && !p.endsWith('genmidi.lmp')) ||
+			p.endsWith('.mid') || p.endsWith('.midi') || p.endsWith('.rmi') ||
 			p.endsWith('.vigamup');
 	}
 
@@ -1035,6 +1074,10 @@ class VGMPlay_js {
 
 	_isArchiveUrl(lower) {
 		return lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.rar') || lower.endsWith('.vigamup');
+	}
+
+	_isMidiExt(lower) {
+		return lower.endsWith('.mid') || lower.endsWith('.midi') || lower.endsWith('.rmi');
 	}
 
 	_parseKssTxt(text) {
@@ -1594,10 +1637,19 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 		options.standalone = data.standalone;
 	}
 	(async () => {
+		let cacheSuffix = '';
+		try {
+			const force = typeof window !== 'undefined' && window.VGMPLAY_CACHE_BUST;
+			const host = (window.location && window.location.hostname) ? window.location.hostname : '';
+			const cacheBust = !!force || host === 'localhost' || host === '127.0.0.1';
+			if (cacheBust) {
+				cacheSuffix = '?v=' + Date.now();
+			}
+		} catch (e) { }
 		const installers = [];
 		const loadModule = async (path, fnName, label) => {
 			try {
-				const mod = await import(path);
+				const mod = await import(path + cacheSuffix);
 				const fn = mod && mod[fnName];
 				if (typeof fn === 'function') {
 					installers.push(fn);
@@ -1618,6 +1670,7 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 		await loadModule('./vgmplay-spectrum.js', 'installSpectrum', 'spectrum');
 		await loadModule('./vgmplay-ui.js', 'installUi', 'ui');
 		await loadModule('./vgmplay-metadata.js', 'installMetadata', 'metadata');
+		await loadModule('./vgmplay-midi.js', 'installMidi', 'midi');
 		await loadModule('./vgmplay-layout.js', 'installLayout', 'layout');
 		await loadModule('./vgmplay-library.js', 'installLibrary', 'library');
 		await loadModule('./vgmplay-kss.js', 'installKss', 'kss');

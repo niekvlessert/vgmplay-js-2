@@ -1070,3 +1070,24 @@
   border: none;
   box-shadow: 0 0 4px rgba(0, 255, 0, 0.5);
 }
+
+.vgmplayContainer .vgmplayMidiEngine {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.vgmplayContainer .vgmplayMidiEngineLabel {
+  opacity: 0.9;
+}
+
+.vgmplayContainer .vgmplayMidiEngineSelect {
+  background: #444;
+  color: white;
+  border: 1px solid #666;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 12px;
+}

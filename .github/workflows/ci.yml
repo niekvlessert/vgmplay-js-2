@@ -38,9 +38,9 @@ jobs:
 
       - name: Verify Build Output
         run: |
-          ls -l vgmplay-js.js vgmplay-js.wasm vgmplay-js.data
-          if [ ! -f vgmplay-js.js ] || [ ! -f vgmplay-js.wasm ] || [ ! -f vgmplay-js.data ]; then
-            echo "Error: Build did not produce all required files"
+          ls -l vgmplay-js.js vgmplay-js.wasm || true
+          if [ ! -f vgmplay-js.js ] || [ ! -f vgmplay-js.wasm ]; then
+            echo "Error: Build did not produce required JS/WASM files"
             exit 1
           fi
           

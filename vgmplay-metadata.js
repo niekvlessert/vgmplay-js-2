@@ -188,17 +188,48 @@ export function installMetadata(VGMPlay_js) {
 		return "";
 	};
 
+	VGMPlay_js.prototype._normalizeGameTitle = function (name) {
+		if (!name) return name;
+		let s = String(name);
+		// Drop extension
+		const dot = s.lastIndexOf('.');
+		if (dot > 0) s = s.substring(0, dot);
+		// Use everything before the first '(' or '[' if present
+		const p = s.indexOf('(');
+		const b = s.indexOf('[');
+		let cut = -1;
+		if (p >= 0 && b >= 0) cut = Math.min(p, b);
+		else if (p >= 0) cut = p;
+		else if (b >= 0) cut = b;
+		if (cut >= 0) s = s.substring(0, cut);
+		return s.trim();
+	};
+
 	VGMPlay_js.prototype._deriveVgmGameName = function (files, fallbackName) {
 		let name = fallbackName || "Archive";
+		if (this._normalizeGameTitle) name = this._normalizeGameTitle(name) || name;
 		if (!files || !this.GetVGMTagDirect) return name;
 		for (const f of files) {
 			if (!f || !f.filepath) continue;
 			const lower = f.filepath.toLowerCase();
 			if (!this.isPlayable(lower)) continue;
-			if (!lower.endsWith('.vgm') && !lower.endsWith('.vgz')) continue;
-			const tag = this.GetVGMTagDirect(f.filepath, 2);
-			if (tag && tag.trim()) {
-				name = tag.trim();
+			const gameTag = this.GetVGMTagDirect(f.filepath, 2);
+			if (gameTag && gameTag.trim()) {
+				name = gameTag.trim();
+				if (this._normalizeGameTitle) {
+					const normalized = this._normalizeGameTitle(name);
+					if (normalized) name = normalized;
+				}
+				break;
+			}
+			// Fallback to title tag if game tag is missing (common in some PSF/USF sets)
+			const titleTag = this.GetVGMTagDirect(f.filepath, 0);
+			if (titleTag && titleTag.trim()) {
+				name = titleTag.trim();
+				if (this._normalizeGameTitle) {
+					const normalized = this._normalizeGameTitle(name);
+					if (normalized) name = normalized;
+				}
 				break;
 			}
 		}

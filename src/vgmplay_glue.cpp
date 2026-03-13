@@ -277,7 +277,7 @@ static int vgmstreamChannels = 0;
 static int vgmstreamSampleRate = 0;
 static std::string currentVGMStreamPath;
 
-// Helper: parse archive filenames like "Game (date)(-)(Company)[Platform].ext"
+// Helper: parse archive filenames like "Game (date)(Team)(Company)[Platform].ext"
 static void parseArchiveFilename(const std::string& filename, std::string& outTitle, std::string& outPlatform, std::string& outCompany, std::string& outDate) {
     outTitle.clear(); outPlatform.clear(); outCompany.clear(); outDate.clear();
     
@@ -286,52 +286,60 @@ static void parseArchiveFilename(const std::string& filename, std::string& outTi
     size_t dot = name.rfind('.');
     if (dot != std::string::npos) name = name.substr(0, dot);
     
-    // Find first '('
+    // Find first '(' or '['
     size_t p1 = name.find('(');
-    if (p1 == std::string::npos) {
+    size_t b0 = name.find('[');
+    if (p1 == std::string::npos && b0 == std::string::npos) {
         outTitle = name;
         return;
     }
-    
-    // Title: everything before first '(' (trimmed)
-    outTitle = name.substr(0, p1);
+
+    // Title: everything before first '(' or '[' (trimmed)
+    size_t titleEnd = std::string::npos;
+    if (p1 != std::string::npos && b0 != std::string::npos) titleEnd = std::min(p1, b0);
+    else if (p1 != std::string::npos) titleEnd = p1;
+    else titleEnd = b0;
+    outTitle = name.substr(0, titleEnd);
     size_t start = outTitle.find_first_not_of(" \t");
     size_t end = outTitle.find_last_not_of(" \t");
     if (start != std::string::npos && end != std::string::npos) outTitle = outTitle.substr(start, end-start+1);
-    
-    // Find closing ')' for first '('
-    size_t p2 = name.find(')', p1);
-    if (p2 != std::string::npos) {
-        outDate = name.substr(p1+1, p2-p1-1);
-        start = outDate.find_first_not_of(" \t");
-        end = outDate.find_last_not_of(" \t");
-        if (start != std::string::npos && end != std::string::npos) outDate = outDate.substr(start, end-start+1);
-    }
-    
-    // Find last '[' for platform
+
+    // Platform: last [...]
     size_t b1 = name.rfind('[');
-    if (b1 != std::string::npos && b1 > p2) {
+    if (b1 != std::string::npos) {
         size_t b2 = name.find(']', b1);
         if (b2 != std::string::npos) {
-            outPlatform = name.substr(b1+1, b2-b1-1);
+            outPlatform = name.substr(b1 + 1, b2 - b1 - 1);
             start = outPlatform.find_first_not_of(" \t");
             end = outPlatform.find_last_not_of(" \t");
-            if (start != std::string::npos && end != std::string::npos) outPlatform = outPlatform.substr(start, end-start+1);
+            if (start != std::string::npos && end != std::string::npos) outPlatform = outPlatform.substr(start, end - start + 1);
         }
     }
-    
-    // Find '(' before '[' but after first ')' for company
-    if (p2 != std::string::npos && b1 != std::string::npos && b1 > p2) {
-        size_t p3 = name.rfind('(', b1);
-        if (p3 != std::string::npos && p3 > p2) {
-            size_t p4 = name.find(')', p3);
-            if (p4 != std::string::npos && p4 < b1) {
-                outCompany = name.substr(p3+1, p4-p3-1);
-                start = outCompany.find_first_not_of(" \t");
-                end = outCompany.find_last_not_of(" \t");
-                if (start != std::string::npos && end != std::string::npos) outCompany = outCompany.substr(start, end-start+1);
-                if (outCompany == "-") outCompany.clear();
-            }
+
+    // Collect all (...) groups after title and before platform
+    std::vector<std::string> groups;
+    size_t searchPos = titleEnd;
+    size_t limit = (b1 != std::string::npos) ? b1 : name.size();
+    while (searchPos < limit) {
+        size_t o = name.find('(', searchPos);
+        if (o == std::string::npos || o >= limit) break;
+        size_t c = name.find(')', o + 1);
+        if (c == std::string::npos || c > limit) break;
+        std::string g = name.substr(o + 1, c - o - 1);
+        start = g.find_first_not_of(" \t");
+        end = g.find_last_not_of(" \t");
+        if (start != std::string::npos && end != std::string::npos) g = g.substr(start, end - start + 1);
+        if (!g.empty()) groups.push_back(g);
+        searchPos = c + 1;
+    }
+
+    // First group is date, remaining are team/company (ignore "-" entries)
+    if (!groups.empty()) {
+        outDate = groups[0];
+        for (size_t i = 1; i < groups.size(); i++) {
+            if (groups[i] == "-") continue;
+            if (!outCompany.empty()) outCompany += " / ";
+            outCompany += groups[i];
         }
     }
 }

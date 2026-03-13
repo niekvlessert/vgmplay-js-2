@@ -54,7 +54,15 @@ export function installLibrary(VGMPlay_js) {
 		}
 		const suppressHeader = false;
 		const gameIndex = this.games.indexOf(game) + 1;
-		let gameDisplayName = game.name || "";
+		const normalizeTitle = (value) => {
+			if (!value) return value;
+			if (this._normalizeGameTitle) {
+				const normalized = this._normalizeGameTitle(value);
+				return normalized || value;
+			}
+			return value;
+		};
+		let gameDisplayName = normalizeTitle(game.name || "");
 		let tagGameName = "";
 
 		if (this.zipFileListWindow) {
@@ -103,22 +111,23 @@ export function installLibrary(VGMPlay_js) {
 					if (psfGame && (psfGame.toLowerCase().endsWith('.usf') || psfGame.toLowerCase().endsWith('.miniusf'))) {
 						psfGame = ""; // Filter out bad data if it's just the filename
 					}
-					gameDisplayName = game.name || game.archiveName || psfGame || "Game " + gameIndex;
+					gameDisplayName = normalizeTitle(game.name || game.archiveName || psfGame || "Game " + gameIndex);
 					placeholder.textContent = gameDisplayName;
 					placeholder.classList.add('vgmplayGameToggle');
 					gameWrap.appendChild(placeholder);
 				}
 
+				tagGameName = normalizeTitle(tagGameName);
 				if (!gameDisplayName) {
-					gameDisplayName = game.name || tagGameName || "Game " + gameIndex;
+					gameDisplayName = normalizeTitle(game.name || tagGameName || "Game " + gameIndex);
 				} else if (tagGameName && !gameDisplayName) {
-					gameDisplayName = tagGameName;
+					gameDisplayName = normalizeTitle(tagGameName);
 				}
 				if (tagGameName && (!game.name || gameDisplayName === game.name)) {
-					gameDisplayName = tagGameName;
+					gameDisplayName = normalizeTitle(tagGameName);
 				}
 				if (!gameDisplayName) {
-					gameDisplayName = game.name || "Game " + gameIndex;
+					gameDisplayName = normalizeTitle(game.name || "Game " + gameIndex);
 				}
 				game.searchName = gameDisplayName;
 				gameWrap.dataset.searchName = gameDisplayName.toLowerCase();
@@ -141,7 +150,7 @@ export function installLibrary(VGMPlay_js) {
 			} else {
 				trackContainer = game.trackContainer;
 				if (!gameDisplayName) {
-					gameDisplayName = game.name || "Game " + gameIndex;
+					gameDisplayName = normalizeTitle(game.name || "Game " + gameIndex);
 				}
 				game.searchName = gameDisplayName;
 				gameWrap.dataset.searchName = gameDisplayName.toLowerCase();

@@ -98,7 +98,7 @@ class VGMPlay_js {
 		this.autoDownloadCount = 0;
 		this.autoOverflowURLs = [];
 		this.noPlayableNotices = [];
-		this.autoScanDist = (typeof options.autoScanDist === 'undefined') ? true : !!options.autoScanDist;
+		this.autoScanDist = (typeof options.autoScanDist === 'undefined') ? this.standalone : !!options.autoScanDist;
 		this.autoScanDistBase = options.autoScanDistBase || '/dist/';
 		this._autoScanDistDone = false;
 		this._pendingRomLoads = [];
@@ -582,11 +582,13 @@ class VGMPlay_js {
 			this._makedirs(gamePath);
 
 			for (const entry of entries) {
-				if (!entry || !entry.filepath) continue;
-				const relPath = entry.filepath;
-				const fileArray = fileDataByPath.get(relPath);
-				if (!fileArray) continue;
-				const fullPath = gamePath + "/" + relPath;
+			if (!entry || !entry.filepath) continue;
+			const relPath = entry.filepath;
+			const fileArray = fileDataByPath.get(relPath);
+			if (!fileArray) continue;
+			const lowerRel = relPath.toLowerCase();
+			const isImage = lowerRel.endsWith('.png') || lowerRel.endsWith('.jpg') || lowerRel.endsWith('.jpeg') || lowerRel.endsWith('.gif') || lowerRel.endsWith('.bmp') || lowerRel.endsWith('.webp');
+			const fullPath = gamePath + "/" + relPath;
 
 				const lastSlash = fullPath.lastIndexOf('/');
 				if (lastSlash > gamePath.length) {
@@ -612,6 +614,9 @@ class VGMPlay_js {
 					}
 				}
 				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+				if (isImage && !lower.endsWith(".png")) {
+					console.warn("[VGM] Image found but not used (only .png supported):", relPath);
+				}
 				await maybeYield();
 			}
 
@@ -685,6 +690,8 @@ class VGMPlay_js {
 			const relPath = entry.filepath;
 			const fileArray = fileDataByPath.get(relPath);
 			if (!fileArray) continue;
+			const lowerRel = relPath.toLowerCase();
+			const isImage = lowerRel.endsWith('.png') || lowerRel.endsWith('.jpg') || lowerRel.endsWith('.jpeg') || lowerRel.endsWith('.gif') || lowerRel.endsWith('.bmp') || lowerRel.endsWith('.webp');
 			const gameKey = getGameKey(relPath);
 			const game = getGame(gameKey);
 			const gameRelPath = getRelPath(relPath, gameKey);
@@ -732,6 +739,8 @@ class VGMPlay_js {
 			}
 			if (lower.endsWith('.png') && !game.png) {
 				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+			} else if (isImage && !lower.endsWith('.png')) {
+				console.warn("[VGM] Image found but not used (only .png supported):", relPath);
 			}
 			await maybeYield();
 		}
@@ -1176,19 +1185,14 @@ class VGMPlay_js {
 			const url = new URL('manifest.json', distBase);
 			const resp = await fetch(url.toString(), { cache: 'no-store' });
 			if (!resp.ok) {
-				console.warn('[dist] manifest fetch failed', resp.status, url.toString());
 				return [];
 			}
 			const data = await resp.json();
-			if (!Array.isArray(data)) {
-				console.warn('[dist] manifest is not an array', url.toString());
-				return [];
-			}
+			if (!Array.isArray(data)) return [];
 			return data
 				.map((p) => new URL(p, distBase).toString())
 				.filter((u) => u.includes('/dist/'));
 		} catch (e) {
-			console.warn('[dist] manifest fetch error', e);
 			return [];
 		}
 	}
@@ -1196,14 +1200,8 @@ class VGMPlay_js {
 	async _getDistFilesFromListing(distBase) {
 		try {
 			const resp = await fetch(distBase, { cache: 'no-store' });
-			if (!resp.ok) {
-				console.warn('[dist] listing fetch failed', resp.status, distBase);
-				return [];
-			}
+			if (!resp.ok) return [];
 			const html = await resp.text();
-			if (!html || html.length < 16) {
-				console.warn('[dist] listing empty', distBase);
-			}
 			const links = this._extractLinksFromHtml(html);
 			const out = [];
 			for (const href of links) {
@@ -1213,12 +1211,8 @@ class VGMPlay_js {
 				if (url.pathname.endsWith('/')) continue;
 				out.push(url.toString());
 			}
-			if (out.length === 0) {
-				console.warn('[dist] listing contained no files', distBase);
-			}
 			return out;
 		} catch (e) {
-			console.warn('[dist] listing error', e);
 			return [];
 		}
 	}
@@ -1243,12 +1237,12 @@ class VGMPlay_js {
 			distBase = new URL(distBase, window.location.href).toString();
 		} catch (e) { }
 
-		console.log('[dist] auto-scan start', distBase);
+		// auto-scan /dist
 		let files = await this._getDistFilesFromManifest(distBase);
 		if (!files.length) {
 			files = await this._getDistFilesFromListing(distBase);
 		}
-		console.log('[dist] discovered', files.length, 'file(s)');
+		// discovered files
 		if (!files.length) return;
 
 		const seen = new Set();
@@ -1258,24 +1252,21 @@ class VGMPlay_js {
 			seen.add(url);
 			const lower = url.toLowerCase().split('?')[0].split('#')[0];
 			if (this._isArchiveUrl(lower)) {
-				console.log('[dist] queue archive', url);
 				this._queueURL(url, false, true);
 			} else {
 				const name = url.split('/').pop().split('?')[0].split('#')[0];
 				const romType = this._getRomType ? this._getRomType(name) : null;
 				if (romType) {
-					console.log('[dist] load rom', url);
 					const bytes = await this._fetchUrlAsUint8(url);
 					if (bytes) {
 						this.saveRomFile(bytes, name, romType);
 					} else {
-						console.warn('[dist] rom fetch failed', url);
+						console.warn('ROM fetch failed', url);
 					}
 				} else if (this.isPlayable(lower) || (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower)) {
-					console.log('[dist] queue playable', url);
 					this._queueURL(url, false, true);
 				} else {
-					console.log('[dist] skip non-archive', url);
+					// skip non-archive
 				}
 			}
 		}

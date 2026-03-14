@@ -126,6 +126,9 @@ export function installAudio(VGMPlay_js) {
 			this.GetKSSPerChSize = Module.cwrap('GetKSSPerChSize', 'number');
 			this.GetKSSDeviceMask = Module.cwrap('GetKSSDeviceMask', 'number');
 			this.SetKSSChannelMask = Module.cwrap('SetKSSChannelMask', 'void', ['number', 'number']);
+			this.IsVGMStream = Module.cwrap('IsVGMStream', 'number');
+			this.GetVgmstreamLoop = Module.cwrap('GetVgmstreamLoop', 'number');
+			this.SetVgmstreamLoop = Module.cwrap('SetVgmstreamLoop', 'void', ['number']);
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
@@ -172,6 +175,9 @@ export function installAudio(VGMPlay_js) {
 		if (!this.SetKSSChannelMask) {
 			if (canCwrap) {
 				this.SetKSSChannelMask = Module.cwrap('SetKSSChannelMask', 'void', ['number', 'number']);
+			this.IsVGMStream = Module.cwrap('IsVGMStream', 'number');
+			this.GetVgmstreamLoop = Module.cwrap('GetVgmstreamLoop', 'number');
+			this.SetVgmstreamLoop = Module.cwrap('SetVgmstreamLoop', 'void', ['number']);
 			} else if (Module._SetKSSChannelMask) {
 				this.SetKSSChannelMask = Module._SetKSSChannelMask;
 			}
@@ -560,6 +566,9 @@ export function installAudio(VGMPlay_js) {
 				if (this.GetLoopPoint() > 0) return true;
 			} catch (e) { }
 		}
+		if (this.IsVGMStream && this.IsVGMStream()) {
+			if (this.GetVgmstreamLoop && this.GetVgmstreamLoop()) return true;
+		}
 		// KSS and PSF/USF don't always expose loop points; allow software looping
 		return isKss() || isPsfUsf();
 	};
@@ -568,10 +577,12 @@ export function installAudio(VGMPlay_js) {
 		if (this.loopMode === 1) {
 			this._loopCount = 0;
 			if (this.SetLoopCount) this.SetLoopCount(0);
+			if (this.SetVgmstreamLoop) this.SetVgmstreamLoop(1); // 1 = enabled (ignore_loop=false)
 			if (this.progressContainer) this.progressContainer.style.display = 'none';
 		} else {
 			this._loopCount = 1;
 			if (this.SetLoopCount) this.SetLoopCount(1);
+			if (this.SetVgmstreamLoop) this.SetVgmstreamLoop(0); // 0 = disabled (ignore_loop=true)
 			if (this.progressContainer) this.progressContainer.style.display = '';
 		}
 		this._setLoopButtonState();

@@ -96,6 +96,8 @@ static bool isOpenMPT = false;
 static bool openmptEnded = false;
 static double openmptDurationSec = 0.0;
 static std::string currentOpenMptPath;
+static bool debugMode = false;
+static bool vgmstreamLoopEnabled = false;
 
 static bool isMUS = false;
 static musdoom_emulator_t *musEmu = nullptr;
@@ -1349,15 +1351,22 @@ int OpenVGMFile(const char *path) {
     libvgmstream_t* vs = libvgmstream_init();
     if (vs) {
       libvgmstream_config_t cfg = {};
-      cfg.ignore_loop = true;
+      cfg.ignore_loop = !vgmstreamLoopEnabled;
+      cfg.allow_play_forever = true;
+      cfg.play_forever = vgmstreamLoopEnabled;
       cfg.force_sfmt = LIBVGMSTREAM_SFMT_PCM16;
       libvgmstream_setup(vs, &cfg);
 
       libstreamfile_t* sf = libstreamfile_open_from_stdio(basePath.c_str());
       if (sf) {
+        if (debugMode) printf("VGMStream: Successfully opened STREAMFILE for %s\n", basePath.c_str());
         int result = libvgmstream_open_stream(vs, sf, 0);
-        libstreamfile_close(sf);
+        // libvgmstream_open_stream takes ownership of sf if successful (>=0)
+        // or we free vs which frees its internal sf if init was partial.
+        // If it failed (<0), we close sf here and free vs.
         if (result >= 0) {
+          if (debugMode) printf("VGMStream: Opened %s, channels=%d, rate=%d, play_samples=%d\n", 
+                 basePath.c_str(), vs->format->channels, vs->format->sample_rate, (int)vs->format->play_samples);
           // Success - set up converter and buffers
           isVGMStream = true;
           vgmstreamContext = vs;
@@ -1384,6 +1393,8 @@ int OpenVGMFile(const char *path) {
           vgmstreamOutputBuffer.clear();
 
           return 1;
+        } else {
+          libstreamfile_close(sf);
         }
       }
       libvgmstream_free(vs);
@@ -2423,9 +2434,16 @@ void FillBuffer2(float *left, float *right, int n) {
       if (vgmstreamInputBuffer.empty()) {
         const int decodeFrames = 4096;
         std::vector<int16_t> tempBuffer(decodeFrames * vgmstreamChannels);
-        int rendered = libvgmstream_fill(vgmstreamContext, tempBuffer.data(), decodeFrames);
-        if (rendered <= 0) {
+        int res = libvgmstream_fill(vgmstreamContext, tempBuffer.data(), decodeFrames);
+        int rendered = vgmstreamContext->decoder->buf_samples;
+        if (res < 0 || (rendered <= 0 && vgmstreamContext->decoder->done)) {
+          if (debugMode) printf("FillBuffer2: vgmstream rendered 0 samples, done=%d\n", vgmstreamContext->decoder->done);
           break; // no more data or error
+        }
+        static int vgmstreamLogCount = 0;
+        if (debugMode) {
+            printf("FillBuffer2: vgmstream rendered %d samples, res=%d, done=%d\n", 
+                   rendered, res, vgmstreamContext->decoder->done);
         }
         int samplesRendered = rendered * vgmstreamChannels;
         vgmstreamInputBuffer.insert(vgmstreamInputBuffer.end(), tempBuffer.begin(), tempBuffer.begin() + samplesRendered);
@@ -3111,6 +3129,37 @@ const char *GetGMETrackNameDirect(const char *path, int trackIndex) {
   gme_free_info(info);
   gme_delete(emu);
   return nameBuf;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void SetDebugMode(int enabled) {
+    debugMode = (enabled != 0);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int IsVGMStream() {
+    return isVGMStream ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int GetVgmstreamLoop() {
+    if (!isVGMStream || !vgmstreamContext || !vgmstreamContext->format) return 0;
+    return vgmstreamContext->format->loop_flag ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void SetVgmstreamLoop(int enabled) {
+    vgmstreamLoopEnabled = (enabled != 0);
+    if (isVGMStream && vgmstreamContext) {
+        libvgmstream_config_t cfg = {};
+        cfg.ignore_loop = !vgmstreamLoopEnabled;
+        cfg.allow_play_forever = true;
+        cfg.play_forever = vgmstreamLoopEnabled;
+        cfg.force_sfmt = LIBVGMSTREAM_SFMT_PCM16;
+        // This might only apply to the NEXT open_stream, but we set it anyway just in case.
+        libvgmstream_setup(vgmstreamContext, &cfg);
+        if (debugMode) printf("VGMStream: Global Loop set to %s\n", vgmstreamLoopEnabled ? "ON" : "OFF");
+    }
 }
 
 } /* extern "C" */

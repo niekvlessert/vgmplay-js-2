@@ -55,19 +55,23 @@ function _recurse7zFS(sz, path, relativePath, outList) {
 	}
 }
 
-async function _handleZip(id, buffer) {
+async function _handleZip(id, buffer, debugMode) {
 	const mz = new Minizip(new Uint8Array(buffer));
 	const fileList = mz.list();
 	const { paths, hasKss } = _collectZipEntries(fileList);
 	self.postMessage({ type: 'meta', id, entries: paths, hasKss });
-	for (const relPath of paths) {
+	if (debugMode) console.log(`[Worker] Zip extraction starting for job ${id}: ${paths.length} entries`);
+	for (let i = 0; i < paths.length; i++) {
+		const relPath = paths[i];
+		if (debugMode && i % 50 === 0) console.log(`[Worker] Job ${id}: extracted ${i}/${paths.length} files...`);
 		const data = mz.extract(relPath);
 		self.postMessage({ type: 'file', id, path: relPath, data }, [data.buffer]);
 	}
+	if (debugMode) console.log(`[Worker] Job ${id}: Zip extraction complete`);
 	self.postMessage({ type: 'done', id });
 }
 
-async function _handle7z(id, buffer) {
+async function _handle7z(id, buffer, debugMode) {
 	const sz = await SevenZip({
 		locateFile: (path) => _baseURL + path,
 		print: () => { },
@@ -90,10 +94,14 @@ async function _handle7z(id, buffer) {
 	}
 	self.postMessage({ type: 'meta', id, entries: paths, hasKss });
 
-	for (const relPath of paths) {
+	if (debugMode) console.log(`[Worker] 7z extraction starting for job ${id}: ${paths.length} entries`);
+	for (let i = 0; i < paths.length; i++) {
+		const relPath = paths[i];
+		if (debugMode && i % 10 === 0) console.log(`[Worker] Job ${id}: reading ${i}/${paths.length} files...`);
 		const data = sz.FS.readFile('/out/' + relPath);
 		self.postMessage({ type: 'file', id, path: relPath, data }, [data.buffer]);
 	}
+	if (debugMode) console.log(`[Worker] Job ${id}: 7z extraction complete`);
 	self.postMessage({ type: 'done', id });
 }
 
@@ -133,11 +141,11 @@ self.onmessage = async (e) => {
 	try {
 		_ensureLoaded(msg.baseURL || '');
 		if (msg.kind === 'zip') {
-			await _handleZip(msg.id, msg.buffer);
+			await _handleZip(msg.id, msg.buffer, msg.debugMode);
 		} else if (msg.kind === '7z') {
-			await _handle7z(msg.id, msg.buffer);
+			await _handle7z(msg.id, msg.buffer, msg.debugMode);
 		} else if (msg.kind === 'rar') {
-			await _handleRar(msg.id, msg.buffer);
+			await _handleRar(msg.id, msg.buffer, msg.debugMode);
 		} else {
 			throw new Error('Unknown archive kind: ' + msg.kind);
 		}

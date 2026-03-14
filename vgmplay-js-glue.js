@@ -104,6 +104,8 @@ class VGMPlay_js {
 		this._pendingRomLoads = [];
 		this._pendingRomRetryScheduled = false;
 		this._pendingExternalGameImages = {};
+		this.debugMode = false;
+		this.debugModeHasBeenToggled = false;
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -492,6 +494,9 @@ class VGMPlay_js {
 		});
 		Mousetrap.bind('m', (e) => {
 			this._setMemoryStatsVisible(!this.showMemoryStats);
+		});
+		Mousetrap.bind('d', (e) => {
+			this.toggleDebugMode();
 		});
 	}
 
@@ -1143,6 +1148,7 @@ class VGMPlay_js {
 			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') || p.endsWith('.ape') ||
 			p.endsWith('.mus') || (p.endsWith('.lmp') && !p.endsWith('genmidi.lmp')) ||
 			p.endsWith('.mid') || p.endsWith('.midi') || p.endsWith('.rmi') ||
+			p.endsWith('.bfstm') ||
 			p.endsWith('.vigamup');
 	}
 
@@ -2126,9 +2132,22 @@ VGMPlay_js.prototype._changeTrackInGame = async function (action) {
 	if (action === 'next') {
 		this.currentFileKey = (this.currentFileKey + 1) % list.length;
 	} else {
-		this.currentFileKey = (this.currentFileKey - 1 + list.length) % list.length;
+			this.currentFileKey = (this.currentFileKey - 1 + list.length) % list.length;
 	}
 	await this.playFileFromFS(false, list[this.currentFileKey].filepath, this.games.indexOf(this.activeGame) + 1, this.currentFileKey);
+};
+
+VGMPlay_js.prototype.toggleDebugMode = function () {
+	this.debugMode = !this.debugMode;
+	this.debugModeHasBeenToggled = true;
+	console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
+	if (this.vgmplayUI) {
+		this.vgmplayUI._renderSkippedDownloads();
+		this.vgmplayUI._showSkippedWindow();
+	}
+	if (Module._SetDebugMode) {
+		Module._SetDebugMode(this.debugMode ? 1 : 0);
+	}
 };
 
 VGMPlay_js.prototype.playRandom = function () {

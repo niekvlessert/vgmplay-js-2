@@ -45,6 +45,9 @@ export function installArchives(VGMPlay_js) {
 			const buf = msg.data;
 			const arr = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
 			job.fileDataByPath.set(msg.path, arr);
+			if (this.debugMode && job.fileDataByPath.size % 20 === 0) {
+				console.log(`[VGM] ArchiveJob ${msg.id}: Received ${job.fileDataByPath.size} files...`);
+			}
 			return;
 		}
 		if (msg.type === 'error') {
@@ -79,7 +82,7 @@ export function installArchives(VGMPlay_js) {
 			});
 			try {
 				worker.postMessage(
-					{ type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL },
+					{ type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL, debugMode: this.debugMode },
 					[byteArray.buffer]
 				);
 			} catch (e) {
@@ -91,7 +94,9 @@ export function installArchives(VGMPlay_js) {
 
 	VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
 		try {
+			if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${sourceName || 'archive'}`);
 			const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
+			if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${sourceName || 'archive'}`);
 			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
 			return;
 		} catch (e) {
@@ -329,7 +334,9 @@ export function installArchives(VGMPlay_js) {
 
 	VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '') {
 		try {
+			if (this.debugMode) console.log(`[VGM] Starting 7z extraction with worker for ${sourceName || 'archive'}`);
 			const workerResult = await this._extractArchiveWithWorker(byteArray, '7z');
+			if (this.debugMode) console.log(`[VGM] 7z Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${sourceName || 'archive'}`);
 			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
 			return;
 		} catch (e) {

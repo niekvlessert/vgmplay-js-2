@@ -332,6 +332,20 @@ export function installUi(VGMPlay_js) {
 			this._renderAutoLimitNotice();
 		}
 
+		// Add Debug Mode status display (only if toggled)
+		if (this.debugModeHasBeenToggled) {
+			if (!this.skippedContentEl) {
+				this.skippedContentEl = document.createElement('div');
+				this.skippedContentEl.className = 'vgmplaySkippedContent';
+				this.skippedWindow.insertBefore(this.skippedContentEl, this.skippedList);
+			}
+			this.skippedContentEl.innerHTML = `
+				<div style="margin-bottom: 8px;"><b>Debug Mode:</b> <span>${this.debugMode ? 'ON' : 'OFF'}</span></div>
+			`;
+		} else if (this.skippedContentEl) {
+			this.skippedContentEl.innerHTML = '';
+		}
+
 		if (this.skippedDownloads.length === 0 && this.noPlayableNotices.length === 0) {
 			const empty = document.createElement('div');
 			empty.className = 'vgmplaySkippedEmpty';

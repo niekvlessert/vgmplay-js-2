@@ -88,7 +88,11 @@ export function installLayout(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype.toggleDisplayZipFileListWindow = function () {
-		this.libraryState = (this.libraryState + 1) % 3;
+		const isMobile = typeof window !== 'undefined' && window.innerWidth <= 600;
+		if (isMobile) return;
+
+		const maxStates = 3;
+		this.libraryState = (this.libraryState + 1) % maxStates;
 
 		if (this.libraryState === 0) {
 			// Attached

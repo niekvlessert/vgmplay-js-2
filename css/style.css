@@ -39,6 +39,7 @@
   align-self: flex-start;
   z-index: 70;
   pointer-events: none;
+  flex-shrink: 0;
 }
 
 .vgmplayContainer.vgmplayStandalone .vgmplayStandaloneGroup .vgmplayPlayerWindow,
@@ -126,6 +127,17 @@
   overflow: hidden;
   gap: 6px;
   min-height: 110px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
+.vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border-color: #00ff66;
+  background: #222;
+  z-index: 2;
 }
 
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile img {
@@ -272,21 +284,7 @@
   width: 100%;
 }
 
-.vgmplayContainer.vgmplayStandalone #vgmplayTracksContainer {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  z-index: 10;
-  height: calc(100vh - 20px);
-}
-
-.vgmplayContainer.vgmplayStandalone .vgmplayZipFileListWindow {
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-}
+/* Consolidated with main library styles below */
 
 
 .vgmplayContainer * {
@@ -819,6 +817,15 @@
   box-shadow: 0 0 4px rgba(0, 255, 0, 0.3);
 }
 
+.vgmplayContainer.vgmplayStandalone #vgmplayTracksContainer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  z-index: 10;
+  height: calc(100vh - 80px); /* Account for player + margins */
+}
+
 .vgmplayContainer .vgmplayZipFileListWindow {
   border: 1px solid white;
   background: #2a2a2a 0 0 repeat;
@@ -826,13 +833,14 @@
   font-size: 10px;
   line-height: 1.1;
   width: 266px;
-  height: 1000px;
+  box-sizing: border-box;
+  height: 96%;
   padding: 5px;
   color: white;
   overflow-y: auto;
   overflow-x: hidden;
   text-align: left;
-  margin: auto;
+  margin: 0;
 }
 
 .vgmplayContainer .vgmplayTrack {
@@ -1073,6 +1081,7 @@
   color: #fff;
   cursor: pointer;
   transition: background 0.2s ease;
+  flex-shrink: 0;
 }
 
 .vgmplayContainer .vgmplayUploader.highlight {

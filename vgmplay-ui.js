@@ -52,10 +52,10 @@ export function installUi(VGMPlay_js) {
 		this.playerWindow.className = "vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = `
 			<div class="vgmplayControls">
-				<button onclick="vgmplay_js.changeTrack('previous')">|&lt;</button>
+				<button id="btnPrev" onclick="vgmplay_js.changeTrack('previous')">|&lt;</button>
 				<button id="buttonTogglePlayback" onclick="vgmplay_js.togglePlayback()">&#9654;</button>
-				<button onclick="vgmplay_js.changeTrack('next')">&gt;|</button>
-				<button onclick="vgmplay_js.stop()">&#9632;</button>
+				<button id="btnNext" onclick="vgmplay_js.changeTrack('next')">&gt;|</button>
+				<button id="btnStop" onclick="vgmplay_js.stop()">&#9632;</button>
 				<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
 				<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
 				<button id="btnRandom" onclick="vgmplay_js.toggleRandomScope()">R</button>
@@ -73,6 +73,11 @@ export function installUi(VGMPlay_js) {
 		this.btnLoop = document.getElementById('btnLoop');
 		this.btnLibrary = document.getElementById('btnLibrary');
 		this.btnSearch = document.getElementById('btnSearch');
+
+		// Disable and hide library toggle on mobile
+		if (typeof window !== 'undefined' && window.innerWidth <= 600) {
+			if (this.btnLibrary) this.btnLibrary.style.display = 'none';
+		}
 
 		this.searchBar = document.createElement('div');
 		this.searchBar.className = 'vgmplaySearchBar';
@@ -242,6 +247,9 @@ export function installUi(VGMPlay_js) {
 		const targets = [...buttons, ...tracks];
 		const idDescriptions = {
 			'buttonTogglePlayback': 'Play/Pause (Space)',
+			'btnPrev': 'Previous Track (P)',
+			'btnNext': 'Next Track (N)',
+			'btnStop': 'Stop',
 			'btnBass': 'Bass Boost (B)',
 			'btnReverb': 'Reverb (V)',
 			'btnRandom': 'Shuffle game/all (R)',
@@ -249,32 +257,11 @@ export function installUi(VGMPlay_js) {
 			'btnLibrary': 'Toggle Float/Library (F)',
 			'btnSearch': 'Search (S)'
 		};
-		const descriptions = {
-			'|&lt;': 'Previous Track (P)',
-			'|<': 'Previous Track (P)',
-			'&#9654;': 'Play/Pause (Space)',
-			'▶': 'Play/Pause (Space)',
-			'\u25B6': 'Play/Pause (Space)',
-			'||': 'Play/Pause',
-			'&gt;|': 'Next Track (N)',
-			'>|': 'Next Track (N)',
-			'&#9632;': 'Stop',
-			'■': 'Stop',
-			'\u25A0': 'Stop',
-			'B': 'Bass Boost (B)',
-			'V': 'Reverb (V)',
-			'R': 'Shuffle game/all (R)',
-			'L': 'Loop track/game (L)',
-			'Z': 'Toggle Float/Library (F)',
-			'🔍': 'Search (S)',
-			'&#128269;': 'Search (S)'
-		};
 
 		let tooltipTimeout;
 
 		targets.forEach(target => {
-			const text = target.innerHTML.trim();
-			const desc = idDescriptions[target.id] || descriptions[text] || target.innerText;
+			const desc = idDescriptions[target.id] || target.title || (target.classList.contains('vgmplayTrack') ? target.innerText : null);
 			if (!desc) return;
 
 			const hideTooltip = () => {

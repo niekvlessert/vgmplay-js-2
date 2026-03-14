@@ -6,7 +6,8 @@ export function installLibrary(VGMPlay_js) {
 			game.uiElement = null;
 			this.showVGMFromZip(game);
 		}
-		if (this.games.length > 10 && this.libraryState === 0) {
+		const isMobile = typeof window !== 'undefined' && window.innerWidth <= 600;
+		if (!isMobile && this.games.length > 10 && this.libraryState === 0) {
 			this.libraryState = 2; // Jump to Grid Overview (Blue mode)
 			if (this.toggleDisplayZipFileListWindow) {
 				// We call it once to "apply" the state logic (it will increment to 3 then mod 3, so we set it to 1 first)

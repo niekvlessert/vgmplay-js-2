@@ -1113,9 +1113,14 @@ class VGMPlay_js {
 				this._updateHighlight();
 				this._updateMemoryDisplay();
 			} finally {
-				this._isLoadingFile = false;
+			this._isLoadingFile = false;
 			}
 		});
+	}
+
+	_isUsfFile(p) {
+		p = (p || "").toLowerCase();
+		return p.endsWith('.usf') || p.endsWith('.miniusf') || p.endsWith('.usflib');
 	}
 
 	isPlayable(path) {
@@ -1972,6 +1977,14 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 
 	this._checkTrackEnd();
 
+	const entry = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList[this.currentFileKey] : null;
+	const path = (entry && entry.filepath ? entry.filepath : this.currentFileKey || "").toLowerCase();
+	const isUsf = this._isUsfFile(path);
+
+	if (this.progressContainer) {
+		this.progressContainer.classList.toggle('seeking-disabled', isUsf);
+	}
+
 	const currentSample = this.visualSamplePosition;
 	const progress = Math.min(currentSample / this.totalSampleCount, 1);
 	this.progressFill.style.width = (progress * 100) + '%';
@@ -1997,12 +2010,19 @@ VGMPlay_js.prototype._resetProgressBar = function () {
 
 VGMPlay_js.prototype._onProgressClick = function (e) {
 	if (!this.isVGMPlaying || !this.totalSampleCount) return;
+
+	const entry = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList[this.currentFileKey] : null;
+	const path = (entry && entry.filepath ? entry.filepath : this.currentFileKey || "").toLowerCase();
+	
+	if (this._isUsfFile(path)) {
+		console.warn("[VGM] Seeking not supported for USF files.");
+		return;
+	}
+
 	var rect = this.progressContainer.getBoundingClientRect();
 	var ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 	var targetSample = Math.floor(ratio * this.totalSampleCount);
 
-	const entry = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList[this.currentFileKey] : null;
-	const path = (entry && entry.filepath ? entry.filepath : this.currentFileKey || "").toLowerCase();
 	const isMus = path.endsWith('.mus') || (path.endsWith('.lmp') && !path.endsWith('genmidi.lmp'));
 	if (isMus && this.loopMode === 1 && this.currentTrackSupportsLoop && this._loopBaseSamplesByTrack) {
 		const baseLen = this._loopBaseSamplesByTrack.get(this.currentFileKey);

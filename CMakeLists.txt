@@ -39,6 +39,10 @@ set(BUILD_TESTS OFF CACHE BOOL "Build test programs" FORCE)
 set(BUILD_TOOLS OFF CACHE BOOL "Build tools" FORCE)
 add_subdirectory(modules/libMusDoom)
 
+# Monkey's Audio (APE)
+set(ENABLE_ASSEMBLY OFF CACHE BOOL "Disable assembly for Emscripten" FORCE)
+add_subdirectory(modules/monkeys-audio)
+
 # Munt MT-32 Emulation
 set(libmt32emu_SHARED OFF CACHE BOOL "Build shared libmt32emu" FORCE)
 set(libmt32emu_CPP_INTERFACE OFF CACHE BOOL "Disable C++ interface" FORCE)
@@ -104,6 +108,7 @@ target_link_libraries(vgmplay-js libvgmstream)
 target_link_libraries(vgmplay-js openmpt)
 target_link_libraries(vgmplay-js ADLMIDI_static)
 target_link_libraries(vgmplay-js mt32emu)
+target_link_libraries(vgmplay-js libmac)
 add_dependencies(vgmplay-js openmpt_build)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
@@ -127,6 +132,9 @@ target_include_directories(vgmplay-js PRIVATE
     modules/libMusDoom/src
     modules/vgmstream/src
     modules/adlmidi/include
+    modules/monkeys-audio/src/Shared
+    modules/monkeys-audio/src/MACLib
+    ${CMAKE_CURRENT_BINARY_DIR}/modules/monkeys-audio
     modules/openmpt/libopenmpt
     modules/openmpt/common
     modules/openmpt/src

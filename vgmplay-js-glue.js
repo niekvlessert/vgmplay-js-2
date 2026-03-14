@@ -1114,7 +1114,7 @@ class VGMPlay_js {
 			p.endsWith('.amf') || p.endsWith('.dmf') || p.endsWith('.far') ||
 			p.endsWith('.imf') || p.endsWith('.med') || p.endsWith('.okt') ||
 			p.endsWith('.ptm') || p.endsWith('.ult') || p.endsWith('.umx') ||
-			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') ||
+			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') || p.endsWith('.ape') ||
 			p.endsWith('.mus') || (p.endsWith('.lmp') && !p.endsWith('genmidi.lmp')) ||
 			p.endsWith('.mid') || p.endsWith('.midi') || p.endsWith('.rmi') ||
 			p.endsWith('.vigamup');

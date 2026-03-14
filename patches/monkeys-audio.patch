@@ -1,0 +1,39 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bc4d06f..c20ba1e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
++cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
+ project(monkeys-audio)
+ 
+ if(CMAKE_COMPILER_IS_GNUCXX OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+@@ -39,7 +39,9 @@ else(NANOSLEEP_IN_RT)
+     endif(NANOSLEEP_IN_POSIX4)
+ endif(NANOSLEEP_IN_RT)
+ 
+-if(NOT WIN32)
++if(EMSCRIPTEN)
++    set(BUILD_CROSS_PLATFORM TRUE)
++elseif(NOT WIN32)
+     set(BUILD_CROSS_PLATFORM TRUE)
+ endif(NOT WIN32)
+ 
+@@ -204,10 +206,12 @@ target_link_libraries(libmac ${NANOSLEEP_LIBRARY})
+ set_target_properties(libmac PROPERTIES
+     OUTPUT_NAME mac)
+ 
+-add_executable(mac ${MAC_SOURCES})
+-target_link_libraries(mac libmac)
++if(NOT EMSCRIPTEN)
++    add_executable(mac ${MAC_SOURCES})
++    target_link_libraries(mac libmac)
+ 
+-add_executable(Sample1 ${SAMPLE1_SOURCES})
+-target_link_libraries(Sample1 libmac)
++    add_executable(Sample1 ${SAMPLE1_SOURCES})
++    target_link_libraries(Sample1 libmac)
+ 
+-install(TARGETS mac DESTINATION bin)
++    install(TARGETS mac DESTINATION bin)
++endif()

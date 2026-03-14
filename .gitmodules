@@ -31,3 +31,6 @@
 [submodule "modules/munt"]
 	path = modules/munt
 	url = https://github.com/munt/munt.git
+[submodule "modules/monkeys-audio"]
+	path = modules/monkeys-audio
+	url = https://github.com/fernandotcl/monkeys-audio.git

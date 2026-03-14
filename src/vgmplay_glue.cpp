@@ -42,6 +42,12 @@ void psxShutdown(void);
 #include "../modules/libMusDoom/src/libmusdoom.h"
 #include "../modules/openmpt/libopenmpt/libopenmpt.h"
 #include "../modules/adlmidi/include/adlmidi.h"
+#ifndef BUILD_CROSS_PLATFORM
+#define BUILD_CROSS_PLATFORM
+#endif
+#include "../modules/monkeys-audio/src/Shared/All.h"
+#include "../modules/monkeys-audio/src/Shared/CharacterHelper.h"
+#include "../modules/monkeys-audio/src/MACLib/MACLib.h"
 #include "miniaudio.h"
 #include <map>
 #include <algorithm>
@@ -95,6 +101,19 @@ static bool isMUS = false;
 static musdoom_emulator_t *musEmu = nullptr;
 static std::vector<uint8_t> genmidiData;
 static std::vector<uint8_t> musData;
+
+static bool isAPE = false;
+static IAPEDecompress *apeDecompress = nullptr;
+static int apeSampleRate = 0;
+static int apeChannels = 0;
+static int apeBitsPerSample = 0;
+static int apeBytesPerSample = 0;
+static int apeTotalBlocks = 0;
+static bool apeEnded = false;
+static ma_data_converter apeConverter;
+static bool apeConverterInitialized = false;
+static std::vector<int16_t> apeInputBuffer;
+static std::vector<float> apeOutputBuffer;
 
 static bool isADLMIDI = false;
 static ADL_MIDIPlayer* adlPlayer = nullptr;
@@ -687,6 +706,25 @@ static void cleanup(bool keepVGMPlayer) {
     isMUS = false;
     musData.clear();
   }
+  if (isAPE) {
+    if (apeDecompress) {
+      delete apeDecompress;
+      apeDecompress = nullptr;
+    }
+    if (apeConverterInitialized) {
+      ma_data_converter_uninit(&apeConverter, NULL);
+      apeConverterInitialized = false;
+    }
+    apeInputBuffer.clear();
+    apeOutputBuffer.clear();
+    apeSampleRate = 0;
+    apeChannels = 0;
+    apeBitsPerSample = 0;
+    apeBytesPerSample = 0;
+    apeTotalBlocks = 0;
+    apeEnded = false;
+    isAPE = false;
+  }
   if (isMA) {
     if (gMaInitialized) {
       ma_decoder_uninit(&gMaDecoder);
@@ -931,6 +969,21 @@ void Seek(unsigned int sec, unsigned int ms) {
     }
     return;
   }
+  if (isAPE && apeDecompress) {
+    if (apeSampleRate > 0) {
+      int64_t targetBlock = (int64_t)sample * (int64_t)apeSampleRate / (int64_t)gSampleRate;
+      if (targetBlock < 0) targetBlock = 0;
+      if (apeTotalBlocks > 0 && targetBlock > apeTotalBlocks) targetBlock = apeTotalBlocks;
+      apeDecompress->Seek((int)targetBlock);
+      apeInputBuffer.clear();
+      apeOutputBuffer.clear();
+      if (apeConverterInitialized) {
+        ma_data_converter_reset(&apeConverter);
+      }
+      apeEnded = false;
+    }
+    return;
+  }
   // USF does not expose a seek function in lazyusf.
 
   if (!player)
@@ -1113,6 +1166,48 @@ int OpenVGMFile(const char *path) {
     isMA = true;
     gMaInitialized = true;
     currentMAPath = basePath;
+    return 1;
+  }
+
+  if (lowerPath.size() > 4 && (lowerPath.find(".ape") != std::string::npos)) {
+    int apeError = 0;
+    str_utf16 *path16 = GetUTF16FromANSI((const str_ansi *)basePath.c_str());
+    apeDecompress = CreateIAPEDecompress(path16, &apeError);
+    delete[] path16;
+    if (!apeDecompress || apeError != 0) {
+      if (apeDecompress) {
+        delete apeDecompress;
+        apeDecompress = nullptr;
+      }
+      return 0;
+    }
+    apeSampleRate = (int)apeDecompress->GetInfo(APE_INFO_SAMPLE_RATE);
+    apeChannels = (int)apeDecompress->GetInfo(APE_INFO_CHANNELS);
+    apeBitsPerSample = (int)apeDecompress->GetInfo(APE_INFO_BITS_PER_SAMPLE);
+    apeBytesPerSample = (int)apeDecompress->GetInfo(APE_INFO_BYTES_PER_SAMPLE);
+    apeTotalBlocks = (int)apeDecompress->GetInfo(APE_INFO_TOTAL_BLOCKS);
+    apeEnded = false;
+
+    if (apeChannels <= 0 || apeSampleRate <= 0) {
+      delete apeDecompress;
+      apeDecompress = nullptr;
+      return 0;
+    }
+
+    ma_data_converter_config convConfig = ma_data_converter_config_init(
+        ma_format_s16, ma_format_f32,
+        apeChannels, 2,
+        apeSampleRate, gSampleRate);
+    ma_result res = ma_data_converter_init(&convConfig, NULL, &apeConverter);
+    if (res != MA_SUCCESS) {
+      delete apeDecompress;
+      apeDecompress = nullptr;
+      return 0;
+    }
+    apeConverterInitialized = true;
+    apeInputBuffer.clear();
+    apeOutputBuffer.clear();
+    isAPE = true;
     return 1;
   }
 
@@ -1372,6 +1467,12 @@ int VGMEnded(void) {
   if (isUSF) {
     return (usfInfo && sampcount >= usfInfo->length * 44.1) ? 1 : 0;
   }
+  if (isAPE) {
+    if (!apeDecompress) return 1;
+    const int currentBlock = (int)apeDecompress->GetInfo(APE_DECOMPRESS_CURRENT_BLOCK);
+    const int totalBlocks = apeTotalBlocks > 0 ? apeTotalBlocks : (int)apeDecompress->GetInfo(APE_DECOMPRESS_TOTAL_BLOCKS);
+    return (apeEnded || (totalBlocks > 0 && currentBlock >= totalBlocks)) ? 1 : 0;
+  }
   if (isMA) {
     if (!gMaInitialized)
       return 1;
@@ -1434,6 +1535,15 @@ int GetTrackLength(void) {
   }
   if (isUSF) {
     return usfInfo ? (int)(usfInfo->length * 44.1) : 0;
+  }
+  if (isAPE) {
+    if (!apeDecompress || apeSampleRate <= 0) return 0;
+    const int lengthMs = (int)apeDecompress->GetInfo(APE_INFO_LENGTH_MS);
+    if (lengthMs > 0) {
+      return (int)((double)lengthMs * (double)gSampleRate / 1000.0);
+    }
+    const int totalBlocks = apeTotalBlocks > 0 ? apeTotalBlocks : (int)apeDecompress->GetInfo(APE_INFO_TOTAL_BLOCKS);
+    return totalBlocks > 0 ? (int)((double)totalBlocks * (double)gSampleRate / (double)apeSampleRate) : 0;
   }
   if (isMA) {
     if (!gMaInitialized)
@@ -1617,6 +1727,26 @@ int GetTrackLengthDirect(const char *path) {
       ma_decoder_get_length_in_pcm_frames(&tempDecoder, &length);
       ma_decoder_uninit(&tempDecoder);
       return (int)length;
+    }
+    return 0;
+  }
+
+  if (lowerPath.find(".ape") != std::string::npos) {
+    int apeError = 0;
+    str_utf16 *path16 = GetUTF16FromANSI((const str_ansi *)basePath.c_str());
+    IAPEDecompress *temp = CreateIAPEDecompress(path16, &apeError);
+    delete[] path16;
+    if (!temp || apeError != 0)
+      return 0;
+    const int lengthMs = (int)temp->GetInfo(APE_INFO_LENGTH_MS);
+    const int sampleRate = (int)temp->GetInfo(APE_INFO_SAMPLE_RATE);
+    const int totalBlocks = (int)temp->GetInfo(APE_INFO_TOTAL_BLOCKS);
+    delete temp;
+    if (lengthMs > 0) {
+      return (int)((double)lengthMs * (double)gSampleRate / 1000.0);
+    }
+    if (sampleRate > 0 && totalBlocks > 0) {
+      return (int)((double)totalBlocks * (double)gSampleRate / (double)sampleRate);
     }
     return 0;
   }
@@ -2125,6 +2255,103 @@ void FillBuffer2(float *left, float *right, int n) {
                          psfBufferR.begin() + (long)psfReadPos);
         psfReadPos = 0;
       }
+    }
+    return;
+  }
+
+  if (isAPE) {
+    if (!apeDecompress || !apeConverterInitialized) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+
+    const int decodeBlocks = 4096;
+    while ((int)apeOutputBuffer.size() < n * 2 && !apeEnded) {
+      if (apeInputBuffer.empty()) {
+        const int bytesPerBlock = apeChannels * (apeBytesPerSample > 0 ? apeBytesPerSample : 2);
+        std::vector<uint8_t> rawBuffer(decodeBlocks * bytesPerBlock);
+        int blocksRetrieved = 0;
+        int err = apeDecompress->GetData((char *)rawBuffer.data(), decodeBlocks, &blocksRetrieved);
+        if (err != 0 || blocksRetrieved <= 0) {
+          apeEnded = true;
+          break;
+        }
+
+        const int totalSamples = blocksRetrieved * apeChannels;
+        apeInputBuffer.reserve(apeInputBuffer.size() + totalSamples);
+
+        if (apeBitsPerSample == 8) {
+          for (int i = 0; i < totalSamples; i++) {
+            int16_t v = (int16_t)(((int)rawBuffer[i] - 128) << 8);
+            apeInputBuffer.push_back(v);
+          }
+        } else if (apeBitsPerSample == 16) {
+          const uint8_t *p = rawBuffer.data();
+          for (int i = 0; i < totalSamples; i++) {
+            int16_t v = (int16_t)(p[i * 2] | (p[i * 2 + 1] << 8));
+            apeInputBuffer.push_back(v);
+          }
+        } else if (apeBitsPerSample == 24) {
+          const uint8_t *p = rawBuffer.data();
+          for (int i = 0; i < totalSamples; i++) {
+            int32_t v = (int32_t)(p[i * 3] | (p[i * 3 + 1] << 8) | (p[i * 3 + 2] << 16));
+            if (v & 0x800000) v |= ~0xFFFFFF;
+            apeInputBuffer.push_back((int16_t)(v >> 8));
+          }
+        } else if (apeBitsPerSample == 32) {
+          const uint8_t *p = rawBuffer.data();
+          for (int i = 0; i < totalSamples; i++) {
+            int32_t v = (int32_t)(p[i * 4] | (p[i * 4 + 1] << 8) | (p[i * 4 + 2] << 16) | (p[i * 4 + 3] << 24));
+            apeInputBuffer.push_back((int16_t)(v >> 16));
+          }
+        } else {
+          const uint8_t *p = rawBuffer.data();
+          for (int i = 0; i < totalSamples; i++) {
+            int16_t v = (int16_t)(p[i * 2] | (p[i * 2 + 1] << 8));
+            apeInputBuffer.push_back(v);
+          }
+        }
+      }
+
+      if (!apeInputBuffer.empty()) {
+        ma_uint64 inputFrames = apeInputBuffer.size() / (apeChannels > 0 ? apeChannels : 1);
+        size_t outCapacity = (size_t)(inputFrames * (double)gSampleRate / (double)apeSampleRate) + 256;
+        if (outCapacity < 1) outCapacity = 1;
+        std::vector<float> outBuffer(outCapacity * 2);
+        ma_uint64 inCount = inputFrames;
+        ma_uint64 outCount = outCapacity;
+        ma_result res = ma_data_converter_process_pcm_frames(&apeConverter,
+            apeInputBuffer.data(), &inCount,
+            outBuffer.data(), &outCount);
+        if (res != MA_SUCCESS) {
+          apeEnded = true;
+          break;
+        }
+        size_t consumedSamples = (size_t)inCount * (apeChannels > 0 ? apeChannels : 1);
+        if (consumedSamples > 0 && consumedSamples <= apeInputBuffer.size()) {
+          apeInputBuffer.erase(apeInputBuffer.begin(), apeInputBuffer.begin() + consumedSamples);
+        } else {
+          apeInputBuffer.clear();
+        }
+        if (outCount > 0) {
+          apeOutputBuffer.insert(apeOutputBuffer.end(), outBuffer.begin(), outBuffer.begin() + outCount * 2);
+        }
+      }
+    }
+
+    int availableFrames = (int)apeOutputBuffer.size() / 2;
+    int framesToCopy = (availableFrames < n) ? availableFrames : n;
+    for (int i = 0; i < framesToCopy; i++) {
+      left[i] = apeOutputBuffer[i * 2];
+      right[i] = apeOutputBuffer[i * 2 + 1];
+    }
+    for (int i = framesToCopy; i < n; i++) {
+      left[i] = 0.0f;
+      right[i] = 0.0f;
+    }
+    if (framesToCopy > 0) {
+      apeOutputBuffer.erase(apeOutputBuffer.begin(), apeOutputBuffer.begin() + framesToCopy * 2);
     }
     return;
   }

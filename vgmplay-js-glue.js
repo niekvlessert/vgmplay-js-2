@@ -1040,6 +1040,19 @@ class VGMPlay_js {
 					this._addNoPlayableNotice(file);
 					return;
 				}
+				const isVgmFile = lowerFile.endsWith('.vgm') || lowerFile.endsWith('.vgz');
+				if (isVgmFile && this._trackUsesOpl4 && this._trackUsesOpl4() && !this._hasOpl4RomLoaded()) {
+					if (this._showOpl4RomError) {
+						this._showOpl4RomError();
+					} else {
+						this._addNoPlayableNotice('yrw801.rom missing');
+					}
+					if (this.CloseVGMFile) {
+						this.CloseVGMFile();
+					}
+					this.isVGMLoaded = false;
+					return;
+				}
 				if (href_object && href_object.dataset && href_object.dataset.playableIndex) {
 					const idx = parseInt(href_object.dataset.playableIndex, 10);
 					this.currentFileKey = isNaN(idx) ? key : idx;
@@ -1730,6 +1743,25 @@ class VGMPlay_js {
 		if (n === 'MT32_CONTROL.ROM' || n === 'MT32_PCM.ROM') return 'munt';
 		if (n === 'YRW801.ROM') return 'opl4';
 		return null;
+	}
+
+	_hasOpl4RomLoaded() {
+		if (typeof FS === 'undefined') return false;
+		try {
+			return !!FS.analyzePath('/yrw801.rom').exists;
+		} catch (e) {
+			return false;
+		}
+	}
+
+	_trackUsesOpl4() {
+		if (!this.GetChipInfoString) return false;
+		try {
+			const info = this.GetChipInfoString();
+			return !!(info && /YMF278B/i.test(info));
+		} catch (e) {
+			return false;
+		}
 	}
 
 	saveRomFile(byteArray, name, romType) {

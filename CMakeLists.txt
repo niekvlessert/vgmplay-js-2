@@ -112,6 +112,7 @@ target_link_libraries(vgmplay-js libmac)
 add_dependencies(vgmplay-js openmpt_build)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
+target_compile_definitions(vgmplay-js PRIVATE BUILD_CROSS_PLATFORM)
 
 # Include directories
 target_include_directories(vgmplay-js PRIVATE 

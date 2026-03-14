@@ -418,12 +418,14 @@ export function installUi(VGMPlay_js) {
 				this.skippedWindowVisible = false;
 				this.skippedWindow.classList.remove('vgmplaySkippedFading');
 				if (this.skippedCountdownEl) this.skippedCountdownEl.style.display = 'none';
+				this.noPlayableNotices = [];
 			}, 600);
 		} else {
 			this.skippedWindow.style.display = 'none';
 			this.skippedWindowVisible = false;
 			this.skippedWindow.classList.remove('vgmplaySkippedFading');
 			if (this.skippedCountdownEl) this.skippedCountdownEl.style.display = 'none';
+			this.noPlayableNotices = [];
 		}
 	};
 
@@ -529,6 +531,15 @@ export function installUi(VGMPlay_js) {
 	VGMPlay_js.prototype._showMuntRomError = function () {
 		const msg = `Munt MT-32 emulation requires 2 ROM files: <b>MT32_CONTROL.ROM</b> and <b>MT32_PCM.ROM</b>.<br/><br/>
 		Please upload these files by dragging them onto the 'Insert music files/archives here!' field.`;
+		if (!this.noPlayableNotices.includes(msg)) {
+			this.noPlayableNotices.push(msg);
+		}
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._showOpl4RomError = function () {
+		const msg = "YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPlease upload it by dragging the file onto the 'Insert music files/archives here!' field.";
 		if (!this.noPlayableNotices.includes(msg)) {
 			this.noPlayableNotices.push(msg);
 		}

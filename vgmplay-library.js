@@ -6,6 +6,17 @@ export function installLibrary(VGMPlay_js) {
 			game.uiElement = null;
 			this.showVGMFromZip(game);
 		}
+		if (this.games.length > 10 && this.libraryState === 0) {
+			this.libraryState = 2; // Jump to Grid Overview (Blue mode)
+			if (this.toggleDisplayZipFileListWindow) {
+				// We call it once to "apply" the state logic (it will increment to 3 then mod 3, so we set it to 1 first)
+				this.libraryState = 1; 
+				this.toggleDisplayZipFileListWindow();
+			}
+		}
+		if (this._renderOverviewGrid) {
+			this._renderOverviewGrid();
+		}
 	};
 
 	VGMPlay_js.prototype._scheduleZipRender = function () {
@@ -309,6 +320,9 @@ export function installLibrary(VGMPlay_js) {
 				}
 			}
 			game.lastRenderedCount = files.length;
+		}
+		if (this._renderOverviewGrid) {
+			this._renderOverviewGrid();
 		}
 	};
 }

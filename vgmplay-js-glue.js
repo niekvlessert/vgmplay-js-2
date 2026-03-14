@@ -113,7 +113,7 @@ class VGMPlay_js {
 		this.trackListTransformY = 0;
 		this.standaloneGroupTransformX = 0;
 		this.standaloneGroupTransformY = 0;
-		this.libraryState = 0; // 0: Attached, 1: Floating, 2: Hidden
+		this.libraryState = 0; // 0: Attached, 1: Floating, 2: Hidden, 3: Overview
 
 		// Playback tracking
 		this.playbackStartTime = 0;
@@ -244,6 +244,10 @@ class VGMPlay_js {
 				this.standaloneAnalyzerEl = document.createElement('div');
 				this.standaloneAnalyzerEl.className = 'vgmplayStandaloneAnalyzer';
 				this.standaloneRight.appendChild(this.standaloneAnalyzerEl);
+
+				this.standaloneGameGrid = document.createElement('div');
+				this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
+				this.standaloneRight.appendChild(this.standaloneGameGrid);
 
 				const menuEl = document.getElementById('vgmplayMenu');
 				if (menuEl) {
@@ -982,6 +986,10 @@ class VGMPlay_js {
 			}
 			this._applyGameSearchFilter();
 		}
+		if (this.overviewMode) {
+			this._applyOverviewTrackFilter();
+			this._updateOverviewGridSelection();
+		}
 	}
 
 	async playFileFromFS(href_object, file, game, key) {
@@ -1619,6 +1627,14 @@ class VGMPlay_js {
 
 	_updateStandaloneRightPanel() {
 		if (!this.standalone || !this.standaloneAnalyzerEl) return;
+		if (this.overviewMode) {
+			this.standaloneAnalyzerEl.style.display = 'none';
+			if (this.standaloneOverlay) this.standaloneOverlay.style.display = 'none';
+			if (this.standaloneGameGrid) this.standaloneGameGrid.style.display = 'grid';
+			return;
+		}
+		if (this.standaloneGameGrid) this.standaloneGameGrid.style.display = 'none';
+		if (this.standaloneOverlay) this.standaloneOverlay.style.display = '';
 		const mode = this.rightPanelMode || 'bars';
 		const isSpectrum = mode === 'bars' || mode === 'lines' || mode === 'dual' ||
 			mode === 'oct6' || mode === 'radialApple' || mode === 'linePrism' || mode === 'prismPerChannel';
@@ -1685,6 +1701,97 @@ class VGMPlay_js {
 		} else {
 			this.standaloneSelect.value = 'linePrism';
 			this.rightPanelMode = 'linePrism';
+		}
+	}
+
+	_setOverviewMode(enabled) {
+		this.overviewMode = !!enabled;
+		if (this.vgmplayContainer) {
+			this.vgmplayContainer.classList.toggle('vgmplayOverviewMode', this.overviewMode);
+		}
+		this._updateStandaloneRightPanel();
+		this._applyOverviewTrackFilter();
+		this._updateOverviewGridSelection();
+	}
+
+	_applyOverviewTrackFilter() {
+		if (!this.overviewMode || !this.games) {
+			for (const game of this.games || []) {
+				if (!game || !game.uiElement) continue;
+				game.uiElement.style.display = '';
+			}
+			return;
+		}
+		for (const game of this.games) {
+			if (!game || !game.uiElement) continue;
+			const isActive = this.activeGame && game === this.activeGame;
+			game.uiElement.style.display = isActive ? '' : 'none';
+			if (isActive) {
+				game.uiElement.dataset.expanded = 'true';
+				game.uiElement.classList.add('vgmplayGameExpanded');
+				game.uiElement.classList.remove('vgmplayGameCollapsed');
+			}
+		}
+	}
+
+	_updateOverviewGridSelection() {
+		if (!this.overviewMode || !this.games) return;
+		for (const game of this.games) {
+			if (!game || !game._overviewTile) continue;
+			game._overviewTile.classList.toggle('active', this.activeGame && game === this.activeGame);
+		}
+	}
+
+	_renderOverviewGrid() {
+		if (!this.standaloneGameGrid || !this.games) return;
+		this.standaloneGameGrid.innerHTML = '';
+		const normalizeTitle = (value) => {
+			if (!value) return value;
+			if (this._normalizeGameTitle) {
+				const normalized = this._normalizeGameTitle(value);
+				return normalized || value;
+			}
+			return value;
+		};
+		for (const game of this.games) {
+			if (!game || !game.files || !game.files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()))) {
+				continue;
+			}
+			const tile = document.createElement('button');
+			tile.type = 'button';
+			tile.className = 'vgmplayOverviewTile';
+			const name = normalizeTitle(game.name || game.archiveName || 'Unknown Game');
+
+			if (game.png) {
+				if (!game._overviewImageUrl) {
+					game._overviewImageUrl = URL.createObjectURL(game.png);
+				}
+				const img = document.createElement('img');
+				img.src = game._overviewImageUrl;
+				img.alt = name;
+				tile.appendChild(img);
+			} else {
+				const text = document.createElement('div');
+				text.className = 'vgmplayOverviewTileText';
+				text.textContent = name;
+				tile.appendChild(text);
+			}
+
+			tile.title = name;
+			tile.addEventListener('click', () => {
+				this.activeGame = game;
+				this._applyOverviewTrackFilter();
+				this._updateOverviewGridSelection();
+				if (game.uiElement) {
+					game.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			});
+			game._overviewTile = tile;
+			this.standaloneGameGrid.appendChild(tile);
+		}
+		this._updateOverviewGridSelection();
+		if (this.overviewMode) {
+			this._applyOverviewTrackFilter();
 		}
 	}
 

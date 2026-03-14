@@ -101,7 +101,9 @@ export function installLayout(VGMPlay_js) {
 			if (this.btnLibrary) {
 				this.btnLibrary.classList.remove('active');
 				this.btnLibrary.classList.remove('blue-active');
+				this.btnLibrary.classList.remove('red-active');
 			}
+			if (this._setOverviewMode) this._setOverviewMode(false);
 		} else if (this.libraryState === 1) {
 			// Floating
 			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
@@ -116,16 +118,19 @@ export function installLayout(VGMPlay_js) {
 			if (this.btnLibrary) {
 				this.btnLibrary.classList.add('active');
 				this.btnLibrary.classList.remove('blue-active');
+				this.btnLibrary.classList.remove('red-active');
 			}
+			if (this._setOverviewMode) this._setOverviewMode(false);
 		} else if (this.libraryState === 2) {
-			// Hidden
-			if (this.tracksContainer) this.tracksContainer.style.display = 'none';
-			this.showZipFileListWindow = false;
-
+			// Overview grid mode (Blue)
+			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
+			this.showZipFileListWindow = true;
 			if (this.btnLibrary) {
 				this.btnLibrary.classList.remove('active');
 				this.btnLibrary.classList.add('blue-active');
+				this.btnLibrary.classList.remove('red-active');
 			}
+			if (this._setOverviewMode) this._setOverviewMode(true);
 		}
 	};
 }

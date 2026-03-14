@@ -32,6 +32,9 @@ build_full/
 build_minimal/
 node_modules/
 
+# Music files...
+dist/
+
 # Mac stuff
 .DS_Store
 

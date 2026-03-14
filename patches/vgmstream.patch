@@ -1,0 +1,198 @@
+diff --git a/cmake/dependencies/atrac9.cmake b/cmake/dependencies/atrac9.cmake
+index 02ec805c..88d055ea 100644
+--- a/cmake/dependencies/atrac9.cmake
++++ b/cmake/dependencies/atrac9.cmake
+@@ -15,7 +15,7 @@ if(NOT WIN32 AND USE_ATRAC9)
+ 			BYPRODUCTS ${ATRAC9_LINK_PATH} ${ATRAC9_BIN}
+ 		)
+ 		
+-		add_library(atrac9 STATIC IMPORTED)
++		add_library(atrac9 STATIC IMPORTED GLOBAL)
+ 		if(NOT EXISTS ${ATRAC9_LINK_PATH})
+ 			add_dependencies(atrac9 ATRAC9_MAKE)
+ 		endif()
+diff --git a/cmake/dependencies/celt.cmake b/cmake/dependencies/celt.cmake
+index b015ec06..99a42990 100644
+--- a/cmake/dependencies/celt.cmake
++++ b/cmake/dependencies/celt.cmake
+@@ -102,6 +102,12 @@ if(NOT WIN32 AND USE_CELT)
+ 		)
+ 		
+ 		foreach(ver 0061 0110)
++			if(ver STREQUAL "0110")
++				set(CELT_LA libcelt0.la)
++			else()
++				set(CELT_LA libcelt.la)
++			endif()
++
+ 			foreach(source ${CELT_CFLAGS})
+ 				list(APPEND CELT_${ver}_CFLAGS "-D${source}=${source}_${ver}")
+ 			endforeach()
+@@ -111,8 +117,10 @@ if(NOT WIN32 AND USE_CELT)
+ 				--enable-static
+ 				--disable-shared
+ 				--disable-oggtest
++				--host=none
+ 				CC="${CMAKE_C_COMPILER}"
+ 				AR="${CMAKE_AR}"
++				RANLIB="${CMAKE_RANLIB}"
+ 				CFLAGS="${CELT_${ver}_CFLAGS}"
+ 			)
+ 			if(ver STREQUAL "0110")
+@@ -145,19 +153,19 @@ if(NOT WIN32 AND USE_CELT)
+ 
+ 			file(MAKE_DIRECTORY ${CELT_${ver}_BIN})
+ 			add_custom_target(CELT_${ver}_CONFIGURE
+-				COMMAND "${CELT_${ver}_PATH}/configure" ${CELT_${ver}_CONF}
++				COMMAND emconfigure "${CELT_${ver}_PATH}/configure" ${CELT_${ver}_CONF}
+ 				DEPENDS ${autoconf_patch_dep} ${CELT_${ver}_PATH}/configure
+ 				BYPRODUCTS ${CELT_${ver}_BIN}/Makefile
+ 				WORKING_DIRECTORY ${CELT_${ver}_BIN}
+ 			)
+ 			add_custom_target(CELT_${ver}_MAKE
+-				COMMAND make SUBDIRS=libcelt DIST_SUBDIRS=libcelt
++				COMMAND emmake make -C libcelt ${CELT_LA}
+ 				DEPENDS ${CELT_${ver}_BIN}/Makefile
+ 				BYPRODUCTS ${CELT_${ver}_LINK_PATH} ${CELT_${ver}_BIN}
+ 				WORKING_DIRECTORY ${CELT_${ver}_BIN}
+ 			)
+ 			
+-			add_library(celt${ver} STATIC IMPORTED)
++			add_library(celt${ver} STATIC IMPORTED GLOBAL)
+ 			if(NOT EXISTS ${CELT_${ver}_LINK_PATH})
+ 				add_dependencies(celt${ver} CELT_${ver}_MAKE)
+ 			endif()
+diff --git a/cmake/dependencies/ffmpeg.cmake b/cmake/dependencies/ffmpeg.cmake
+index ec844b56..de794cbd 100644
+--- a/cmake/dependencies/ffmpeg.cmake
++++ b/cmake/dependencies/ffmpeg.cmake
+@@ -165,7 +165,7 @@ if(USE_FFMPEG)
+ 			)
+ 
+ 			foreach(LIB avutil avformat swresample avcodec)
+-				add_library(${LIB} STATIC IMPORTED)
++				add_library(${LIB} STATIC IMPORTED GLOBAL)
+ 				if(NOT EXISTS ${FFMPEG_LINK_PATH}/lib${LIB}.a)
+ 					add_dependencies(${LIB} FFMPEG_MAKE)
+ 				endif()
+diff --git a/cmake/dependencies/g719.cmake b/cmake/dependencies/g719.cmake
+index c0b6bf9e..41820c4c 100644
+--- a/cmake/dependencies/g719.cmake
++++ b/cmake/dependencies/g719.cmake
+@@ -15,7 +15,7 @@ if(NOT WIN32 AND USE_G719)
+ 		COPYONLY)
+ 		
+ 		if(EXISTS ${G719_LINK_PATH})
+-			add_library(g719_decode STATIC IMPORTED)
++			add_library(g719_decode STATIC IMPORTED GLOBAL)
+ 			set_target_properties(g719_decode PROPERTIES
+ 				IMPORTED_LOCATION ${G719_LINK_PATH}
+ 			)
+diff --git a/cmake/dependencies/mpg123.cmake b/cmake/dependencies/mpg123.cmake
+index d93c33ee..62cdd821 100644
+--- a/cmake/dependencies/mpg123.cmake
++++ b/cmake/dependencies/mpg123.cmake
+@@ -38,8 +38,10 @@ if(NOT WIN32 AND USE_MPEG)
+ 			endif()
+ 			
+ 			set(MPEG_CONFIGURE
++				--host=none
+ 				--enable-static
+ 				--disable-shared
++				--disable-asm
+ 				CC="${CMAKE_C_COMPILER}"
+ 				AR="${CMAKE_AR}"
+ 				RANLIB="${CMAKE_RANLIB}"
+@@ -52,19 +54,19 @@ if(NOT WIN32 AND USE_MPEG)
+ 			
+ 			file(MAKE_DIRECTORY ${MPEG_BIN})
+ 			add_custom_target(MPEG_CONFIGURE
+-				COMMAND "${MPEG_PATH}/configure" ${MPEG_CONFIGURE}
++				COMMAND emconfigure "${MPEG_PATH}/configure" ${MPEG_CONFIGURE}
+ 				DEPENDS ${MPEG_PATH}/configure
+ 				BYPRODUCTS ${MPEG_BIN}/Makefile
+ 				WORKING_DIRECTORY ${MPEG_BIN}
+ 			)
+ 			add_custom_target(MPEG_MAKE
+-				COMMAND make src/libmpg123/libmpg123.la
++				COMMAND emmake make src/libmpg123/libmpg123.la
+ 				DEPENDS ${MPEG_BIN}/Makefile
+ 				BYPRODUCTS ${MPEG_LINK_PATH} ${MPEG_BIN}
+ 				WORKING_DIRECTORY ${MPEG_BIN}
+ 			)
+ 			
+-			add_library(mpg123 STATIC IMPORTED)
++			add_library(mpg123 STATIC IMPORTED GLOBAL)
+ 			if(NOT EXISTS ${MPEG_LINK_PATH})
+ 				add_dependencies(mpg123 MPEG_MAKE)
+ 			endif()
+diff --git a/cmake/dependencies/ogg.cmake b/cmake/dependencies/ogg.cmake
+index a282db56..40452cec 100644
+--- a/cmake/dependencies/ogg.cmake
++++ b/cmake/dependencies/ogg.cmake
+@@ -18,7 +18,7 @@ if(NOT WIN32 AND USE_VORBIS)
+ 			set(OGG_LINK_PATH ${OGG_BIN}/libogg.a)
+ 			
+ 			if(EXISTS ${OGG_LINK_PATH} AND EXISTS ${OGG_BIN}/include)
+-				add_library(ogg STATIC IMPORTED)
++				add_library(ogg STATIC IMPORTED GLOBAL)
+ 				set_target_properties(ogg PROPERTIES
+ 					IMPORTED_LOCATION ${OGG_LINK_PATH}
+ 				)
+diff --git a/cmake/dependencies/speex.cmake b/cmake/dependencies/speex.cmake
+index fe5a2d9a..da91bc19 100644
+--- a/cmake/dependencies/speex.cmake
++++ b/cmake/dependencies/speex.cmake
+@@ -9,6 +9,11 @@ if(NOT WIN32 AND USE_SPEEX)
+ 	if(SPEEX_PATH OR NOT Speex_FOUND)
+ 		FetchDependency(SPEEX
+ 			DIR speex
++			FETCH_PRIORITY file git
++			
++			FILE_DOWNLOAD https://downloads.xiph.org/releases/speex/speex-1.2.1.tar.gz
++			FILE_SUBDIR speex-1.2.1
++			
+ 			GIT_REPOSITORY https://gitlab.xiph.org/xiph/speex
+ 			GIT_TAG Speex-1.2.1
+ 		)
+@@ -26,19 +31,19 @@ if(NOT WIN32 AND USE_SPEEX)
+ 			
+ 			file(MAKE_DIRECTORY ${SPEEX_BIN})
+ 			add_custom_target(SPEEX_CONFIGURE
+-				COMMAND "${SPEEX_PATH}/configure" --enable-static --disable-shared --disable-binaries --with-pic CC="${CMAKE_C_COMPILER}" AR="${CMAKE_AR}" RANLIB="${CMAKE_RANLIB}"
++				COMMAND emconfigure "${SPEEX_PATH}/configure" --host=none --enable-static --disable-shared --disable-binaries --with-pic CC="${CMAKE_C_COMPILER}" AR="${CMAKE_AR}" RANLIB="${CMAKE_RANLIB}"
+ 				DEPENDS ${SPEEX_PATH}/configure
+ 				BYPRODUCTS ${SPEEX_BIN}/Makefile
+ 				WORKING_DIRECTORY ${SPEEX_BIN}
+ 			)
+ 			add_custom_target(SPEEX_MAKE
+-				COMMAND make
++				COMMAND emmake make -C libspeex libspeex.la
+ 				DEPENDS ${SPEEX_BIN}/Makefile
+ 				BYPRODUCTS ${SPEEX_LINK_PATH} ${SPEEX_BIN}
+ 				WORKING_DIRECTORY ${SPEEX_BIN}
+ 			)
+ 			
+-			add_library(speex STATIC IMPORTED)
++			add_library(speex STATIC IMPORTED GLOBAL)
+ 			if(NOT EXISTS ${SPEEX_LINK_PATH})
+ 				add_dependencies(speex SPEEX_MAKE)
+ 			endif()
+diff --git a/cmake/dependencies/vorbis.cmake b/cmake/dependencies/vorbis.cmake
+index a9666025..b42a65e3 100644
+--- a/cmake/dependencies/vorbis.cmake
++++ b/cmake/dependencies/vorbis.cmake
+@@ -19,11 +19,11 @@ if(NOT WIN32 AND USE_VORBIS)
+ 			set(VORBISFILE_LINK_PATH ${VORBIS_BIN}/lib/libvorbisfile.a)
+ 			
+ 			if(EXISTS ${VORBIS_LINK_PATH} AND EXISTS ${VORBISFILE_LINK_PATH})
+-				add_library(vorbis STATIC IMPORTED)
++				add_library(vorbis STATIC IMPORTED GLOBAL)
+ 				set_target_properties(vorbis PROPERTIES
+ 					IMPORTED_LOCATION ${VORBIS_LINK_PATH}
+ 				)
+-				add_library(vorbisfile STATIC IMPORTED)
++				add_library(vorbisfile STATIC IMPORTED GLOBAL)
+ 				set_target_properties(vorbisfile PROPERTIES
+ 					IMPORTED_LOCATION ${VORBISFILE_LINK_PATH}
+ 				)

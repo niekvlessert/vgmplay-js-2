@@ -65,14 +65,14 @@ set(USE_MAME_EMULATOR OFF CACHE BOOL "Disable MAME OPL emulator" FORCE)
 set(USE_YMFM_EMULATOR OFF CACHE BOOL "Disable YMFM emulator" FORCE)
 add_subdirectory(modules/adlmidi)
 
-set(USE_FFMPEG OFF CACHE BOOL "Use FFmpeg for support of many codecs" FORCE)
-set(USE_MPEG OFF CACHE BOOL "Use libmpg123 for support of MPEG" FORCE)
-set(USE_VORBIS OFF CACHE BOOL "Use libvorbis for support of Vorbis" FORCE)
-set(USE_ATRAC9 OFF CACHE BOOL "Use LibAtrac9 for support of ATRAC9" FORCE)
-set(USE_CELT OFF CACHE BOOL "Use libcelt for support of FSB CELT" FORCE)
-set(USE_G719 OFF CACHE BOOL "Use libg719_decode for support ITU-T G.719" FORCE)
-set(USE_G7221 OFF CACHE BOOL "Use G7221 for support of ITU-T" FORCE)
-set(USE_SPEEX OFF CACHE BOOL "Use libspeex for support of SPEEX" FORCE)
+set(USE_FFMPEG ON CACHE BOOL "Use FFmpeg for support of many codecs" FORCE)
+set(USE_MPEG ON CACHE BOOL "Use libmpg123 for support of MPEG" FORCE)
+set(USE_VORBIS ON CACHE BOOL "Use libvorbis for support of Vorbis" FORCE)
+set(USE_ATRAC9 ON CACHE BOOL "Use LibAtrac9 for support of ATRAC9" FORCE)
+set(USE_CELT ON CACHE BOOL "Use libcelt for support of FSB CELT" FORCE)
+set(USE_G719 ON CACHE BOOL "Use libg719_decode for support ITU-T G.719" FORCE)
+set(USE_G7221 ON CACHE BOOL "Use G7221 for support of ITU-T" FORCE)
+set(USE_SPEEX ON CACHE BOOL "Use libspeex for support of SPEEX" FORCE)
 set(BUILD_CLI OFF CACHE BOOL "Build vgmstream CLI" FORCE)
 add_subdirectory(modules/vgmstream)
 
@@ -105,6 +105,13 @@ target_link_libraries(vgmplay-js gme::gme)
 target_link_libraries(vgmplay-js kss)
 target_link_libraries(vgmplay-js musdoom)
 target_link_libraries(vgmplay-js libvgmstream)
+
+# vgmstream dependencies
+target_link_libraries(vgmplay-js atrac9 celt0061 celt0110 mpg123 vorbisfile vorbis g719_decode speex ogg)
+
+# FFmpeg and system dependencies for vgmstream
+target_link_libraries(vgmplay-js avformat avcodec swresample avutil z m)
+
 target_link_libraries(vgmplay-js openmpt)
 target_link_libraries(vgmplay-js ADLMIDI_static)
 target_link_libraries(vgmplay-js mt32emu)

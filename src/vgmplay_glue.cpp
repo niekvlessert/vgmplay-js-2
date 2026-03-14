@@ -1348,6 +1348,7 @@ int OpenVGMFile(const char *path) {
 
   // Try vgmstream as a fallback for many game audio formats
   {
+    if (debugMode) printf("VGMStream: Attempting to open %s\n", basePath.c_str());
     libvgmstream_t* vs = libvgmstream_init();
     if (vs) {
       libvgmstream_config_t cfg = {};
@@ -1357,22 +1358,33 @@ int OpenVGMFile(const char *path) {
       cfg.force_sfmt = LIBVGMSTREAM_SFMT_PCM16;
       libvgmstream_setup(vs, &cfg);
 
-      libstreamfile_t* sf = libstreamfile_open_from_stdio(basePath.c_str());
+      // Emscripten filesystem check: try adding leading slash if missing
+      std::string effectivePath = basePath;
+      if (!effectivePath.empty() && effectivePath[0] != '/') {
+        effectivePath = "/" + effectivePath;
+      }
+
+      libstreamfile_t* sf = libstreamfile_open_from_stdio(effectivePath.c_str());
+      if (!sf && effectivePath != basePath) {
+         // Fallback to original path if leading slash didn't help (though usually it's the other way)
+         sf = libstreamfile_open_from_stdio(basePath.c_str());
+      }
+
       if (sf) {
-        if (debugMode) printf("VGMStream: Successfully opened STREAMFILE for %s\n", basePath.c_str());
+        if (debugMode) printf("VGMStream: Successfully opened STREAMFILE for %s\n", effectivePath.c_str());
         int result = libvgmstream_open_stream(vs, sf, 0);
         // libvgmstream_open_stream takes ownership of sf if successful (>=0)
         // or we free vs which frees its internal sf if init was partial.
         // If it failed (<0), we close sf here and free vs.
         if (result >= 0) {
           if (debugMode) printf("VGMStream: Opened %s, channels=%d, rate=%d, play_samples=%d\n", 
-                 basePath.c_str(), vs->format->channels, vs->format->sample_rate, (int)vs->format->play_samples);
+                 effectivePath.c_str(), vs->format->channels, vs->format->sample_rate, (int)vs->format->play_samples);
           // Success - set up converter and buffers
           isVGMStream = true;
           vgmstreamContext = vs;
           vgmstreamChannels = vs->format->channels;
           vgmstreamSampleRate = vs->format->sample_rate;
-          currentVGMStreamPath = basePath;
+          currentVGMStreamPath = effectivePath;
 
           // Initialize data converter: s16 -> f32, with channel conversion and resampling
           ma_data_converter_config convConfig = ma_data_converter_config_init(
@@ -1394,8 +1406,11 @@ int OpenVGMFile(const char *path) {
 
           return 1;
         } else {
+          if (debugMode) printf("VGMStream: libvgmstream_open_stream failed with %d for %s\n", result, effectivePath.c_str());
           libstreamfile_close(sf);
         }
+      } else {
+         if (debugMode) printf("VGMStream: libstreamfile_open_from_stdio failed for %s\n", effectivePath.c_str());
       }
       libvgmstream_free(vs);
     }

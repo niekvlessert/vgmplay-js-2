@@ -967,7 +967,7 @@ class VGMPlay_js {
 		urls.forEach(url => {
 			const lower = url.toLowerCase();
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mp3') || lower.endsWith('.flac') || lower.endsWith('.ogg') || lower.endsWith('.wav') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi) {
 				this._queueURL(url, false, true);
 			} else if (this.isPlayable(lower)) {
 				// Handle direct links as single files
@@ -1124,7 +1124,7 @@ class VGMPlay_js {
 	}
 
 	_isUsfFile(p) {
-		p = (p || "").toLowerCase();
+		p = String(p || "").toLowerCase();
 		return p.endsWith('.usf') || p.endsWith('.miniusf') || p.endsWith('.usflib');
 	}
 
@@ -1148,19 +1148,153 @@ class VGMPlay_js {
 			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') || p.endsWith('.ape') ||
 			p.endsWith('.mus') || (p.endsWith('.lmp') && !p.endsWith('genmidi.lmp')) ||
 			p.endsWith('.mid') || p.endsWith('.midi') || p.endsWith('.rmi') ||
-			p.endsWith('.bfstm') ||
+			p.endsWith('.bfstm') || p.endsWith('.bcstm') || p.endsWith('.brstm') ||
+			p.endsWith('.adx') || p.endsWith('.hca') || p.endsWith('.dsp') || p.endsWith('.idsp') ||
+			p.endsWith('.vag') || p.endsWith('.vgs') || p.endsWith('.lopus') ||
+			p.endsWith('.2dx') || p.endsWith('.9ti') || p.endsWith('.aa3') || p.endsWith('.aac') ||
+			p.endsWith('.ac3') || p.endsWith('.acm') || p.endsWith('.adm') || p.endsWith('.adp') ||
+			p.endsWith('.ads') || p.endsWith('.adv') || p.endsWith('.afc') || p.endsWith('.agp') ||
+			p.endsWith('.ahx') || p.endsWith('.aif') || p.endsWith('.aifc') || p.endsWith('.aiff') ||
+			p.endsWith('.aix') || p.endsWith('.aka') || p.endsWith('.akp') || p.endsWith('.al') ||
+			p.endsWith('.al2') || p.endsWith('.amts') || p.endsWith('.as4') || p.endsWith('.asd') ||
+			p.endsWith('.asf') || p.endsWith('.asr') || p.endsWith('.ass') || p.endsWith('.ast') ||
+			p.endsWith('.at3') || p.endsWith('.at9') || p.endsWith('.atrac') || p.endsWith('.aud') ||
+			p.endsWith('.aus') || p.endsWith('.awc') || p.endsWith('.baf') || p.endsWith('.bam') ||
+			p.endsWith('.bar') || p.endsWith('.bcwav') || p.endsWith('.bd') || p.endsWith('.bdt') ||
+			p.endsWith('.bg00') || p.endsWith('.bgm') || p.endsWith('.bgw') || p.endsWith('.bh2k') ||
+			p.endsWith('.bik') || p.endsWith('.bka') || p.endsWith('.blk') || p.endsWith('.bmdx') ||
+			p.endsWith('.bms') || p.endsWith('.bnk') || p.endsWith('.bns') || p.endsWith('.bnsf') ||
+			p.endsWith('.bo2') || p.endsWith('.brwav') || p.endsWith('.bsf') || p.endsWith('.bsvp') ||
+			p.endsWith('.btc') || p.endsWith('.bvb') || p.endsWith('.bwv') || p.endsWith('.c9') ||
+			p.endsWith('.caf') || p.endsWith('.caplsp') || p.endsWith('.cbd2') || p.endsWith('.ccc') ||
+			p.endsWith('.cfn') || p.endsWith('.ckd') || p.endsWith('.cms') || p.endsWith('.cna') ||
+			p.endsWith('.cnt') || p.endsWith('.cpk') || p.endsWith('.cps') || p.endsWith('.ctp') ||
+			p.endsWith('.cxn') || p.endsWith('.da') || p.endsWith('.dat') || p.endsWith('.dbm') ||
+			p.endsWith('.dcswav') || p.endsWith('.ddsp') || p.endsWith('.de2') || p.endsWith('.destination') ||
+			p.endsWith('.dgv') || p.endsWith('.dms') || p.endsWith('.dns') || p.endsWith('.dpa') ||
+			p.endsWith('.dsb') || p.endsWith('.dsf') || p.endsWith('.dsi') || p.endsWith('.dsm') ||
+			p.endsWith('.dsp') || p.endsWith('.dss') || p.endsWith('.dtk') || p.endsWith('.dts') ||
+			p.endsWith('.dtw') || p.endsWith('.duart') || p.endsWith('.dvw') || p.endsWith('.dxh') ||
+			p.endsWith('.eam') || p.endsWith('.eat') || p.endsWith('.ebd') || p.endsWith('.ecf') ||
+			p.endsWith('.edp') || p.endsWith('.efs') || p.endsWith('.ei') || p.endsWith('.emff') ||
+			p.endsWith('.ent') || p.endsWith('.epp') || p.endsWith('.evb') || p.endsWith('.fag') ||
+			p.endsWith('.ffw') || p.endsWith('.fka') || p.endsWith('.fmf') || p.endsWith('.fsb') ||
+			p.endsWith('.fwav') || p.endsWith('.g2sc') || p.endsWith('.g719') || p.endsWith('.g721') ||
+			p.endsWith('.g722') || p.endsWith('.gbts') || p.endsWith('.gca') || p.endsWith('.gcm') ||
+			p.endsWith('.gcw') || p.endsWith('.genh') || p.endsWith('.gin') || p.endsWith('.gms') ||
+			p.endsWith('.gsb') || p.endsWith('.hca') || p.endsWith('.hgc') || p.endsWith('.hps') ||
+			p.endsWith('.hsf') || p.endsWith('.hwas') || p.endsWith('.iab') || p.endsWith('.iac') ||
+			p.endsWith('.idsp') || p.endsWith('.idwav') || p.endsWith('.idx') || p.endsWith('.ifs') ||
+			p.endsWith('.ikm') || p.endsWith('.ild') || p.endsWith('.int') || p.endsWith('.is14') ||
+			p.endsWith('.is22') || p.endsWith('.isb') || p.endsWith('.isd') || p.endsWith('.isws') ||
+			p.endsWith('.itl') || p.endsWith('.its') || p.endsWith('.ivaud') || p.endsWith('.ivb') ||
+			p.endsWith('.joe') || p.endsWith('.kcl') || p.endsWith('.kns') || p.endsWith('.koVS') ||
+			p.endsWith('.kraw') || p.endsWith('.kt2') || p.endsWith('.ktss') || p.endsWith('.l') ||
+			p.endsWith('.laac') || p.endsWith('.lads') || p.endsWith('.latp') || p.endsWith('.lbin') ||
+			p.endsWith('.lcaac') || p.endsWith('.lcb') || p.endsWith('.lcm') || p.endsWith('.ldsp') ||
+			p.endsWith('.leg') || p.endsWith('.lep') || p.endsWith('.lin') || p.endsWith('.lm8') ||
+			p.endsWith('.lms') || p.endsWith('.lopu') || p.endsWith('.lopus') || p.endsWith('.lp') ||
+			p.endsWith('.lpcm') || p.endsWith('.lpdsp') || p.endsWith('.lsf') || p.endsWith('.lwav') ||
+			p.endsWith('.m4a') || p.endsWith('.m4p') || p.endsWith('.m4v') || p.endsWith('.mab') ||
+			p.endsWith('.mad') || p.endsWith('.mag') || p.endsWith('.mca') || p.endsWith('.mc3') ||
+			p.endsWith('.mca') || p.endsWith('.mcg') || p.endsWith('.mdf') || p.endsWith('.metadata') ||
+			p.endsWith('.mic') || p.endsWith('.mih') || p.endsWith('.miig') || p.endsWith('.miniusf') ||
+			p.endsWith('.minivgm') || p.endsWith('.mip') || p.endsWith('.mjb') || p.endsWith('.mka') ||
+			p.endsWith('.mkv') || p.endsWith('.mlp') || p.endsWith('.mma') || p.endsWith('.mms') ||
+			p.endsWith('.moflex') || p.endsWith('.mov') || p.endsWith('.mp2') || p.endsWith('.mp4') ||
+			p.endsWith('.mpa') || p.endsWith('.mpd') || p.endsWith('.mpeg') || p.endsWith('.mpg') ||
+			p.endsWith('.ms') || p.endsWith('.msa') || p.endsWith('.msb') || p.endsWith('.msf') ||
+			p.endsWith('.mss') || p.endsWith('.msv') || p.endsWith('.msvp') || p.endsWith('.mtaf') ||
+			p.endsWith('.mtls') || p.endsWith('.mva') || p.endsWith('.mvi') || p.endsWith('.mxc') ||
+			p.endsWith('.my') || p.endsWith('.mys') || p.endsWith('.nca') || p.endsWith('.ndp') ||
+			p.endsWith('.ngc') || p.endsWith('.nls') || p.endsWith('.nma') || p.endsWith('.nmu') ||
+			p.endsWith('.npk') || p.endsWith('.nps') || p.endsWith('.npsf') || p.endsWith('.nus3bank') ||
+			p.endsWith('.nvg') || p.endsWith('.nwa') || p.endsWith('.nwav') || p.endsWith('.nwcd') ||
+			p.endsWith('.nws') || p.endsWith('.nwv') || p.endsWith('.nxap') || p.endsWith('.oar') ||
+			p.endsWith('.obj') || p.endsWith('.oma') || p.endsWith('.oms') || p.endsWith('.opa') ||
+			p.endsWith('.opus') || p.endsWith('.otm') || p.endsWith('.ovm') || p.endsWith('.p12') ||
+			p.endsWith('.p1d') || p.endsWith('.p2bt') || p.endsWith('.p3d') || p.endsWith('.pag') ||
+			p.endsWith('.pak') || p.endsWith('.pam') || p.endsWith('.past') || p.endsWith('.pbad') ||
+			p.endsWith('.pbg') || p.endsWith('.pcm') || p.endsWith('.pcma') || p.endsWith('.pdt') ||
+			p.endsWith('.pdx') || p.endsWith('.pk') || p.endsWith('.plp') || p.endsWith('.pna') ||
+			p.endsWith('.pnb') || p.endsWith('.pnt') || p.endsWith('.pos') || p.endsWith('.ppc') ||
+			p.endsWith('.prc') || p.endsWith('.ps2') || p.endsWith('.ps3') || p.endsWith('.ps4') ||
+			p.endsWith('.psa') || p.endsWith('.psb') || p.endsWith('.psc') || p.endsWith('.psh') ||
+			p.endsWith('.pss') || p.endsWith('.pst') || p.endsWith('.pva') || p.endsWith('.pvc') ||
+			p.endsWith('.pvh') || p.endsWith('.pwa') || p.endsWith('.pwav') || p.endsWith('.qcp') ||
+			p.endsWith('.r64') || p.endsWith('.raac') || p.endsWith('.rad') || p.endsWith('.rax') ||
+			p.endsWith('.rbs') || p.endsWith('.rdm') || p.endsWith('.rdp') || p.endsWith('.re2') ||
+			p.endsWith('.red') || p.endsWith('.res') || p.endsWith('.rfr') || p.endsWith('.rfx') ||
+			p.endsWith('.rka') || p.endsWith('.rmm') || p.endsWith('.rmn') || p.endsWith('.rmp') ||
+			p.endsWith('.rms') || p.endsWith('.rnc') || p.endsWith('.rnd') || p.endsWith('.rny') ||
+			p.endsWith('.rob') || p.endsWith('.rsd') || p.endsWith('.rsf') || p.endsWith('.rsh') ||
+			p.endsWith('.rso') || p.endsWith('.rsp') || p.endsWith('.rstm') || p.endsWith('.rwar') ||
+			p.endsWith('.rwav') || p.endsWith('.rws') || p.endsWith('.rwsd') || p.endsWith('.rwx') ||
+			p.endsWith('.s14') || p.endsWith('.s3v') || p.endsWith('.sab') || p.endsWith('.sad') ||
+			p.endsWith('.saf') || p.endsWith('.sb0') || p.endsWith('.sb1') || p.endsWith('.sb2') ||
+			p.endsWith('.sb3') || p.endsWith('.sb4') || p.endsWith('.sb5') || p.endsWith('.sb6') ||
+			p.endsWith('.sb7') || p.endsWith('.sbao') || p.endsWith('.sbin') || p.endsWith('.sbk') ||
+			p.endsWith('.sbr') || p.endsWith('.sbv') || p.endsWith('.scd') || p.endsWith('.sch') ||
+			p.endsWith('.sd9') || p.endsWith('.sdd') || p.endsWith('.sdf') || p.endsWith('.sdl') ||
+			p.endsWith('.sdt') || p.endsWith('.se') || p.endsWith('.seb') || p.endsWith('.sed') ||
+			p.endsWith('.seg') || p.endsWith('.sf0') || p.endsWith('.sfa') || p.endsWith('.sfl') ||
+			p.endsWith('.sfs') || p.endsWith('.sfx') || p.endsWith('.sgb') || p.endsWith('.sgd') ||
+			p.endsWith('.sgt') || p.endsWith('.shaa') || p.endsWith('.shsa') || p.endsWith('.skx') ||
+			p.endsWith('.sli') || p.endsWith('.sm0') || p.endsWith('.sm1') || p.endsWith('.sm2') ||
+			p.endsWith('.sm3') || p.endsWith('.sm4') || p.endsWith('.sm5') || p.endsWith('.sm6') ||
+			p.endsWith('.sm7') || p.endsWith('.smh') || p.endsWith('.smk') || p.endsWith('.smp') ||
+			p.endsWith('.smv') || p.endsWith('.sn0') || p.endsWith('.snb') || p.endsWith('.snd') ||
+			p.endsWith('.sng') || p.endsWith('.sngw') || p.endsWith('.snr') || p.endsWith('.sns') ||
+			p.endsWith('.snu') || p.endsWith('.sod') || p.endsWith('.son') || p.endsWith('.sounds') ||
+			p.endsWith('.sph') || p.endsWith('.spk') || p.endsWith('.spm') || p.endsWith('.sps') ||
+			p.endsWith('.spsd') || p.endsWith('.spt') || p.endsWith('.spw') || p.endsWith('.srcd') ||
+			p.endsWith('.sre') || p.endsWith('.srsa') || p.endsWith('.ss2') || p.endsWith('.ssm') ||
+			p.endsWith('.ssp') || p.endsWith('.sspr') || p.endsWith('.sss') || p.endsWith('.ste') ||
+			p.endsWith('.ster') || p.endsWith('.str') || p.endsWith('.stream') || p.endsWith('.strm') ||
+			p.endsWith('.sts') || p.endsWith('.stx') || p.endsWith('.svag') || p.endsWith('.svg') ||
+			p.endsWith('.svs') || p.endsWith('.swag') || p.endsWith('.swar') || p.endsWith('.swav') ||
+			p.endsWith('.swd') || p.endsWith('.sx') || p.endsWith('.sxd') || p.endsWith('.sxd2') ||
+			p.endsWith('.sxd3') || p.endsWith('.szd') || p.endsWith('.szd1') || p.endsWith('.szd3') ||
+			p.endsWith('.tad') || p.endsWith('.tgq') || p.endsWith('.tgv') || p.endsWith('.thp') ||
+			p.endsWith('.tmx') || p.endsWith('.trk') || p.endsWith('.tun') || p.endsWith('.txth') ||
+			p.endsWith('.txtp') || p.endsWith('.u0') || p.endsWith('.ue4opus') || p.endsWith('.ueba') ||
+			p.endsWith('.ueopus') || p.endsWith('.um3') || p.endsWith('.utk') || p.endsWith('.uv') ||
+			p.endsWith('.v') || p.endsWith('.v0') || p.endsWith('.v1') || p.endsWith('.va3') ||
+			p.endsWith('.vab') || p.endsWith('.vai') || p.endsWith('.vas') || p.endsWith('.vbk') ||
+			p.endsWith('.vdm') || p.endsWith('.vds') || p.endsWith('.vgv') || p.endsWith('.vh') ||
+			p.endsWith('.vid') || p.endsWith('.vig') || p.endsWith('.vis') || p.endsWith('.vms') ||
+			p.endsWith('.voi') || p.endsWith('.vp6') || p.endsWith('.vpk') || p.endsWith('.vsf') ||
+			p.endsWith('.vsv') || p.endsWith('.vxn') || p.endsWith('.w') || p.endsWith('.waa') ||
+			p.endsWith('.wac') || p.endsWith('.wad') || p.endsWith('.waf') || p.endsWith('.wam') ||
+			p.endsWith('.was') || p.endsWith('.wavc') || p.endsWith('.wave') || p.endsWith('.wavebatch') ||
+			p.endsWith('.wavm') || p.endsWith('.wax') || p.endsWith('.way') || p.endsWith('.wb') ||
+			p.endsWith('.wb2') || p.endsWith('.wbd') || p.endsWith('.wbk') || p.endsWith('.wd') ||
+			p.endsWith('.wem') || p.endsWith('.wma') || p.endsWith('.wp2') || p.endsWith('.wpd') ||
+			p.endsWith('.wsd') || p.endsWith('.wsi') || p.endsWith('.wua') || p.endsWith('.wv2') ||
+			p.endsWith('.wv6') || p.endsWith('.wve') || p.endsWith('.wvs') || p.endsWith('.wvx') ||
+			p.endsWith('.wxh') || p.endsWith('.wxv') || p.endsWith('.x360audio') || p.endsWith('.xa') ||
+			p.endsWith('.xa2') || p.endsWith('.xa30') || p.endsWith('.xai') || p.endsWith('.xau') ||
+			p.endsWith('.xav') || p.endsWith('.xbw') || p.endsWith('.xen') || p.endsWith('.xhd') ||
+			p.endsWith('.xma') || p.endsWith('.xma2') || p.endsWith('.xmd') || p.endsWith('.xms') ||
+			p.endsWith('.xmu') || p.endsWith('.xmv') || p.endsWith('.xna') || p.endsWith('.xnb') ||
+			p.endsWith('.xopus') || p.endsWith('.xps') || p.endsWith('.xse') || p.endsWith('.xsew') ||
+			p.endsWith('.xsf') || p.endsWith('.xsh') || p.endsWith('.xss') || p.endsWith('.xst') ||
+			p.endsWith('.xvag') || p.endsWith('.xwav') || p.endsWith('.xwb') || p.endsWith('.xwc') ||
+			p.endsWith('.xwm') || p.endsWith('.xwma') || p.endsWith('.xws') || p.endsWith('.xwv') ||
+			p.endsWith('.ydsp') || p.endsWith('.ymf') || p.endsWith('.zic') || p.endsWith('.zsd') ||
+			p.endsWith('.zsm') || p.endsWith('.zss') || p.endsWith('.zwv') ||
 			p.endsWith('.vigamup');
 	}
 
 	_isGmeFile(path) {
-		const p = path.toLowerCase().split('|track=')[0];
+		const p = String(path || "").toLowerCase().split('|track=')[0];
 		return p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
 			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
 			p.endsWith('.sap') || p.endsWith('.ay');
 	}
 
 	_isKssFile(path) {
-		const p = path.toLowerCase().split('|track=')[0];
+		const p = String(path || "").toLowerCase().split('|track=')[0];
 		return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
 			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
 			p.endsWith('.mpk') || p.endsWith('.mbm');
@@ -1984,7 +2118,7 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 	this._checkTrackEnd();
 
 	const entry = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList[this.currentFileKey] : null;
-	const path = (entry && entry.filepath ? entry.filepath : this.currentFileKey || "").toLowerCase();
+	const path = String(entry && entry.filepath ? entry.filepath : (this.currentFileKey || "")).toLowerCase();
 	const isUsf = this._isUsfFile(path);
 
 	if (this.progressContainer) {
@@ -2018,7 +2152,7 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 	if (!this.isVGMPlaying || !this.totalSampleCount) return;
 
 	const entry = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList[this.currentFileKey] : null;
-	const path = (entry && entry.filepath ? entry.filepath : this.currentFileKey || "").toLowerCase();
+	const path = String(entry && entry.filepath ? entry.filepath : (this.currentFileKey || "")).toLowerCase();
 	
 	if (this._isUsfFile(path)) {
 		console.warn("[VGM] Seeking not supported for USF files.");

@@ -129,6 +129,7 @@ export function installAudio(VGMPlay_js) {
 			this.IsVGMStream = Module.cwrap('IsVGMStream', 'number');
 			this.GetVgmstreamLoop = Module.cwrap('GetVgmstreamLoop', 'number');
 			this.SetVgmstreamLoop = Module.cwrap('SetVgmstreamLoop', 'void', ['number']);
+			this.HasVgmstreamNativeLoop = Module.cwrap('HasVgmstreamNativeLoop', 'number');
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
@@ -178,6 +179,7 @@ export function installAudio(VGMPlay_js) {
 			this.IsVGMStream = Module.cwrap('IsVGMStream', 'number');
 			this.GetVgmstreamLoop = Module.cwrap('GetVgmstreamLoop', 'number');
 			this.SetVgmstreamLoop = Module.cwrap('SetVgmstreamLoop', 'void', ['number']);
+			this.HasVgmstreamNativeLoop = Module.cwrap('HasVgmstreamNativeLoop', 'number');
 			} else if (Module._SetKSSChannelMask) {
 				this.SetKSSChannelMask = Module._SetKSSChannelMask;
 			}
@@ -261,6 +263,19 @@ export function installAudio(VGMPlay_js) {
 					if (this.currentFileKey && this._loopBaseSamplesByTrack && !this._loopBaseSamplesByTrack.has(this.currentFileKey)) {
 						const baseLen = this.samplesGenerated || this.totalSampleCount || 0;
 						if (baseLen > 0) this._loopBaseSamplesByTrack.set(this.currentFileKey, baseLen);
+					}
+					// For vgmstream: seek to 0 for gapless loop (avoids stop/reopen)
+					if (this.IsVGMStream && this.IsVGMStream()) {
+						this.SeekVGM(0, 0);
+						this.samplesGenerated = 0;
+						this.visualSamplePosition = 0;
+						this.startSample = 0;
+						this.emulatorFinished = false;
+						this.isFadingOut = false;
+						if (this.context) {
+							this.playbackStartTime = this.context.currentTime;
+						}
+						return;
 					}
 					if (entry && entry.filepath && !this._loopRestarting) {
 						this._loopRestarting = true;
@@ -545,45 +560,66 @@ export function installAudio(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._trackSupportsLoop = function () {
-		const isKss = () => {
-			if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
-			const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
-			if (!path) return false;
-			const clean = path.toLowerCase().split('|track=')[0];
-			return clean.endsWith('.kss') || clean.endsWith('.kssx') || clean.endsWith('.kscc') ||
-				clean.endsWith('.mgs') || clean.endsWith('.bgm') || clean.endsWith('.opx') ||
-				clean.endsWith('.mpk') || clean.endsWith('.mbm');
-		};
-		const isPsfUsf = () => {
-			if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
-			const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
-			if (!path) return false;
-			const clean = path.toLowerCase().split('|track=')[0];
-			return clean.endsWith('.psf') || clean.endsWith('.minipsf') || clean.endsWith('.usf') || clean.endsWith('.miniusf') || clean.endsWith('.mus') || clean.endsWith('.lmp');
-		};
-		if (this.GetLoopPoint) {
-			try {
-				if (this.GetLoopPoint() > 0) return true;
-			} catch (e) { }
+		const result = (() => {
+			const isKss = () => {
+				if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
+				const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
+				if (!path) return false;
+				const clean = path.toLowerCase().split('|track=')[0];
+				return clean.endsWith('.kss') || clean.endsWith('.mgs') || clean.endsWith('.bgm') || clean.endsWith('.opx') ||
+					clean.endsWith('.mpk') || clean.endsWith('.mbm');
+			};
+			const isPsfUsf = () => {
+				if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
+				const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
+				if (!path) return false;
+				const clean = path.toLowerCase().split('|track=')[0];
+				return clean.endsWith('.psf') || clean.endsWith('.minipsf') || clean.endsWith('.usf') || clean.endsWith('.miniusf') || clean.endsWith('.mus') || clean.endsWith('.lmp');
+			};
+			if (this.GetLoopPoint) {
+				try {
+					if (this.GetLoopPoint() > 0) return true;
+				} catch (e) { }
+			}
+			if (this.IsVGMStream && this.IsVGMStream()) {
+				// Only support looping if the file has native loop metadata
+				if (this.HasVgmstreamNativeLoop && this.HasVgmstreamNativeLoop()) return true;
+				return false;
+			}
+			// KSS and PSF/USF don't always expose loop points; allow software looping
+			return isKss() || isPsfUsf();
+		})();
+
+		if (this.debugMode) {
+			console.log(`[VGM] _trackSupportsLoop: ${result ? 'YES' : 'NO'}`);
 		}
-		if (this.IsVGMStream && this.IsVGMStream()) {
-			if (this.GetVgmstreamLoop && this.GetVgmstreamLoop()) return true;
-		}
-		// KSS and PSF/USF don't always expose loop points; allow software looping
-		return isKss() || isPsfUsf();
+		return result;
 	};
 
 	VGMPlay_js.prototype._applyLoopMode = function () {
 		if (this.loopMode === 1) {
 			this._loopCount = 0;
 			if (this.SetLoopCount) this.SetLoopCount(0);
-			if (this.SetVgmstreamLoop) this.SetVgmstreamLoop(1); // 1 = enabled (ignore_loop=false)
+			if (this.SetVgmstreamLoop) this.SetVgmstreamLoop(1); // 1 = enabled (play_forever=true)
 			if (this.progressContainer) this.progressContainer.style.display = 'none';
+
+			// Cancel any in-progress fade-out so audio keeps playing
+			this.isFadingOut = false;
+			this.emulatorFinished = false;
+			if (this.masterGain && this.context) {
+				const now = this.context.currentTime;
+				this.masterGain.gain.cancelScheduledValues(now);
+				this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+				this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
+			}
 		} else {
 			this._loopCount = 1;
 			if (this.SetLoopCount) this.SetLoopCount(1);
-			if (this.SetVgmstreamLoop) this.SetVgmstreamLoop(0); // 0 = disabled (ignore_loop=true)
+			if (this.SetVgmstreamLoop) this.SetVgmstreamLoop(0); // 0 = disabled; C side will fade then signal done
 			if (this.progressContainer) this.progressContainer.style.display = '';
+			// Reset these so the end-detection path (VGMEnded) works cleanly
+			this.isFadingOut = false;
+			this.emulatorFinished = false;
 		}
 		this._setLoopButtonState();
 	};

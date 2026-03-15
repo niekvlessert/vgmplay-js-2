@@ -58,6 +58,9 @@ void psxShutdown(void);
 extern "C" {
 #include "../modules/vgmstream/src/libvgmstream.h"
 #include "../modules/vgmstream/src/libvgmstream_streamfile.h"
+#include "../modules/vgmstream/src/base/api_internal.h"
+#include "../modules/vgmstream/src/vgmstream.h"
+#include "../modules/vgmstream/src/base/plugins.h"
 }
 
 /* ---- globals ---- */
@@ -296,6 +299,8 @@ static std::vector<int16_t> vgmstreamInputBuffer;
 static std::vector<float> vgmstreamOutputBuffer;
 static int vgmstreamChannels = 0;
 static int vgmstreamSampleRate = 0;
+static bool vgmstreamHasNativeLoop = false;
+static bool vgmstreamInputBufferDirty = false;
 static std::string currentVGMStreamPath;
 
 // Helper: parse archive filenames like "Game (date)(Team)(Company)[Platform].ext"
@@ -751,6 +756,8 @@ static void cleanup(bool keepVGMPlayer) {
     isVGMStream = false;
     vgmstreamChannels = 0;
     vgmstreamSampleRate = 0;
+    vgmstreamHasNativeLoop = false;
+    vgmstreamInputBufferDirty = false;
   }
   if (player) {
     player->Stop();
@@ -902,6 +909,7 @@ void SetLoopCount(unsigned int loops) {
      Ignoring for now – libvgm defaults to looping. */
 }
 
+
 void Seek(unsigned int sec, unsigned int ms) {
   UINT64 totalMs = (UINT64)sec * 1000 + (UINT64)ms;
   UINT32 sample = (UINT32)((totalMs * gSampleRate) / 1000);
@@ -963,11 +971,7 @@ void Seek(unsigned int sec, unsigned int ms) {
   if (isVGMStream) {
     if (vgmstreamContext) {
       libvgmstream_seek(vgmstreamContext, sample);
-      vgmstreamInputBuffer.clear();
-      vgmstreamOutputBuffer.clear();
-      if (vgmstreamConverterInitialized) {
-        ma_data_converter_reset(&vgmstreamConverter);
-      }
+      vgmstreamInputBufferDirty = true;
     }
     return;
   }
@@ -1351,10 +1355,15 @@ int OpenVGMFile(const char *path) {
     if (debugMode) printf("VGMStream: Attempting to open %s\n", basePath.c_str());
     libvgmstream_t* vs = libvgmstream_init();
     if (vs) {
+      // Always open with play_forever=true so vgmstream never fades/terminates
+      // on its own. JS (_checkTrackEnd) is solely responsible for fade and
+      // track advancement for vgmstream tracks.
       libvgmstream_config_t cfg = {};
-      cfg.ignore_loop = !vgmstreamLoopEnabled;
+      if (debugMode) printf("VGMStream: Opening (always play_forever=true)\n");
+      cfg.ignore_loop = false;         // honour native loop points if present
       cfg.allow_play_forever = true;
-      cfg.play_forever = vgmstreamLoopEnabled;
+      cfg.play_forever = true;         // never terminate inside libvgmstream
+      cfg.force_loop = true;           // always allocate loop structures
       cfg.force_sfmt = LIBVGMSTREAM_SFMT_PCM16;
       libvgmstream_setup(vs, &cfg);
 
@@ -1377,14 +1386,38 @@ int OpenVGMFile(const char *path) {
         // or we free vs which frees its internal sf if init was partial.
         // If it failed (<0), we close sf here and free vs.
         if (result >= 0) {
-          if (debugMode) printf("VGMStream: Opened %s, channels=%d, rate=%d, play_samples=%d\n", 
-                 effectivePath.c_str(), vs->format->channels, vs->format->sample_rate, (int)vs->format->play_samples);
-          // Success - set up converter and buffers
+          if (debugMode) {
+              printf("VGMStream: Opened %s, channels=%d, rate=%d, play_samples=%lld\n", 
+                     effectivePath.c_str(), vs->format->channels, vs->format->sample_rate, (long long)vs->format->play_samples);
+              printf("VGMStream: Loop: %s, Start: %lld, End: %lld, Total Samples: %lld\n",
+                     vs->format->loop_flag ? "YES" : "NO",
+                     (long long)vs->format->loop_start,
+                     (long long)vs->format->loop_end,
+                     (long long)vs->format->stream_samples);
+          }
+                    // Success - set up converter and buffers
           isVGMStream = true;
           vgmstreamContext = vs;
           vgmstreamChannels = vs->format->channels;
           vgmstreamSampleRate = vs->format->sample_rate;
           currentVGMStreamPath = effectivePath;
+
+          // Check for native loop metadata (anything that isn't the fallback full-track loop)
+          VGMSTREAM* v = ((libvgmstream_priv_t*)vs->priv)->vgmstream;
+          // Note: at this point, v->loop_start_sample might be 0 for some formats
+          // because api_apply_config / setup_vgmstream hasn't been called to parse 
+          // all modifiers fully yet. We just do a basic check.
+          if (v && v->loop_end_sample > 0 && 
+              (v->loop_start_sample > 0 || v->loop_end_sample < v->num_samples)) {
+              vgmstreamHasNativeLoop = true;
+          } else {
+              vgmstreamHasNativeLoop = false;
+          }
+          if (debugMode) printf("VGMStream: Native Loop detected: %s (Points: %d-%d, Total: %d)\n", 
+                                vgmstreamHasNativeLoop ? "YES" : "NO", 
+                                v ? v->loop_start_sample : 0, 
+                                v ? v->loop_end_sample : 0,
+                                v ? v->num_samples : 0);
 
           // Initialize data converter: s16 -> f32, with channel conversion and resampling
           ma_data_converter_config convConfig = ma_data_converter_config_init(
@@ -1580,6 +1613,16 @@ int GetTrackLength(void) {
   }
   if (isVGMStream) {
     if (vgmstreamContext) {
+      // stream_samples is the natural one-shot length (no loops, no fade).
+      // Normalize to the 44100-Hz domain that JS expects:
+      //   JS will do: baseSampleCount = GetTrackLength() * jsRate / 44100
+      // so returning stream_samples * 44100 / nativeRate gives the correct
+      // number of output samples after the ma_data_converter resampling.
+      int64_t s = vgmstreamContext->format->stream_samples;
+      if (s > 0 && vgmstreamSampleRate > 0) {
+          return (int)((double)s * 44100.0 / (double)vgmstreamSampleRate);
+      }
+      // Fallback: if stream_samples is missing use play_samples.
       return (int)vgmstreamContext->format->play_samples;
     }
     return 0;
@@ -2455,6 +2498,9 @@ void FillBuffer2(float *left, float *right, int n) {
           if (debugMode) printf("FillBuffer2: vgmstream rendered 0 samples, done=%d\n", vgmstreamContext->decoder->done);
           break; // no more data or error
         }
+        if (rendered <= 0) {
+          if (debugMode) printf("FillBuffer2: WARNING - rendered 0 samples but NOT DONE. LoopEnabled=%d\n", vgmstreamLoopEnabled);
+        }
         static int vgmstreamLogCount = 0;
         if (debugMode) {
             printf("FillBuffer2: vgmstream rendered %d samples, res=%d, done=%d\n", 
@@ -3163,18 +3209,19 @@ int GetVgmstreamLoop() {
 }
 
 EMSCRIPTEN_KEEPALIVE
+int HasVgmstreamNativeLoop() {
+    return vgmstreamHasNativeLoop ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
 void SetVgmstreamLoop(int enabled) {
+    // Just record the preference. The stream is always opened with play_forever=true
+    // so we never touch libvgmstream internals mid-playback (that was the crash).
+    // JS (_checkTrackEnd) uses this flag implicitly via _trackSupportsLoop /
+    // loopMode; all fade/end decisions are made in JS.
     vgmstreamLoopEnabled = (enabled != 0);
-    if (isVGMStream && vgmstreamContext) {
-        libvgmstream_config_t cfg = {};
-        cfg.ignore_loop = !vgmstreamLoopEnabled;
-        cfg.allow_play_forever = true;
-        cfg.play_forever = vgmstreamLoopEnabled;
-        cfg.force_sfmt = LIBVGMSTREAM_SFMT_PCM16;
-        // This might only apply to the NEXT open_stream, but we set it anyway just in case.
-        libvgmstream_setup(vgmstreamContext, &cfg);
-        if (debugMode) printf("VGMStream: Global Loop set to %s\n", vgmstreamLoopEnabled ? "ON" : "OFF");
-    }
+    if (debugMode) printf("VGMStream: Loop flag set to %s (no stream reconfigure)\n",
+                           vgmstreamLoopEnabled ? "ON" : "OFF");
 }
 
 } /* extern "C" */

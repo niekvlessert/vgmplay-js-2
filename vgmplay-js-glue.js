@@ -2247,11 +2247,41 @@ VGMPlay_js.prototype._setLoopButtonState = function () {
 };
 
 VGMPlay_js.prototype.toggleLoopMode = function () {
+	const wasLooping = this.loopMode === 1;
 	this.loopMode = (this.loopMode + 1) % 3;
 	this._applyLoopMode();
 
 	if (this.loopMode === 1) {
 		this.currentTrackSupportsLoop = this._trackSupportsLoop();
+	}
+
+	// When disabling loop on a vgmstream track: the C side plays forever so
+	// visualSamplePosition (derived from AudioContext time) may already be past
+	// totalSampleCount if the track has looped. In that case the JS fade would
+	// fire instantly. Instead, anchor a fresh 2-second fade from current position.
+	if (wasLooping && this.loopMode !== 1 &&
+		this.IsVGMStream && this.IsVGMStream() &&
+		this.isVGMPlaying && this.context) {
+		const elapsed = this.context.currentTime - this.playbackStartTime;
+		const currentSample = Math.max(0, this.startSample + (elapsed * this.sampleRate));
+		const FADE_SECS = 2.0;
+		const FADE_SAMPLES = FADE_SECS * this.sampleRate;
+		if (currentSample + FADE_SAMPLES > this.totalSampleCount) {
+			// Anchor progress tracking to current position
+			this.startSample = currentSample;
+			this.playbackStartTime = this.context.currentTime;
+			this.visualSamplePosition = currentSample;
+			this.totalSampleCount = currentSample + FADE_SAMPLES;
+			// Explicitly schedule the gain fade — don't rely on _checkTrackEnd's
+			// next tick which may see inconsistent state at this boundary.
+			this.isFadingOut = true;
+			try {
+				const now = this.context.currentTime;
+				this.masterGain.gain.cancelScheduledValues(now);
+				this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+				this.masterGain.gain.linearRampToValueAtTime(0, now + FADE_SECS);
+			} catch (e) { }
+		}
 	}
 };
 

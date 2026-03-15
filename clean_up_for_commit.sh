@@ -39,6 +39,8 @@ reverse_patch "libvgm" "libvgm.patch"
 reverse_patch "sexypsf" "sexypsf.patch"
 reverse_patch "libkss" "libkss.patch"
 reverse_patch "lazyusf" "lazyusf.patch"
+reverse_patch "monkeys-audio" "monkeys-audio.patch"
+reverse_patch "vgmstream" "vgmstream.patch"
 
 # 2. Remove artifacts from extensions
 echo "Removing artifacts from extension folders..."

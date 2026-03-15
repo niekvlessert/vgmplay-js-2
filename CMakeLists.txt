@@ -197,6 +197,11 @@ list(APPEND VGMPLAY_EXPORTS
     "'_MUSPlaying'"
     "'_PrefillPSF'"
     "'_CheckMuntRoms'"
+    "'_SetDebugMode'"
+    "'_IsVGMStream'"
+    "'_GetVgmstreamLoop'"
+    "'_SetVgmstreamLoop'"
+    "'_HasVgmstreamNativeLoop'"
 )
 string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")
 

@@ -2125,14 +2125,35 @@ VGMPlay_js.prototype._updateProgressBar = function () {
 		this.progressContainer.classList.toggle('seeking-disabled', isUsf);
 	}
 
-	const currentSample = this.visualSamplePosition;
-	const progress = Math.min(currentSample / this.totalSampleCount, 1);
-	this.progressFill.style.width = (progress * 100) + '%';
+	const isLooping = this.loopMode === 1 && this.currentTrackSupportsLoop;
 
 	if (this.vgmplayTime) {
-		const elapsedSec = Math.floor(currentSample / this.sampleRate);
-		const totalSec = Math.floor(this.totalSampleCount / this.sampleRate);
-		this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
+		if (isLooping) {
+			// Elapsed: use AudioContext time directly so it counts past track end
+			let elapsedSec = 0;
+			if (this.isPlaybackPaused) {
+				elapsedSec = Math.floor(this.visualSamplePosition / this.sampleRate);
+			} else if (this.context) {
+				const elapsed = this.context.currentTime - this.playbackStartTime;
+				elapsedSec = Math.floor((this.startSample + elapsed * this.sampleRate) / this.sampleRate);
+			}
+			this.vgmplayTime.innerText = this._formatTime(Math.max(0, elapsedSec)) + '/-:--';
+		} else {
+			const currentSample = this.visualSamplePosition;
+			const elapsedSec = Math.floor(currentSample / this.sampleRate);
+			const totalSec = Math.floor(this.totalSampleCount / this.sampleRate);
+			this.vgmplayTime.innerText = this._formatTime(elapsedSec) + '/' + this._formatTime(totalSec);
+		}
+	}
+
+	if (!isLooping) {
+		const currentSample = this.visualSamplePosition;
+		const progress = Math.min(currentSample / this.totalSampleCount, 1);
+		this.progressFill.style.width = (progress * 100) + '%';
+	} else {
+		// Hide fill bar while looping (progress bar container is already hidden,
+		// but reset fill so it starts clean when loop is disabled)
+		this.progressFill.style.width = '0%';
 	}
 };
 

@@ -573,10 +573,11 @@ export function installUi(VGMPlay_js) {
 			const u = new URL(url);
 			const p = u.pathname;
 			const last = p.substring(p.lastIndexOf('/') + 1);
-			return decodeURIComponent(last || url);
+			return decodeURIComponent(last || url.split('/').pop().split('?')[0].split('#')[0]);
 		} catch (e) {
 			const idx = url.lastIndexOf('/');
-			return decodeURIComponent(idx >= 0 ? url.substring(idx + 1) : url);
+			const chunk = idx >= 0 ? url.substring(idx + 1) : url;
+			return decodeURIComponent(chunk.split('?')[0].split('#')[0]);
 		}
 	};
 

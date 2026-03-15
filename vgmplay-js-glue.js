@@ -593,7 +593,7 @@ class VGMPlay_js {
 			var txtFile;
 			var pngFile;
 			this.amountOfGamesLoaded++;
-			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
 
 			for (const entry of entries) {
@@ -695,7 +695,7 @@ class VGMPlay_js {
 		const getGame = (gameKey) => {
 			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
 			this.amountOfGamesLoaded++;
-			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
 			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
 			gamesByKey[gameKey] = game;
@@ -873,10 +873,16 @@ class VGMPlay_js {
 	}
 
 	processSingleBuffer(byteArray, sourceName = '') {
+		const fileName = sourceName || "track_" + Date.now();
+		const fingerprint = fileName + ':' + byteArray.byteLength;
+		if (this._isCached && this._isCached(fingerprint)) {
+			if (this.debugMode) console.log(`[VGM] File ${fileName} already cached, skipping processing.`);
+			return Promise.resolve();
+		}
+
 		return new Promise((resolve) => {
 			let game;
 			const miscGameName = "Misc";
-			const fileName = sourceName || "track_" + Date.now();
 			const lowerName = fileName.toLowerCase();
 			const isNsf = lowerName.endsWith('.nsf') || lowerName.endsWith('.nsfe');
 
@@ -940,12 +946,20 @@ class VGMPlay_js {
 					this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 					this._renderZipGamesNow();
 				}
+				if (this._markCached) this._markCached(fingerprint);
+				if (this._saveCache) this._saveCache();
 				resolve();
 			});
 		});
 	}
 
 	async processPSFBuffer(byteArray, fileName) {
+		const fingerprint = fileName + ':' + byteArray.byteLength;
+		if (this._isCached && this._isCached(fingerprint)) {
+			if (this.debugMode) console.log(`[VGM] PSF File ${fileName} already cached, skipping processing.`);
+			return;
+		}
+
 		this.amountOfGamesLoaded++;
 		const gamePath = "/game_" + this.amountOfGamesLoaded;
 		this._makedirs(gamePath);
@@ -961,6 +975,9 @@ class VGMPlay_js {
 		this.games.push(game);
 		await this.checkEverythingReady();
 		this.showVGMFromZip(game);
+		
+		if (this._markCached) this._markCached(fingerprint);
+		if (this._saveCache) this._saveCache();
 	}
 
 	addHarvestedTracks(urls) {
@@ -1537,10 +1554,15 @@ class VGMPlay_js {
 
 		const seen = new Set();
 		for (const url of files) {
-			if (!url) continue;
-			if (seen.has(url)) continue;
-			seen.add(url);
 			const lower = url.toLowerCase().split('?')[0].split('#')[0];
+			const rawName = url.split('/').pop().split('?')[0].split('#')[0];
+			
+			let decodedName = rawName;
+			try { decodedName = decodeURIComponent(rawName); } catch (e) { }
+
+			if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
+			if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
+
 			if (this._isArchiveUrl(lower)) {
 				this._queueURL(url, false, true);
 			} else {
@@ -2418,6 +2440,7 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 		await loadModule('./vgmplay-archives.js', 'installArchives', 'archives');
 		await loadModule('./vgmplay-audio.js', 'installAudio', 'audio');
 		await loadModule('./vgmplay-queue.js', 'installQueue', 'queue');
+		await loadModule('./vgmplay-cache.js', 'installCache', 'cache');
 
 		installers.forEach((fn) => fn(VGMPlay_js));
 		var vgmplay_js = new VGMPlay_js(options);

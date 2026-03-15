@@ -93,11 +93,24 @@ export function installArchives(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
+		const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.zip';
+		const fingerprint = cleanName + ':' + byteArray.byteLength;
+		
+		console.log(`[VGM-CACHE-DEBUG] Checking ZIP fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
+		if (this.debugMode && this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
+
+		if (this._isCached && this._isCached(fingerprint)) {
+			if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
+			return;
+		}
+
 		try {
-			if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${sourceName || 'archive'}`);
+			if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
 			const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
-			if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${sourceName || 'archive'}`);
-			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
+			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
 			return;
 		} catch (e) {
 			if (byteArray.byteLength === 0) {
@@ -141,7 +154,7 @@ export function installArchives(VGMPlay_js) {
 			var txtFile;
 			var pngFile;
 			this.amountOfGamesLoaded++;
-			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
 
 			for (const entry of entries) {
@@ -191,10 +204,10 @@ export function installArchives(VGMPlay_js) {
 				});
 			}
 
-			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
-			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
+			const derivedName = this._deriveVgmGameName(filteredFiles, cleanName || "Archive");
+			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName };
 			if (this._applyExternalGameImage && sourceName) {
-				this._applyExternalGameImage(game, sourceName, false);
+				this._applyExternalGameImage(game, cleanName, false);
 			}
 			this.tempGameInfo = null;
 			this.games.push(game);
@@ -206,13 +219,15 @@ export function installArchives(VGMPlay_js) {
 			});
 			if (!hasPlayable) {
 				if (hasMidi) {
-					this._addNoPlayableNotice(sourceName || 'Archive', { isMidiArchive: true });
+					this._addNoPlayableNotice(cleanName || 'Archive', { isMidiArchive: true });
 				} else {
-					this._addNoPlayableNotice(sourceName || 'Archive');
+					this._addNoPlayableNotice(cleanName || 'Archive');
 				}
 			}
 			await this.checkEverythingReady();
 			this._scheduleZipRender();
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
 			return;
 		}
 
@@ -238,7 +253,7 @@ export function installArchives(VGMPlay_js) {
 		const getGame = (gameKey) => {
 			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
 			this.amountOfGamesLoaded++;
-			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
 			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
 			gamesByKey[gameKey] = game;
@@ -324,20 +339,35 @@ export function installArchives(VGMPlay_js) {
 		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
 		if (!anyPlayable) {
-			this._addNoPlayableNotice(sourceName || 'Archive');
+			this._addNoPlayableNotice(cleanName || 'Archive');
 		}
 
 		await this.checkEverythingReady();
 		// Clear and re-render all games to maintain sort order
 		this._scheduleZipRender();
+		if (this._markCached) this._markCached(fingerprint);
+		if (this._saveCache) this._saveCache();
 	};
 
 	VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '') {
+		const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.7z';
+		const fingerprint = cleanName + ':' + byteArray.byteLength;
+		
+		console.log(`[VGM-CACHE-DEBUG] Checking 7Z fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
+		if (this.debugMode && this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
+
+		if (this._isCached && this._isCached(fingerprint)) {
+			if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
+			return;
+		}
+
 		try {
-			if (this.debugMode) console.log(`[VGM] Starting 7z extraction with worker for ${sourceName || 'archive'}`);
+			if (this.debugMode) console.log(`[VGM] Starting 7z extraction with worker for ${cleanName}`);
 			const workerResult = await this._extractArchiveWithWorker(byteArray, '7z');
-			if (this.debugMode) console.log(`[VGM] 7z Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${sourceName || 'archive'}`);
-			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			if (this.debugMode) console.log(`[VGM] 7z Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
+			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
 			return;
 		} catch (e) {
 			if (byteArray.byteLength === 0) {
@@ -402,7 +432,7 @@ export function installArchives(VGMPlay_js) {
 		const getGame = (gameKey) => {
 			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
 			this.amountOfGamesLoaded++;
-			const gamePath = "/game_" + this.amountOfGamesLoaded;
+			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
 			const parsedName = parseArchiveTitle(sourceName);
 			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, name: parsedName };
@@ -456,7 +486,7 @@ export function installArchives(VGMPlay_js) {
 		recurseFS("/out");
 
 		if (!hasKss) {
-			const gamePath = "/game_" + (++this.amountOfGamesLoaded);
+			const gamePath = "/cache/files/game_" + (++this.amountOfGamesLoaded);
 			this._makedirs(gamePath);
 			const fileList = [];
 			let m3uFile;
@@ -504,6 +534,8 @@ export function installArchives(VGMPlay_js) {
 			}
 			await this.checkEverythingReady();
 			this.showVGMFromZip(game);
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
 			return;
 		}
 
@@ -533,12 +565,23 @@ export function installArchives(VGMPlay_js) {
 		}
 		await this.checkEverythingReady();
 		this._scheduleZipRender();
+		if (this._markCached) this._markCached(fingerprint);
+		if (this._saveCache) this._saveCache();
 	};
 
 	VGMPlay_js.prototype.processRarBuffer = async function (byteArray, sourceName = '') {
+		const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.rar';
+		const fingerprint = cleanName + ':' + byteArray.byteLength;
+		if (this._isCached && this._isCached(fingerprint)) {
+			if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
+			return;
+		}
+
 		try {
 			const workerResult = await this._extractArchiveWithWorker(byteArray, 'rar');
 			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
 			return;
 		} catch (e) {
 			if (byteArray.byteLength === 0) {

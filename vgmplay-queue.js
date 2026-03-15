@@ -29,7 +29,8 @@ export function installQueue(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._queueURL = function (url, forceLarge = false, isAuto = false) {
-		if (this.zipURLLoaded.includes(url)) return;
+		const filename = this._getFileNameFromUrl(url);
+		if (this.zipURLLoaded.some(u => u === url || u.startsWith(filename + ':'))) return;
 		if (this.zipURLPending.includes(url)) return;
 		if (isAuto && this.autoDownloadCount >= this.autoDownloadLimit) {
 			this._queueAutoOverflow(url);

@@ -291,10 +291,19 @@ export function installLibrary(VGMPlay_js) {
 							}
 						}
 
-						const trackLength = this.GetTrackLengthDirect(fullPath);
-						const totalSampleCount = trackLength * currentSampleRate / 44100;
-						const trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
-						const trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
+						let trackLengthSeconds = files[key].lengthSec;
+						let trackLengthHumanReadeable = files[key].lengthHumanReadable;
+
+						if (trackLengthSeconds === undefined) {
+							const trackLength = this.GetTrackLengthDirect(fullPath);
+							const totalSampleCount = trackLength * currentSampleRate / 44100;
+							trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
+							trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
+							
+							// Save to avoid recalculating on next UI render
+							files[key].lengthSec = trackLengthSeconds;
+							files[key].lengthHumanReadable = trackLengthHumanReadeable;
+						}
 
 						const a = document.createElement("a");
 						a.className = "vgmplayTrack";

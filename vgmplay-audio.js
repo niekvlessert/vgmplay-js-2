@@ -146,6 +146,10 @@ export function installAudio(VGMPlay_js) {
 			this._ensureKssBindings();
 		}
 
+		if (this._initCache && !this._cacheReady) {
+			await this._initCache();
+		}
+
 		return true;
 	};
 

@@ -88,6 +88,18 @@ The full build of `vgmplay-js` includes the following libraries and supports the
 | **Munt** | MT32 midi (support is not that good) |
 | **vgmstream**|  format list: see `FORMATS.md`. |
 
+## Persistent File Cache
+
+When you insert an archive or drop a file into the player, it is automatically extracted to a persistent virtual filesystem (`/cache`) backed by the browser's IndexedDB (IDBFS). Metadata like track names, lengths, and album art are also saved. 
+
+On subsequent page loads, your previously loaded games and tracks will be instantly restored without needing to be re-extracted.
+
+If you ever need to reset the player and clear this stored data (to free up space or fix a corrupt state), you can run the following command in your browser's Developer Tools Console:
+
+```javascript
+vgmPlayInstance.clearCache()
+```
+
 ## Extension for Chrome & Firefox
 
 A Chrome Extension is also available. Don't forget to run `prepare_for_usage.sh` if you build locally. It can be loaded using chrome://extensions, enable developer, and 'load unpacked'. A Firefox version as well: visit about:debugging, click 'This Firefox', press 'Load temporary add-on', browse to the dir and load the manifest.json. When on a site containing vgm zip files the player can be injected in the current page by pressing the button (if added to the available buttons using the puzzle piece...), the player window will appear (almost) unharmed by the styling of the site and playback can commence! They're both in the github artifacts as well.

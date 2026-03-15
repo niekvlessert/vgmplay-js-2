@@ -207,6 +207,7 @@ string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")
 
 # Emscripten Linker Flags
 set(LINK_FLAGS "\
+    -lidbfs.js \
     -s USE_ZLIB=1 \
     -s FORCE_FILESYSTEM=1 \
     -s INITIAL_MEMORY=268435456 \

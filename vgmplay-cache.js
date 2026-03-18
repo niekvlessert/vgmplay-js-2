@@ -45,8 +45,9 @@ export function installCache(VGMPlay_js) {
 			const metaText = FS.readFile(metaPath, { encoding: 'utf8' });
 			const meta = JSON.parse(metaText);
 
-			if (meta.version !== 1) {
-				console.warn("[VGM] Cache version mismatch, ignoring cache");
+			if (meta.version !== 2) {
+				console.warn("[VGM] Cache version mismatch, clearing cache");
+				this.clearCache();
 				return;
 			}
 
@@ -66,6 +67,23 @@ export function installCache(VGMPlay_js) {
 			}
 
 			if (this.games.length > 0) {
+				const missing = this.games.some((g) => {
+					if (!g || !g.files || !g.files.length) return true;
+					const anyExisting = g.files.some((f) => {
+						if (!f || !f.filepath) return false;
+						try {
+							return FS.analyzePath(f.filepath).exists;
+						} catch (e) {
+							return false;
+						}
+					});
+					return !anyExisting;
+				});
+				if (missing) {
+					console.warn("[VGM] Cached files missing, clearing cache");
+					this.clearCache();
+					return;
+				}
 				if (this.debugMode) console.log(`[VGM] Restored ${this.games.length} games from cache`);
 				this._scheduleZipRender();
 			}
@@ -77,6 +95,12 @@ export function installCache(VGMPlay_js) {
 
 	VGMPlay_js.prototype._saveCache = async function () {
 		if (!this._cacheReady) return;
+		if (this._cacheSaveInFlight) {
+			this._cacheSaveQueued = true;
+			return;
+		}
+		this._cacheSaveInFlight = true;
+		this._cacheSaveQueued = false;
 
 		try {
 			if (!FS.analyzePath('/cache/meta').exists) {
@@ -132,7 +156,7 @@ export function installCache(VGMPlay_js) {
 			}
 
 			const meta = {
-				version: 1,
+				version: 2,
 				amountOfGamesLoaded: this.amountOfGamesLoaded,
 				fingerprints: Array.from(this._cacheFingerprints),
 				games: gamesToSave
@@ -146,10 +170,16 @@ export function installCache(VGMPlay_js) {
 				} else {
 					if (this.debugMode) console.log("[VGM] Cache saved to IDBFS");
 				}
+				this._cacheSaveInFlight = false;
+				if (this._cacheSaveQueued) {
+					this._cacheSaveQueued = false;
+					this._saveCache();
+				}
 			});
 
 		} catch (e) {
 			console.error("[VGM] Failed to write cache metadata:", e);
+			this._cacheSaveInFlight = false;
 		}
 	};
 

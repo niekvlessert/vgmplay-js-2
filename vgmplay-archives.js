@@ -96,8 +96,10 @@ export function installArchives(VGMPlay_js) {
 		const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.zip';
 		const fingerprint = cleanName + ':' + byteArray.byteLength;
 		
-		console.log(`[VGM-CACHE-DEBUG] Checking ZIP fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
-		if (this.debugMode && this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
+		if (this.debugMode) {
+			console.log(`[VGM-CACHE-DEBUG] Checking ZIP fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
+			if (this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
+		}
 
 		if (this._isCached && this._isCached(fingerprint)) {
 			if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
@@ -353,8 +355,10 @@ export function installArchives(VGMPlay_js) {
 		const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.7z';
 		const fingerprint = cleanName + ':' + byteArray.byteLength;
 		
-		console.log(`[VGM-CACHE-DEBUG] Checking 7Z fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
-		if (this.debugMode && this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
+		if (this.debugMode) {
+			console.log(`[VGM-CACHE-DEBUG] Checking 7Z fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
+			if (this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
+		}
 
 		if (this._isCached && this._isCached(fingerprint)) {
 			if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);

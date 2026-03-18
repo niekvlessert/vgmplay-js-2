@@ -121,6 +121,18 @@ export function installMetadata(VGMPlay_js) {
 					}
 				}
 			}
+
+			// Loop support info
+			let loopStatus = "unknown";
+			if (this._trackSupportsLoop &&
+				this.currentFileKey !== "" &&
+				this.activeGame && this.activeGame.playableList &&
+				this.activeGame.playableList[this.currentFileKey]) {
+				try {
+					loopStatus = this._trackSupportsLoop() ? "yes" : "no";
+				} catch (e) { }
+			}
+			titleTarget.innerHTML += "Loop: " + loopStatus + "<br/>";
 		}
 
 		if (this.titleWindow) {

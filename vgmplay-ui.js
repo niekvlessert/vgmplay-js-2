@@ -433,7 +433,7 @@ export function installUi(VGMPlay_js) {
 	VGMPlay_js.prototype._updateSkippedAutoHide = function () {
 		if (!this.skippedWindowVisible) return;
 		const needsAction = this.skippedDownloads.length > 0 || this.autoOverflowURLs.length > 0;
-		const hasNotices = this.noPlayableNotices.length > 0;
+		const hasNotices = this.noPlayableNotices.length > 0 || this.debugModeHasBeenToggled;
 
 		if (needsAction || !hasNotices) {
 			this._clearSkippedAutoHide();
@@ -495,6 +495,7 @@ export function installUi(VGMPlay_js) {
 			this.skippedWindowVisible = true;
 			this._positionSkippedWindow();
 		}
+		this._updateSkippedAutoHide();
 	};
 
 	VGMPlay_js.prototype._addSkippedDownload = function (url, size) {
@@ -523,6 +524,15 @@ export function installUi(VGMPlay_js) {
 			const typeLabel = (opts && opts.typeLabel) ? opts.typeLabel : 'MIDI';
 			msg = `${safeName} is ${typeLabel}. Playback not supported yet.`;
 		}
+		if (this.noPlayableNotices.includes(msg)) return;
+		this.noPlayableNotices.push(msg);
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._addDuplicateNotice = function (name) {
+		const safeName = name || 'File';
+		const msg = `${safeName} already exists and was skipped.`;
 		if (this.noPlayableNotices.includes(msg)) return;
 		this.noPlayableNotices.push(msg);
 		this._showSkippedWindow();

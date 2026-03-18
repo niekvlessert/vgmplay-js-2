@@ -62,6 +62,7 @@ class VGMPlay_js {
 		this.pendingZipRender = false;
 		this._lastSeekAt = 0;
 		this._lastSeekWasMUS = false;
+		this._lastLoopToggleAt = 0;
 		this._loopBaseSamplesByTrack = new Map();
 		this.showMemoryStats = false;
 		this._memoryBaselineUsed = null;
@@ -593,7 +594,7 @@ class VGMPlay_js {
 			var txtFile;
 			var pngFile;
 			this.amountOfGamesLoaded++;
-			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
+			const gamePath = this._getGamePath(this.amountOfGamesLoaded);
 			this._makedirs(gamePath);
 
 			for (const entry of entries) {
@@ -695,7 +696,7 @@ class VGMPlay_js {
 		const getGame = (gameKey) => {
 			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
 			this.amountOfGamesLoaded++;
-			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
+			const gamePath = this._getGamePath(this.amountOfGamesLoaded);
 			this._makedirs(gamePath);
 			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
 			gamesByKey[gameKey] = game;
@@ -828,6 +829,15 @@ class VGMPlay_js {
 		}
 	}
 
+	_getGameRoot() {
+		return (this._cacheReady || this._initCache) ? "/cache/files" : "";
+	}
+
+	_getGamePath(index) {
+		const root = this._getGameRoot();
+		return root ? `${root}/game_${index}` : `/game_${index}`;
+	}
+
 	_collapseAllGames() {
 		for (const game of this.games) {
 			if (!game || !game.uiElement) continue;
@@ -877,6 +887,7 @@ class VGMPlay_js {
 		const fingerprint = fileName + ':' + byteArray.byteLength;
 		if (this._isCached && this._isCached(fingerprint)) {
 			if (this.debugMode) console.log(`[VGM] File ${fileName} already cached, skipping processing.`);
+			if (this._addDuplicateNotice) this._addDuplicateNotice(fileName);
 			return Promise.resolve();
 		}
 
@@ -888,7 +899,7 @@ class VGMPlay_js {
 
 			if (isNsf) {
 				this.amountOfGamesLoaded++;
-				const gamePath = "/game_" + this.amountOfGamesLoaded;
+				const gamePath = this._getGamePath(this.amountOfGamesLoaded);
 				this._makedirs(gamePath);
 				const displayName = this._normalizeGameTitle ? (this._normalizeGameTitle(fileName) || fileName) : fileName;
 				game = { files: [], path: gamePath, name: displayName };
@@ -902,7 +913,7 @@ class VGMPlay_js {
 
 				if (!game) {
 					this.amountOfGamesLoaded++;
-					const gamePath = "/game_" + this.amountOfGamesLoaded;
+					const gamePath = this._getGamePath(this.amountOfGamesLoaded);
 					this._makedirs(gamePath);
 					game = { files: [], path: gamePath, name: miscGameName };
 					this.games.push(game);
@@ -957,11 +968,12 @@ class VGMPlay_js {
 		const fingerprint = fileName + ':' + byteArray.byteLength;
 		if (this._isCached && this._isCached(fingerprint)) {
 			if (this.debugMode) console.log(`[VGM] PSF File ${fileName} already cached, skipping processing.`);
+			if (this._addDuplicateNotice) this._addDuplicateNotice(fileName);
 			return;
 		}
 
 		this.amountOfGamesLoaded++;
-		const gamePath = "/game_" + this.amountOfGamesLoaded;
+		const gamePath = this._getGamePath(this.amountOfGamesLoaded);
 		this._makedirs(gamePath);
 
 		const fsPath = gamePath + "/" + fileName;
@@ -1469,6 +1481,9 @@ class VGMPlay_js {
 		}
 		if (anyUpdated && this._renderZipGamesNow) {
 			this._renderZipGamesNow();
+		}
+		if (anyUpdated && this._saveCache) {
+			this._saveCache();
 		}
 	}
 
@@ -2291,7 +2306,18 @@ VGMPlay_js.prototype._setLoopButtonState = function () {
 
 VGMPlay_js.prototype.toggleLoopMode = function () {
 	const wasLooping = this.loopMode === 1;
-	this.loopMode = (this.loopMode + 1) % 3;
+	const now = Date.now();
+	if (this.loopMode === 1) {
+		// If user taps again quickly, promote to "game" loop (blue).
+		// Otherwise, treat it as a disable (off).
+		const withinQuickToggle = (now - (this._lastLoopToggleAt || 0)) <= 2000;
+		this.loopMode = withinQuickToggle ? 2 : 0;
+	} else if (this.loopMode === 2) {
+		this.loopMode = 0;
+	} else {
+		this.loopMode = 1;
+	}
+	this._lastLoopToggleAt = now;
 	this._applyLoopMode();
 
 	if (this.loopMode === 1) {
@@ -2348,9 +2374,9 @@ VGMPlay_js.prototype.toggleDebugMode = function () {
 	this.debugMode = !this.debugMode;
 	this.debugModeHasBeenToggled = true;
 	console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
-	if (this.vgmplayUI) {
-		this.vgmplayUI._renderSkippedDownloads();
-		this.vgmplayUI._showSkippedWindow();
+	if (this._renderSkippedDownloads && this._showSkippedWindow) {
+		this._renderSkippedDownloads();
+		this._showSkippedWindow();
 	}
 	if (Module._SetDebugMode) {
 		Module._SetDebugMode(this.debugMode ? 1 : 0);

@@ -52,16 +52,16 @@ export function installUi(VGMPlay_js) {
 		this.playerWindow.className = "vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = `
 			<div class="vgmplayControls">
-				<button id="btnPrev" onclick="vgmplay_js.changeTrack('previous')">|&lt;</button>
-				<button id="buttonTogglePlayback" onclick="vgmplay_js.togglePlayback()">&#9654;</button>
-				<button id="btnNext" onclick="vgmplay_js.changeTrack('next')">&gt;|</button>
-				<button id="btnStop" onclick="vgmplay_js.stop()">&#9632;</button>
-				<button id="btnBass" onclick="vgmplay_js.toggleBassBoost()">B</button>
-				<button id="btnReverb" onclick="vgmplay_js.toggleReverb()">V</button>
-				<button id="btnRandom" onclick="vgmplay_js.toggleRandomScope()">R</button>
-				<button id="btnLoop" onclick="vgmplay_js.toggleLoopMode()">L</button>
-				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">F</button>
-				<button id="btnSearch" onclick="vgmplay_js.toggleSearchBar()">&#128269;</button>
+				<button id="btnPrev">|&lt;</button>
+				<button id="buttonTogglePlayback">&#9654;</button>
+				<button id="btnNext">&gt;|</button>
+				<button id="btnStop">&#9632;</button>
+				<button id="btnBass">B</button>
+				<button id="btnReverb">V</button>
+				<button id="btnRandom">R</button>
+				<button id="btnLoop">L</button>
+				<button id="btnLibrary">F</button>
+				<button id="btnSearch">&#128269;</button>
 				<button id="btnSettings">&#9881;</button>
 				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
 			</div>
@@ -75,6 +75,9 @@ export function installUi(VGMPlay_js) {
 			return document.getElementById(id);
 		};
 		this.buttonTogglePlayback = byId('buttonTogglePlayback');
+		this.btnPrev = byId('btnPrev');
+		this.btnNext = byId('btnNext');
+		this.btnStop = byId('btnStop');
 		this.vgmplayTime = byId('vgmplayTime');
 		this.btnBass = byId('btnBass');
 		this.btnReverb = byId('btnReverb');
@@ -83,6 +86,16 @@ export function installUi(VGMPlay_js) {
 		this.btnLibrary = byId('btnLibrary');
 		this.btnSearch = byId('btnSearch');
 		this.btnSettings = byId('btnSettings');
+		if (this.btnPrev) this.btnPrev.addEventListener('click', () => this.changeTrack('previous'));
+		if (this.buttonTogglePlayback) this.buttonTogglePlayback.addEventListener('click', () => this.togglePlayback());
+		if (this.btnNext) this.btnNext.addEventListener('click', () => this.changeTrack('next'));
+		if (this.btnStop) this.btnStop.addEventListener('click', () => this.stop());
+		if (this.btnBass) this.btnBass.addEventListener('click', () => this.toggleBassBoost());
+		if (this.btnReverb) this.btnReverb.addEventListener('click', () => this.toggleReverb());
+		if (this.btnRandom) this.btnRandom.addEventListener('click', () => this.toggleRandomScope());
+		if (this.btnLoop) this.btnLoop.addEventListener('click', () => this.toggleLoopMode());
+		if (this.btnLibrary) this.btnLibrary.addEventListener('click', () => this.toggleDisplayZipFileListWindow());
+		if (this.btnSearch) this.btnSearch.addEventListener('click', () => this.toggleSearchBar());
 		if (this.btnSettings) {
 			this.btnSettings.addEventListener('click', () => this.toggleSettingsMenu());
 		}
@@ -268,7 +281,7 @@ export function installUi(VGMPlay_js) {
 		const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
 		const targets = [...buttons, ...tracks];
 		const idDescriptions = {
-			'buttonTogglePlayback': (this.isExtension ? 'Play/Pause (P)' : 'Play/Pause (Space)'),
+			'buttonTogglePlayback': (this.isExtension ? 'Play/Pause (C)' : 'Play/Pause (Space)'),
 			'btnPrev': 'Previous Track (P)',
 			'btnNext': 'Next Track (N)',
 			'btnStop': 'Stop',
@@ -330,6 +343,8 @@ export function installUi(VGMPlay_js) {
 		if (this._settingsMenuVisible) {
 			this._settingsStatusText = '';
 			this._showSkippedWindow();
+		} else {
+			this._hideSkippedWindow(false);
 		}
 		this._renderSkippedDownloads();
 	};
@@ -351,6 +366,60 @@ export function installUi(VGMPlay_js) {
 		}
 		console.log('[VGM] Debug snapshot:', snapshot);
 		this._settingsStatusText = 'Debug snapshot dumped to console.';
+		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._runCacheIntegrityCheck = async function () {
+		const games = Array.isArray(this.games) ? this.games : [];
+		const filePaths = [];
+		const coverPaths = [];
+		for (const g of games) {
+			if (!g) continue;
+			if (g.coverPath) coverPaths.push(g.coverPath);
+			const files = Array.isArray(g.files) ? g.files : [];
+			for (const f of files) {
+				if (f && f.filepath) filePaths.push(f.filepath);
+			}
+		}
+		const allPaths = Array.from(new Set([...filePaths, ...coverPaths]));
+		let missingLocal = [];
+		let zeroLocal = [];
+		for (const p of allPaths) {
+			try {
+				const info = FS.analyzePath(p);
+				if (!info.exists) {
+					missingLocal.push(p);
+				} else if (info.object && info.object.contents && info.object.contents.byteLength === 0) {
+					zeroLocal.push(p);
+				} else if (info.object && info.object.usedBytes === 0) {
+					zeroLocal.push(p);
+				}
+			} catch (e) {
+				missingLocal.push(p);
+			}
+		}
+		let missingShared = [];
+		if (this._cacheBridgeAvailable && this._cacheBridgeAvailable()) {
+			try {
+				missingShared = await this._cacheBridgeMissing(allPaths);
+			} catch (e) {
+				missingShared = [];
+			}
+		}
+		const summary = {
+			games: games.length,
+			files: filePaths.length,
+			covers: coverPaths.length,
+			missingLocal: missingLocal.length,
+			zeroLocal: zeroLocal.length,
+			missingShared: missingShared.length
+		};
+		console.log('[VGM] Cache integrity check:', summary, {
+			sampleMissingLocal: missingLocal.slice(0, 10),
+			sampleZeroLocal: zeroLocal.slice(0, 10),
+			sampleMissingShared: missingShared.slice(0, 10)
+		});
+		this._settingsStatusText = `Integrity: ${summary.files + summary.covers} items, local missing ${summary.missingLocal}, shared missing ${summary.missingShared}.`;
 		this._renderSkippedDownloads();
 	};
 
@@ -390,12 +459,17 @@ export function installUi(VGMPlay_js) {
 		const contentBlocks = [];
 		if (this._settingsMenuVisible) {
 			const statusLine = this._settingsStatusText ? `<div class="vgmplaySettingsStatus">${this._settingsStatusText}</div>` : '';
+			const hostKey = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+			const gamesLoaded = this.games ? this.games.length : 0;
+			const cacheCount = Math.max(0, Math.min(this.autoCacheHits || 0, gamesLoaded));
+			const newCount = Math.max(0, gamesLoaded - cacheCount);
 			contentBlocks.push(`
 				<div class="vgmplaySettingsMenu">
-					<div class="vgmplaySkippedAutoText">Settings</div>
+					<div class="vgmplaySkippedAutoText">Cache: ${cacheCount} from cache, ${newCount} new.</div>
 					<div class="vgmplaySkippedAutoActions">
 						<button class="vgmplaySettingsClearCache">Clear cache</button>
 						<button class="vgmplaySettingsDumpDebug">Dump debug snapshot</button>
+						<button class="vgmplaySettingsCheckCache">Cache integrity check</button>
 					</div>
 					${statusLine}
 				</div>
@@ -415,8 +489,11 @@ export function installUi(VGMPlay_js) {
 			this.skippedContentEl.innerHTML = contentBlocks.join('');
 			const clearBtn = this.skippedContentEl.querySelector('.vgmplaySettingsClearCache');
 			const dumpBtn = this.skippedContentEl.querySelector('.vgmplaySettingsDumpDebug');
+			const checkBtn = this.skippedContentEl.querySelector('.vgmplaySettingsCheckCache');
 			if (clearBtn) {
 				clearBtn.addEventListener('click', () => {
+					this._settingsMenuVisible = false;
+					this._settingsStatusText = '';
 					this._cacheClearPromptVisible = true;
 					this._renderSkippedDownloads();
 				});
@@ -424,6 +501,11 @@ export function installUi(VGMPlay_js) {
 			if (dumpBtn) {
 				dumpBtn.addEventListener('click', () => {
 					this._dumpDebugSnapshot();
+				});
+			}
+			if (checkBtn) {
+				checkBtn.addEventListener('click', () => {
+					this._runCacheIntegrityCheck();
 				});
 			}
 		} else if (this.skippedContentEl) {

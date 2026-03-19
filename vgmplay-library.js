@@ -11,6 +11,7 @@ export function installLibrary(VGMPlay_js) {
 		const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
 		const currentScan = this._currentScanNames || new Set();
 		const currentGames = [];
+		const newGames = [];
 		const cachedByHost = new Map();
 		for (const game of this.games) {
 			const key = normalizeArchiveName(game && (game.archiveName || game.name));
@@ -18,11 +19,19 @@ export function installLibrary(VGMPlay_js) {
 				currentGames.push(game);
 				continue;
 			}
-			const hostKey = (game && game.cacheHost) ? String(game.cacheHost) : (currentHost || 'unknown');
-			if (!cachedByHost.has(hostKey)) cachedByHost.set(hostKey, []);
-			cachedByHost.get(hostKey).push(game);
+			if (game && game._fromCache) {
+				const hostKey = (game && game.cacheHost) ? String(game.cacheHost) : (currentHost || 'unknown');
+				if (!cachedByHost.has(hostKey)) cachedByHost.set(hostKey, []);
+				cachedByHost.get(hostKey).push(game);
+			} else {
+				newGames.push(game);
+			}
 		}
 		for (const game of currentGames) {
+			game.uiElement = null;
+			this.showVGMFromZip(game);
+		}
+		for (const game of newGames) {
 			game.uiElement = null;
 			this.showVGMFromZip(game);
 		}

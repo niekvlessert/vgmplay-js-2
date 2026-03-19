@@ -214,7 +214,7 @@ export function installArchives(VGMPlay_js) {
 			}
 
 			const derivedName = this._deriveVgmGameName(filteredFiles, cleanName || "Archive");
-			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName };
+			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName, _fromCache: false };
 			if (this._applyExternalGameImage && sourceName) {
 				this._applyExternalGameImage(game, cleanName, false);
 			}
@@ -264,7 +264,7 @@ export function installArchives(VGMPlay_js) {
 			this.amountOfGamesLoaded++;
 			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
-			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, _fromCache: false };
 			gamesByKey[gameKey] = game;
 			gamesInOrder.push(game);
 			return game;
@@ -446,7 +446,7 @@ export function installArchives(VGMPlay_js) {
 			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
 			this._makedirs(gamePath);
 			const parsedName = parseArchiveTitle(sourceName);
-			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, name: parsedName };
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, name: parsedName, _fromCache: false };
 			gamesByKey[gameKey] = game;
 			gamesInOrder.push(game);
 			return game;
@@ -523,7 +523,7 @@ export function installArchives(VGMPlay_js) {
 
 			const parsedName = parseArchiveTitle(sourceName);
 			const derivedName = this._deriveVgmGameName(fileList, parsedName);
-			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, archiveName: sourceName, name: derivedName };
+			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, archiveName: sourceName, name: derivedName, _fromCache: false };
 
 			// Alphabetical sorting for DOOM MUS/LMP archives
 			const hasMusLmp = fileList.some(f => {

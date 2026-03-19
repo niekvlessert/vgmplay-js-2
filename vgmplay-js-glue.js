@@ -5,6 +5,9 @@ class VGMPlay_js {
 	constructor(options = {}) {
 		window.vgmplay_js = this; // Ensure global access for UI handlers
 		window.vgmPlayInstance = this;
+		if (typeof window !== 'undefined' && typeof window.__VGM_DEBUG__ === 'undefined') {
+			window.__VGM_DEBUG__ = false;
+		}
 
 		// --- Android Auto Integration Bridge ---
 		window.vgmPlayerInterface = {
@@ -111,6 +114,7 @@ class VGMPlay_js {
 		this._pendingExternalGameImages = {};
 		this.debugMode = false;
 		this.debugModeHasBeenToggled = false;
+		this.sharedCache = this._normalizeBool(options.sharedCache);
 		this._settingsMenuVisible = false;
 		this._settingsStatusText = '';
 
@@ -333,7 +337,9 @@ class VGMPlay_js {
 
 			// Extension case: ensure container has proper dimensions and interactivity
 			if (options.container && options.shadowRoot && !this.standalone) {
-				console.log('[VGM] Extension case detected, applying container styles');
+				if (window.__VGM_DEBUG__) {
+					console.log('[VGM] Extension case detected, applying container styles');
+				}
 				this.vgmplayContainer.style.cssText = 'position: fixed !important; top: 10px !important; left: 10px !important; bottom: 10px !important; width: 350px !important; height: auto !important; max-height: none !important; display: flex !important; flex-direction: column !important; overflow: visible !important; pointer-events: auto !important; z-index: 2147483647 !important;';
 			}
 
@@ -495,29 +501,104 @@ class VGMPlay_js {
 		return !!value;
 	}
 
+	_isTypingTarget() {
+		const isTextEl = (el) => {
+			if (!el) return false;
+			const tag = el.tagName ? el.tagName.toLowerCase() : '';
+			return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+		};
+		if (isTextEl(document.activeElement)) return true;
+		try {
+			if (this.isExtension && this.shadowRoot && isTextEl(this.shadowRoot.activeElement)) return true;
+		} catch (e) { }
+		return false;
+	}
+
+	_eventIsTyping(e) {
+		const isTextEl = (el) => {
+			if (!el) return false;
+			const tag = el.tagName ? el.tagName.toLowerCase() : '';
+			return tag === 'input' || tag === 'textarea' || el.isContentEditable;
+		};
+		try {
+			if (e && typeof e.composedPath === 'function') {
+				const path = e.composedPath();
+				for (const el of path) {
+					if (isTextEl(el)) return true;
+				}
+			}
+		} catch (err) { }
+		return this._isTypingTarget();
+	}
+
 	setKeyBindings() {
 		if (typeof Mousetrap === 'undefined') {
 			if (this.isExtension && !this._extensionKeyFallback) {
 				this._extensionKeyFallback = true;
 				window.addEventListener('keydown', (e) => {
+					const tgt = e.target;
+					const tag = tgt && tgt.tagName ? tgt.tagName.toLowerCase() : '';
+					const isTyping = this._eventIsTyping && this._eventIsTyping(e);
+					if (tag === 'input' || tag === 'textarea' || (tgt && tgt.isContentEditable) || isTyping) {
+						e.__vgmplayHandled = true;
+						e.stopPropagation();
+						return;
+					}
 					if (e.key === 'd' || e.key === 'D') {
 						this.toggleDebugMode();
 					}
 					if (e.key === 'w' || e.key === 'W') {
 						if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
 					}
-					if (e.key === 'p' || e.key === 'P') {
+					if (e.key === 'c' || e.key === 'C') {
 						this.togglePlayback();
+					}
+					if (e.key === 'n' || e.key === 'N') {
+						this.changeTrack('next');
+					}
+					if (e.key === 'p' || e.key === 'P') {
+						this.changeTrack('previous');
+					}
+					if (e.key === 'f' || e.key === 'F') {
+						this.toggleDisplayZipFileListWindow();
+					}
+					if (e.key === 's' || e.key === 'S') {
+						this.toggleSearchBar();
+					}
+					if (e.key === 'r' || e.key === 'R') {
+						this.toggleRandomScope();
+					}
+					if (e.key === 'l' || e.key === 'L') {
+						this.toggleLoopMode();
+					}
+					if (e.key === 'b' || e.key === 'B') {
+						this.toggleBassBoost();
+					}
+					if (e.key === 'v' || e.key === 'V') {
+						this.toggleReverb();
 					}
 				});
 			}
 			return;
+		}
+		if (this.isExtension && !this._typingGuardInstalled) {
+			this._typingGuardInstalled = true;
+			document.addEventListener('keydown', (e) => {
+				if (this._eventIsTyping && this._eventIsTyping(e)) {
+					e.__vgmplayHandled = true;
+					e.stopImmediatePropagation();
+				}
+			}, true);
 		}
 		if (!this._mousetrapStopCallbackPatched && typeof Mousetrap !== 'undefined') {
 			const prevStop = Mousetrap.stopCallback;
 			Mousetrap.stopCallback = (e, element, combo) => {
 				if (combo === 'space' && element && element.classList && element.classList.contains('vgmplayStandaloneSelect')) {
 					return false;
+				}
+				if (e && e.__vgmplayHandled) return true;
+				if (this.isExtension && element && (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable)) {
+					return true;
 				}
 				return prevStop ? prevStop(e, element, combo) : false;
 			};
@@ -536,44 +617,56 @@ class VGMPlay_js {
 			}
 		}
 		if (this.isExtension) {
-			Mousetrap.bind('p', (e) => {
+			Mousetrap.bind('c', (e) => {
+				if (this._eventIsTyping && this._eventIsTyping(e)) return;
 				this.togglePlayback();
 				return false;
 			}, 'keydown');
 		}
 		Mousetrap.bind('n', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this.libraryState === 1) return;
 			this.changeTrack('next');
 		});
 		Mousetrap.bind('p', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this.libraryState === 1) return;
 			this.changeTrack('previous');
 		});
 		Mousetrap.bind('f', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this.toggleDisplayZipFileListWindow();
 		});
 		Mousetrap.bind('s', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this.toggleSearchBar();
 		});
 		Mousetrap.bind('r', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this.toggleRandomScope();
 		});
 		Mousetrap.bind('v', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this.toggleReverb();
 		});
 		Mousetrap.bind('b', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this.toggleBassBoost();
 		});
 		Mousetrap.bind('l', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this.toggleLoopMode();
 		});
 		Mousetrap.bind('m', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this._setMemoryStatsVisible(!this.showMemoryStats);
 		});
 		Mousetrap.bind('d', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this.toggleDebugMode();
 		});
 		Mousetrap.bind('w', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
 		});
 	}
@@ -2491,6 +2584,9 @@ VGMPlay_js.prototype._changeTrackInGame = async function (action) {
 VGMPlay_js.prototype.toggleDebugMode = function () {
 	this.debugMode = !this.debugMode;
 	this.debugModeHasBeenToggled = true;
+	if (typeof window !== 'undefined') {
+		window.__VGM_DEBUG__ = this.debugMode;
+	}
 	console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
 	if (this._renderSkippedDownloads && this._showSkippedWindow) {
 		this._renderSkippedDownloads();
@@ -2523,7 +2619,9 @@ VGMPlay_js.prototype.playRandom = function () {
 };
 
 if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) || window.VGMPLAY_EXTENSION_OPTIONS) {
-	console.log('[VGM] Auto-init condition met, VGMPLAY_EXTENSION_OPTIONS:', window.VGMPLAY_EXTENSION_OPTIONS);
+	if (window.__VGM_DEBUG__) {
+		console.log('[VGM] Auto-init condition met, VGMPLAY_EXTENSION_OPTIONS:', window.VGMPLAY_EXTENSION_OPTIONS);
+	}
 	const scriptEl = document.currentScript;
 	const data = scriptEl ? scriptEl.dataset : {};
 	// Use extension options if available, otherwise build from data attributes
@@ -2534,7 +2632,9 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 			options.standalone = data.standalone;
 		}
 	}
-	console.log('[VGM] Starting async initialization with options:', options);
+	if (window.__VGM_DEBUG__) {
+		console.log('[VGM] Starting async initialization with options:', options);
+	}
 	(async () => {
 		let cacheSuffix = '';
 		try {
@@ -2593,10 +2693,23 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 		await loadModule('./vgmplay-cache.js', 'installCache', 'cache');
 
 		installers.forEach((fn) => fn(VGMPlay_js));
-		console.log('[VGM] All modules loaded, creating VGMPlay instance');
+		if (window.__VGM_DEBUG__) {
+			console.log('[VGM] All modules loaded, creating VGMPlay instance');
+		}
 		var vgmplay_js = new VGMPlay_js(options);
 		window.vgmPlayInstance = vgmplay_js;
 		if (typeof window !== 'undefined') {
+			if (window.Module && !window.Module.__vgmplayPrintErrWrapped) {
+				const original = window.Module.printErr ? window.Module.printErr.bind(window.Module) : console.error.bind(console);
+				window.Module.printErr = (text) => {
+					const msg = String(text || '');
+					if (!window.__VGM_DEBUG__ && (msg.includes('Failed to find two consecutive MPEG audio frames') || msg.includes('[mp3 @'))) {
+						return;
+					}
+					original(msg);
+				};
+				window.Module.__vgmplayPrintErrWrapped = true;
+			}
 			window.__VGM_DEBUG_SNAPSHOT__ = () => {
 				try {
 					const vgm = window.vgmplay_js || window.vgmPlayInstance;
@@ -2632,7 +2745,8 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 						zipURLLoaded: vgm.zipURLLoaded ? vgm.zipURLLoaded.length : 0,
 						autoScanDist: !!vgm.autoScanDist,
 						standalone: !!vgm.standalone,
-						isExtension: !!vgm.isExtension
+						isExtension: !!vgm.isExtension,
+						sharedCache: !!vgm.sharedCache
 					};
 				} catch (e) {
 					return { error: String(e) };
@@ -2648,8 +2762,28 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 					window.postMessage({ type: 'VGM_DEBUG_SNAPSHOT_RESPONSE', id: data.id, payload }, '*');
 				});
 			}
+			if (!window.__VGM_CACHE_BRIDGE_LISTENER__) {
+				window.__VGM_CACHE_BRIDGE_LISTENER__ = true;
+				window.addEventListener('message', async (e) => {
+					if (e.source !== window) return;
+					const data = e.data || {};
+					if (data.type !== 'VGM_CACHE_BRIDGE_REQUEST') return;
+					const vgm = window.vgmplay_js || window.vgmPlayInstance;
+					let payload = { error: 'vgmplay_js not found' };
+					try {
+						if (vgm && vgm._cacheBridgeRequest) {
+							payload = await vgm._cacheBridgeRequest(data.action, data.payload || {});
+						}
+					} catch (err) {
+						payload = { error: String(err) };
+					}
+					window.postMessage({ type: 'VGM_CACHE_BRIDGE_RESPONSE', id: data.id, payload }, '*');
+				});
+			}
 		}
-		console.log('[VGM] VGMPlay instance created and assigned to window.vgmPlayInstance');
+		if (window.__VGM_DEBUG__) {
+			console.log('[VGM] VGMPlay instance created and assigned to window.vgmPlayInstance');
+		}
 		if (typeof window !== 'undefined' && window.__VGM_RUNTIME_READY__ && vgmplay_js && vgmplay_js.loadWhenReady) {
 			try { vgmplay_js.loadWhenReady(); } catch (e) { }
 		}

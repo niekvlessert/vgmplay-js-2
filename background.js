@@ -33,6 +33,172 @@ chrome.action.onClicked.addListener((tab) => {
     }).catch(() => { });
 });
 
+const CACHE_DB_NAME = 'vgmplay-cache-v1';
+const CACHE_DB_VERSION = 1;
+const CACHE_META_STORE = 'meta';
+const CACHE_FILES_STORE = 'files';
+let cacheDbPromise = null;
+
+function openCacheDb() {
+    if (cacheDbPromise) return cacheDbPromise;
+    cacheDbPromise = new Promise((resolve, reject) => {
+        try {
+            const req = indexedDB.open(CACHE_DB_NAME, CACHE_DB_VERSION);
+            req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(CACHE_META_STORE)) {
+                    db.createObjectStore(CACHE_META_STORE);
+                }
+                if (!db.objectStoreNames.contains(CACHE_FILES_STORE)) {
+                    db.createObjectStore(CACHE_FILES_STORE);
+                }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        } catch (e) {
+            reject(e);
+        }
+    });
+    return cacheDbPromise;
+}
+
+function txComplete(tx) {
+    return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+    });
+}
+
+function reqToPromise(req) {
+    return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function cacheGetMeta() {
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_META_STORE, 'readonly');
+    const store = tx.objectStore(CACHE_META_STORE);
+    const meta = await reqToPromise(store.get('metadata'));
+    await txComplete(tx);
+    return meta || null;
+}
+
+async function cachePutMeta(meta) {
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_META_STORE, 'readwrite');
+    const store = tx.objectStore(CACHE_META_STORE);
+    store.put(meta, 'metadata');
+    await txComplete(tx);
+}
+
+async function cacheGetFiles(paths) {
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_FILES_STORE, 'readonly');
+    const store = tx.objectStore(CACHE_FILES_STORE);
+    const files = [];
+    const missing = [];
+    const reqs = paths.map((path) => {
+        const req = store.get(path);
+        return reqToPromise(req).then((val) => ({ path, val }));
+    });
+    const results = await Promise.all(reqs);
+    await txComplete(tx);
+    for (const { path, val } of results) {
+        if (val) {
+            if (val instanceof Blob) {
+                files.push({ path, data: await val.arrayBuffer() });
+            } else if (val instanceof ArrayBuffer) {
+                files.push({ path, data: val });
+            } else if (val && val.data instanceof ArrayBuffer) {
+                files.push({ path, data: val.data });
+            } else {
+                files.push({ path, data: val.buffer ? val.buffer : val });
+            }
+        } else {
+            missing.push(path);
+        }
+    }
+    return { files, missing };
+}
+
+async function cachePutFiles(files) {
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
+    const store = tx.objectStore(CACHE_FILES_STORE);
+    for (const item of files) {
+        if (!item || !item.path) continue;
+        if (item.b64) {
+            const binary = atob(item.b64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+            store.put({ data: bytes.buffer, len }, item.path);
+            continue;
+        }
+        if (!item.data) continue;
+        const data = item.data instanceof ArrayBuffer ? item.data : (item.data.buffer || item.data);
+        const len = data ? data.byteLength : 0;
+        store.put({ data, len }, item.path);
+    }
+    await txComplete(tx);
+}
+
+async function cacheClearAll() {
+    const db = await openCacheDb();
+    const tx = db.transaction([CACHE_META_STORE, CACHE_FILES_STORE], 'readwrite');
+    tx.objectStore(CACHE_META_STORE).clear();
+    tx.objectStore(CACHE_FILES_STORE).clear();
+    await txComplete(tx);
+}
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || message.type !== 'vgm-cache') return;
+    (async () => {
+        try {
+            if (message.action === 'getMeta') {
+                const meta = await cacheGetMeta();
+                sendResponse({ meta });
+                return;
+            }
+            if (message.action === 'putMeta') {
+                await cachePutMeta(message.payload ? message.payload.meta : null);
+                sendResponse({ ok: true });
+                return;
+            }
+            if (message.action === 'getFiles') {
+                const paths = (message.payload && message.payload.paths) ? message.payload.paths : [];
+                const res = await cacheGetFiles(paths);
+                sendResponse(res);
+                return;
+            }
+            if (message.action === 'hasFiles') {
+                const paths = (message.payload && message.payload.paths) ? message.payload.paths : [];
+                const res = await cacheGetFiles(paths);
+                sendResponse({ missing: res.missing || [] });
+                return;
+            }
+            if (message.action === 'putFiles') {
+                const files = (message.payload && message.payload.files) ? message.payload.files : [];
+                await cachePutFiles(files);
+                sendResponse({ ok: true });
+                return;
+            }
+            if (message.action === 'clearAll') {
+                await cacheClearAll();
+                sendResponse({ ok: true });
+                return;
+            }
+            sendResponse({ error: 'unknown action' });
+        } catch (e) {
+            sendResponse({ error: String(e) });
+        }
+    })();
+    return true;
+});
+
 function installDebugBridge() {
     if (window.__VGM_DEBUG_SNAPSHOT__) return;
     window.__VGM_DEBUG_SNAPSHOT__ = () => new Promise((resolve) => {
@@ -51,10 +217,28 @@ function installDebugBridge() {
             resolve({ error: 'timeout' });
         }, 2000);
     });
+    window.__VGM_CACHE_BRIDGE__ = (action, payload) => new Promise((resolve) => {
+        const id = Date.now() + Math.random();
+        const handler = (e) => {
+            if (e.source !== window) return;
+            const data = e.data || {};
+            if (data.type !== 'VGM_CACHE_BRIDGE_RESPONSE' || data.id !== id) return;
+            window.removeEventListener('message', handler);
+            resolve(data.payload);
+        };
+        window.addEventListener('message', handler);
+        window.postMessage({ type: 'VGM_CACHE_BRIDGE_REQUEST', id, action, payload }, '*');
+        setTimeout(() => {
+            window.removeEventListener('message', handler);
+            resolve({ error: 'timeout' });
+        }, 3000);
+    });
 }
 
 function togglePlayer(extensionUrl) {
-    console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
+    if (window.__VGM_DEBUG__) {
+        console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
+    }
     if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
@@ -91,11 +275,20 @@ function togglePlayer(extensionUrl) {
     // Initialize Module in the isolated world before loading core scripts
     window.__VGM_RUNTIME_READY__ = false;
     window.Module = window.Module || {};
+    if (typeof window.__VGM_DEBUG__ === 'undefined') {
+        window.__VGM_DEBUG__ = false;
+    }
     if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
     if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
     const base = extensionUrl;
     window.Module.print = (text) => { console.log(text); };
-    window.Module.printErr = (text) => { console.error(text); };
+    window.Module.printErr = (text) => {
+        const msg = String(text || '');
+        if (!window.__VGM_DEBUG__ && (msg.includes('Failed to find two consecutive MPEG audio frames') || msg.includes('[mp3 @'))) {
+            return;
+        }
+        console.error(msg);
+    };
     window.Module.locateFile = function (path, prefix) {
         if (path.endsWith(".data") || path.endsWith(".wasm")) return base + path;
         return prefix + path;
@@ -172,8 +365,11 @@ function togglePlayer(extensionUrl) {
         container: container,
         shadowRoot: shadow,
         baseURL: extensionUrl,
-        extensionContentScript: true
+        extensionContentScript: true,
+        sharedCache: true
     };
-    console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set for content script mode');
+    if (window.__VGM_DEBUG__) {
+        console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set for content script mode');
+    }
     return { injected: true };
 }

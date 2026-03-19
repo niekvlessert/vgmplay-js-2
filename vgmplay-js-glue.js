@@ -111,6 +111,8 @@ class VGMPlay_js {
 		this._pendingExternalGameImages = {};
 		this.debugMode = false;
 		this.debugModeHasBeenToggled = false;
+		this._settingsMenuVisible = false;
+		this._settingsStatusText = '';
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -181,39 +183,47 @@ class VGMPlay_js {
 				if (path.endsWith(".data") || path.endsWith(".wasm")) return base + path + cacheSuffix;
 				return prefix + path + cacheSuffix;
 			};
+			const prevInit = window.Module.onRuntimeInitialized;
 			window.Module.onRuntimeInitialized = function () {
+				window.__VGM_RUNTIME_READY__ = true;
+				if (typeof prevInit === 'function') {
+					try { prevInit(); } catch (e) { }
+				}
 				if (window.vgmplay_js && window.vgmplay_js.loadWhenReady) {
 					window.vgmplay_js.loadWhenReady();
 				}
 			};
 		}
 
-		// Load core scripts
-		// Ensure baseURL is correct before loading
-		if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
-			console.error('[VGM] baseURL is incorrect before loading core scripts:', this.baseURL);
-			// Try to get from currentScript
-			try {
-				const currentScript = document.currentScript;
-				if (currentScript && currentScript.src) {
-					const scriptUrl = new URL(currentScript.src);
-					if (scriptUrl.protocol === 'chrome-extension:' || scriptUrl.protocol === 'moz-extension:') {
-						this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
-						console.log('[VGM] Fixed baseURL from currentScript:', this.baseURL);
+		// Load core scripts unless already preloaded in extension content script mode
+		const skipCoreScripts = options && options.extensionContentScript;
+		if (!skipCoreScripts) {
+			// Ensure baseURL is correct before loading
+			if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
+				console.error('[VGM] baseURL is incorrect before loading core scripts:', this.baseURL);
+				// Try to get from currentScript
+				try {
+					const currentScript = document.currentScript;
+					if (currentScript && currentScript.src) {
+						const scriptUrl = new URL(currentScript.src);
+						if (scriptUrl.protocol === 'chrome-extension:' || scriptUrl.protocol === 'moz-extension:') {
+							this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
+							console.log('[VGM] Fixed baseURL from currentScript:', this.baseURL);
+						}
 					}
-				}
-			} catch (e) { }
-		}
-		var script = document.createElement("script");
-		script.src = this.baseURL + "vgmplay-js.js" + cacheSuffix;
-		var script3 = document.createElement("script");
-		script3.src = this.baseURL + "minizip-asm.min.js" + cacheSuffix;
-		var script4 = document.createElement("script");
-		script4.src = this.baseURL + "7zz.umd.js" + cacheSuffix;
+				} catch (e) { }
+			}
+			var script = document.createElement("script");
+			script.src = this.baseURL + "vgmplay-js.js" + cacheSuffix;
+			var script3 = document.createElement("script");
+			script3.src = this.baseURL + "minizip-asm.min.js" + cacheSuffix;
+			var script4 = document.createElement("script");
+			script4.src = this.baseURL + "7zz.umd.js" + cacheSuffix;
 
-		document.head.appendChild(script);
-		document.head.appendChild(script3);
-		document.head.appendChild(script4);
+			document.head.appendChild(script);
+			document.head.appendChild(script3);
+			document.head.appendChild(script4);
+		}
 
 		// Handle UI initialization
 		if (!this.useAsLibrary) {
@@ -2586,7 +2596,63 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 		console.log('[VGM] All modules loaded, creating VGMPlay instance');
 		var vgmplay_js = new VGMPlay_js(options);
 		window.vgmPlayInstance = vgmplay_js;
+		if (typeof window !== 'undefined') {
+			window.__VGM_DEBUG_SNAPSHOT__ = () => {
+				try {
+					const vgm = window.vgmplay_js || window.vgmPlayInstance;
+					if (!vgm) return { error: 'vgmplay_js not found' };
+					const host = (window.location && window.location.host) ? window.location.host : '';
+					const overflowCount = vgm.autoOverflowURLs ? vgm.autoOverflowURLs.length : 0;
+					const overflowSizeCount = vgm.autoOverflowSizes ? vgm.autoOverflowSizes.size : 0;
+					let overflowBytes = 0;
+					if (vgm.autoOverflowSizes) {
+						for (const [, size] of vgm.autoOverflowSizes.entries()) {
+							if (typeof size === 'number' && !Number.isNaN(size)) overflowBytes += size;
+						}
+					}
+					return {
+						origin: (window.location && window.location.origin) ? window.location.origin : '',
+						host,
+						cacheReady: vgm._cacheReady,
+						gamesLoaded: vgm.games ? vgm.games.length : 0,
+						cacheFingerprints: vgm._cacheFingerprints ? vgm._cacheFingerprints.size : 0,
+						cacheArchiveNames: vgm._cacheArchiveNames ? vgm._cacheArchiveNames.size : 0,
+						cacheHostMeta: vgm._cacheRestoredByHost ? Array.from(vgm._cacheRestoredByHost.entries()) : null,
+						cacheRestoredGameCount: vgm._cacheRestoredGameCount || 0,
+						autoCacheHits: vgm.autoCacheHits || 0,
+						autoDownloadCount: vgm.autoDownloadCount || 0,
+						autoDownloadBytes: vgm.autoDownloadBytes || 0,
+						autoDownloadLimit: vgm.autoDownloadLimit,
+						autoDownloadBytesLimit: vgm.autoDownloadBytesLimit,
+						autoOverflowCount: overflowCount,
+						autoOverflowSizesCount: overflowSizeCount,
+						autoOverflowBytes: overflowBytes,
+						zipQueueLength: vgm.zipQueue ? vgm.zipQueue.length : 0,
+						zipURLPending: vgm.zipURLPending ? vgm.zipURLPending.length : 0,
+						zipURLLoaded: vgm.zipURLLoaded ? vgm.zipURLLoaded.length : 0,
+						autoScanDist: !!vgm.autoScanDist,
+						standalone: !!vgm.standalone,
+						isExtension: !!vgm.isExtension
+					};
+				} catch (e) {
+					return { error: String(e) };
+				}
+			};
+			if (!window.__VGM_DEBUG_LISTENER__) {
+				window.__VGM_DEBUG_LISTENER__ = true;
+				window.addEventListener('message', (e) => {
+					if (e.source !== window) return;
+					const data = e.data || {};
+					if (data.type !== 'VGM_DEBUG_SNAPSHOT_REQUEST') return;
+					const payload = (window.__VGM_DEBUG_SNAPSHOT__) ? window.__VGM_DEBUG_SNAPSHOT__() : { error: 'debug snapshot unavailable' };
+					window.postMessage({ type: 'VGM_DEBUG_SNAPSHOT_RESPONSE', id: data.id, payload }, '*');
+				});
+			}
+		}
 		console.log('[VGM] VGMPlay instance created and assigned to window.vgmPlayInstance');
+		if (typeof window !== 'undefined' && window.__VGM_RUNTIME_READY__ && vgmplay_js && vgmplay_js.loadWhenReady) {
+			try { vgmplay_js.loadWhenReady(); } catch (e) { }
+		}
 		if (vgmplay_js && vgmplay_js._autoScanDist) {
 			setTimeout(() => {
 				vgmplay_js.checkEverythingReady().then(() => {

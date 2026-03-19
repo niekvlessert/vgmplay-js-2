@@ -62,6 +62,7 @@ export function installUi(VGMPlay_js) {
 				<button id="btnLoop" onclick="vgmplay_js.toggleLoopMode()">L</button>
 				<button id="btnLibrary" onclick="vgmplay_js.toggleDisplayZipFileListWindow()">F</button>
 				<button id="btnSearch" onclick="vgmplay_js.toggleSearchBar()">&#128269;</button>
+				<button id="btnSettings">&#9881;</button>
 				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
 			</div>
 		`;
@@ -81,6 +82,10 @@ export function installUi(VGMPlay_js) {
 		this.btnLoop = byId('btnLoop');
 		this.btnLibrary = byId('btnLibrary');
 		this.btnSearch = byId('btnSearch');
+		this.btnSettings = byId('btnSettings');
+		if (this.btnSettings) {
+			this.btnSettings.addEventListener('click', () => this.toggleSettingsMenu());
+		}
 
 		// Disable and hide library toggle on mobile
 		if (typeof window !== 'undefined' && window.innerWidth <= 600) {
@@ -272,7 +277,8 @@ export function installUi(VGMPlay_js) {
 			'btnRandom': 'Shuffle game/all (R)',
 			'btnLoop': 'Loop track/game (L)',
 			'btnLibrary': 'Toggle Float/Library (F)',
-			'btnSearch': 'Search (S)'
+			'btnSearch': 'Search (S)',
+			'btnSettings': 'Settings'
 		};
 
 		let tooltipTimeout;
@@ -319,6 +325,35 @@ export function installUi(VGMPlay_js) {
 		}
 	};
 
+	VGMPlay_js.prototype.toggleSettingsMenu = function () {
+		this._settingsMenuVisible = !this._settingsMenuVisible;
+		if (this._settingsMenuVisible) {
+			this._settingsStatusText = '';
+			this._showSkippedWindow();
+		}
+		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._dumpDebugSnapshot = function () {
+		let snapshot = null;
+		if (typeof window !== 'undefined' && window.__VGM_DEBUG_SNAPSHOT__) {
+			try {
+				snapshot = window.__VGM_DEBUG_SNAPSHOT__();
+			} catch (e) {
+				snapshot = { error: String(e) };
+			}
+		} else {
+			snapshot = {
+				error: 'debug snapshot unavailable',
+				cacheReady: this._cacheReady,
+				gamesLoaded: this.games ? this.games.length : 0
+			};
+		}
+		console.log('[VGM] Debug snapshot:', snapshot);
+		this._settingsStatusText = 'Debug snapshot dumped to console.';
+		this._renderSkippedDownloads();
+	};
+
 	VGMPlay_js.prototype._applyGameSearchFilter = function () {
 		const query = (this.searchQuery || '').toLowerCase();
 		for (const game of this.games) {
@@ -352,18 +387,57 @@ export function installUi(VGMPlay_js) {
 			this._renderCacheClearPrompt();
 		}
 
-		// Add Debug Mode status display (only if toggled)
-		if (this.debugModeHasBeenToggled) {
+		const contentBlocks = [];
+		if (this._settingsMenuVisible) {
+			const statusLine = this._settingsStatusText ? `<div class="vgmplaySettingsStatus">${this._settingsStatusText}</div>` : '';
+			contentBlocks.push(`
+				<div class="vgmplaySettingsMenu">
+					<div class="vgmplaySkippedAutoText">Settings</div>
+					<div class="vgmplaySkippedAutoActions">
+						<button class="vgmplaySettingsClearCache">Clear cache</button>
+						<button class="vgmplaySettingsDumpDebug">Dump debug snapshot</button>
+					</div>
+					${statusLine}
+				</div>
+			`);
+		}
+		if (!this._settingsMenuVisible && this.debugModeHasBeenToggled) {
+			contentBlocks.push(`
+				<div style="margin-bottom: 8px;"><b>Debug Mode:</b> <span>${this.debugMode ? 'ON' : 'OFF'}</span></div>
+			`);
+		}
+		if (contentBlocks.length) {
 			if (!this.skippedContentEl) {
 				this.skippedContentEl = document.createElement('div');
 				this.skippedContentEl.className = 'vgmplaySkippedContent';
 				this.skippedWindow.insertBefore(this.skippedContentEl, this.skippedList);
 			}
-			this.skippedContentEl.innerHTML = `
-				<div style="margin-bottom: 8px;"><b>Debug Mode:</b> <span>${this.debugMode ? 'ON' : 'OFF'}</span></div>
-			`;
+			this.skippedContentEl.innerHTML = contentBlocks.join('');
+			const clearBtn = this.skippedContentEl.querySelector('.vgmplaySettingsClearCache');
+			const dumpBtn = this.skippedContentEl.querySelector('.vgmplaySettingsDumpDebug');
+			if (clearBtn) {
+				clearBtn.addEventListener('click', () => {
+					this._cacheClearPromptVisible = true;
+					this._renderSkippedDownloads();
+				});
+			}
+			if (dumpBtn) {
+				dumpBtn.addEventListener('click', () => {
+					this._dumpDebugSnapshot();
+				});
+			}
 		} else if (this.skippedContentEl) {
 			this.skippedContentEl.innerHTML = '';
+		}
+
+		if (this._settingsMenuVisible) {
+			if (this.skippedNotice) this.skippedNotice.style.display = 'none';
+			if (this.skippedAutoLimit) this.skippedAutoLimit.innerHTML = '';
+			if (this.skippedCacheClear) this.skippedCacheClear.innerHTML = '';
+			if (this.skippedList) this.skippedList.innerHTML = '';
+			this._positionSkippedWindow();
+			this._updateSkippedAutoHide();
+			return;
 		}
 
 		if (this.skippedDownloads.length === 0 && this.noPlayableNotices.length === 0) {
@@ -431,6 +505,10 @@ export function installUi(VGMPlay_js) {
 	VGMPlay_js.prototype._hideSkippedWindow = function (fade = true) {
 		this._clearSkippedAutoHide();
 		if (!this.skippedWindow) return;
+		if (this._settingsMenuVisible) {
+			this._settingsMenuVisible = false;
+			this._settingsStatusText = '';
+		}
 		if (fade) {
 			this.skippedWindow.classList.add('vgmplaySkippedFading');
 			setTimeout(() => {
@@ -452,8 +530,8 @@ export function installUi(VGMPlay_js) {
 
 	VGMPlay_js.prototype._updateSkippedAutoHide = function () {
 		if (!this.skippedWindowVisible) return;
-		const needsAction = this.skippedDownloads.length > 0 || this.autoOverflowURLs.length > 0 || this._cacheClearPromptVisible;
-		const hasNotices = this.noPlayableNotices.length > 0 || this.debugModeHasBeenToggled;
+		const needsAction = this.skippedDownloads.length > 0 || this.autoOverflowURLs.length > 0 || this._cacheClearPromptVisible || this._settingsMenuVisible;
+		const hasNotices = this.noPlayableNotices.length > 0 || this.debugModeHasBeenToggled || this._settingsMenuVisible;
 
 		if (needsAction || !hasNotices) {
 			this._clearSkippedAutoHide();

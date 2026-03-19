@@ -341,6 +341,25 @@
   justify-content: center;
 }
 
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+}
+
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayPlayerWindow button {
+  min-width: 19px;
+  padding: 1px 2px;
+}
+
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayControls .vgmplayTime {
+  flex-basis: 100%;
+  text-align: center;
+  margin-top: 2px;
+}
+
 .vgmplayContainer.vgmplayStandalone .vgmplayTime {
   font-family: monospace !important;
   margin-left: 4px;
@@ -544,6 +563,17 @@
   cursor: pointer;
   padding: 2px 6px;
   font-size: 11px;
+}
+
+.vgmplayContainer .vgmplaySettingsMenu {
+  padding: 4px 6px 6px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.vgmplayContainer .vgmplaySettingsStatus {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-top: 6px;
 }
 
 .vgmplayContainer .vgmplaySkippedTitle {

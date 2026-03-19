@@ -353,8 +353,17 @@ export function installCache(VGMPlay_js) {
 			FS.syncfs(false, (err) => {
 				if (err) {
 					console.error("[VGM] Failed to sync cleared cache to IDBFS:", err);
-				} else {
-					console.log("[VGM] Cache successfully cleared.");
+					return;
+				}
+				console.log("[VGM] Cache successfully cleared.");
+				if (this._renderSkippedDownloads) this._renderSkippedDownloads();
+				if (this._showSkippedWindow) this._showSkippedWindow();
+				if (this.vgmplayContainer && this.vgmplayContainer.getRootNode) {
+					// ensure UI reflects cleared state
+					this._scheduleZipRender();
+				}
+				if (typeof window !== 'undefined' && window.location) {
+					setTimeout(() => window.location.reload(), 100);
 				}
 			});
 

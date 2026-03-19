@@ -141,23 +141,25 @@ class VGMPlay_js {
 
 		// Determine base URL
 		this.baseURL = options.baseURL || '';
-		// If baseURL is still empty or looks like a web URL (not extension URL), try to fix it
-		if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
-			// Try to get from currentScript first
+		const resolveBaseFromScript = () => {
 			try {
 				const currentScript = document.currentScript;
 				if (currentScript && currentScript.src) {
-					const scriptUrl = new URL(currentScript.src);
-					// If it's an extension URL, use it
-					if (scriptUrl.protocol === 'chrome-extension:' || scriptUrl.protocol === 'moz-extension:') {
-						this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
-					}
+					this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
 				}
 			} catch (e) { }
-			// Last resort: if still not set or is a web URL, we have a problem
-			if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
-				console.error('[VGM] Failed to determine correct baseURL for extension. BaseURL:', this.baseURL);
-			}
+		};
+		if (!this.baseURL) {
+			resolveBaseFromScript();
+		}
+		if (!this.baseURL && typeof window !== 'undefined' && window.location) {
+			try {
+				const url = new URL('.', window.location.href);
+				this.baseURL = url.toString();
+			} catch (e) { }
+		}
+		if ((!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) && this.isExtension && window.__VGM_DEBUG__) {
+			console.error('[VGM] Failed to determine correct baseURL for extension. BaseURL:', this.baseURL);
 		}
 		this.isExtension = !!(options && options.shadowRoot && options.container);
 		if (!this.isExtension && this.baseURL) {
@@ -203,19 +205,8 @@ class VGMPlay_js {
 		const skipCoreScripts = options && options.extensionContentScript;
 		if (!skipCoreScripts) {
 			// Ensure baseURL is correct before loading
-			if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
-				console.error('[VGM] baseURL is incorrect before loading core scripts:', this.baseURL);
-				// Try to get from currentScript
-				try {
-					const currentScript = document.currentScript;
-					if (currentScript && currentScript.src) {
-						const scriptUrl = new URL(currentScript.src);
-						if (scriptUrl.protocol === 'chrome-extension:' || scriptUrl.protocol === 'moz-extension:') {
-							this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
-							console.log('[VGM] Fixed baseURL from currentScript:', this.baseURL);
-						}
-					}
-				} catch (e) { }
+			if (!this.baseURL) {
+				resolveBaseFromScript();
 			}
 			var script = document.createElement("script");
 			script.src = this.baseURL + "vgmplay-js.js" + cacheSuffix;

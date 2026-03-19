@@ -35,7 +35,7 @@ export function installLibrary(VGMPlay_js) {
 			game.uiElement = null;
 			this.showVGMFromZip(game);
 		}
-		if (cachedByHost.size > 0) {
+		if (cachedByHost.size > 0 && this.isExtension) {
 			for (const [hostKey, list] of cachedByHost.entries()) {
 				if (!list.length) continue;
 				const header = document.createElement('div');

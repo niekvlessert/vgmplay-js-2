@@ -2,23 +2,28 @@ export function installArchives(VGMPlay_js) {
 	VGMPlay_js.prototype._getArchiveWorker = function () {
 		if (this.archiveWorker) return this.archiveWorker;
 		if (typeof Worker === 'undefined') return null;
+		if (this.isExtension && !this.standalone) return null;
 		try {
 			const cacheSuffix = this._cacheBust ? ('v=' + Date.now()) : '';
 			const withCache = (url) => {
 				if (!cacheSuffix) return url;
 				return url + (url.includes('?') ? '&' : '?') + cacheSuffix;
 			};
-			let workerUrl = null;
-			if (this.baseURL) {
-				const candidate = new URL('archive-worker.js', this.baseURL);
-				if (typeof window === 'undefined' || candidate.origin === window.location.origin) {
-					workerUrl = new URL(withCache(candidate.toString()));
-				}
+		let workerUrl = null;
+		if (this.baseURL) {
+			const candidate = new URL('archive-worker.js', this.baseURL);
+			if (typeof window === 'undefined' || candidate.origin === window.location.origin) {
+				workerUrl = new URL(withCache(candidate.toString()));
 			}
-			if (!workerUrl && typeof window !== 'undefined') {
+		}
+		// Only use window.location as fallback if not in an extension context
+		if (!workerUrl && typeof window !== 'undefined') {
+			const isExtension = this.baseURL && (this.baseURL.startsWith('chrome-extension:') || this.baseURL.startsWith('moz-extension:'));
+			if (!isExtension) {
 				workerUrl = new URL(withCache(new URL('archive-worker.js', window.location.href).toString()));
 			}
-			const fallback = this.baseURL + 'archive-worker.js';
+		}
+		const fallback = this.baseURL ? this.baseURL + 'archive-worker.js' : 'archive-worker.js';
 			const worker = new Worker(workerUrl ? workerUrl.toString() : withCache(fallback));
 			worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
 			worker.onerror = (e) => {
@@ -106,20 +111,22 @@ export function installArchives(VGMPlay_js) {
 			return;
 		}
 
-		try {
-			if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
-			const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
-			if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
-			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
-			if (this._markCached) this._markCached(fingerprint);
-			if (this._saveCache) this._saveCache();
-			return;
-		} catch (e) {
-			if (byteArray.byteLength === 0) {
-				console.error("[VGM] Zip worker failed after buffer transfer:", e);
+		if (!(this.isExtension && !this.standalone)) {
+			try {
+				if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
+				const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
+				if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
+				await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+				if (this._markCached) this._markCached(fingerprint);
+				if (this._saveCache) this._saveCache();
 				return;
+			} catch (e) {
+				if (byteArray.byteLength === 0) {
+					console.error("[VGM] Zip worker failed after buffer transfer:", e);
+					return;
+				}
+				console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
 			}
-			console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
 		}
 
 		const yieldEvery = 50;

@@ -8,6 +8,72 @@
   z-index: 2147483647;
   box-sizing: border-box !important;
   text-align: left !important;
+  pointer-events: auto;
+}
+
+/* Extension-specific overrides */
+#vgmplay-container .vgmplayTitleWindow,
+#vgmplay-container .vgmplayPlayerWindow,
+#vgmplay-container .vgmplayZipFileListWindow {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  margin: 0 !important;
+}
+
+#vgmplay-container {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#vgmplay-container .vgmplayContainer {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: visible !important;
+  padding: 6px !important;
+  gap: 6px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#vgmplay-container .vgmplayTitleWindow,
+#vgmplay-container .vgmplayPlayerWindow {
+  margin: 0 0 6px 0 !important;
+}
+
+#vgmplay-container .vgmplaySkippedWindow {
+  position: absolute;
+  z-index: 2147483647;
+  max-width: none;
+  left: 0;
+  right: auto;
+  top: 20px;
+}
+
+#vgmplay-container #vgmplayTracksContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  flex: 1 1 auto;
+  width: 266px !important;
+}
+
+#vgmplay-container .vgmplayZipFileListWindow {
+  flex: 1 1 auto;
+  height: auto;
+  width: 266px !important;
+  margin: 0 !important;
+}
+
+#vgmplay-container .vgmplayUploader {
+  margin: 2px 0 0 0 !important;
+  width: 266px !important;
+  align-self: flex-start !important;
 }
 
 .vgmplayContainer.vgmplayStandalone {
@@ -841,6 +907,28 @@
   overflow-x: hidden;
   text-align: left;
   margin: 0;
+}
+
+.vgmplayContainer .vgmplayCacheHeader {
+  font-size: 10px;
+  padding: 4px 6px;
+  margin: 4px 0;
+  border-top: 1px solid #444;
+  border-bottom: 1px solid #444;
+  color: #b7ffcc;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.vgmplayContainer .vgmplayCacheHeader {
+  font-size: 10px;
+  padding: 4px 6px;
+  margin: 4px 0;
+  border-top: 1px solid #444;
+  border-bottom: 1px solid #444;
+  color: #b7ffcc;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 
 .vgmplayContainer .vgmplayTrack {

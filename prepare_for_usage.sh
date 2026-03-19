@@ -22,6 +22,7 @@ FILES_TO_COPY=(
     "7zz.wasm"
     "unrar.min.js"
     "audiomotion-analyzer.js"
+    "archive-worker.js"
 )
 
 # Include extra VGMPlay modules (vgmplay-*.js) without duplicating core files

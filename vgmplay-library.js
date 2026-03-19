@@ -2,12 +2,46 @@ export function installLibrary(VGMPlay_js) {
 	VGMPlay_js.prototype._renderZipGamesNow = function () {
 		if (!this.zipFileListWindow) return;
 		this.zipFileListWindow.innerHTML = "";
+		const normalizeArchiveName = (value) => {
+			if (!value) return '';
+			const base = String(value).split('?')[0].split('#')[0];
+			const last = base.split('/').pop() || base;
+			try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
+		};
+		const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+		const currentScan = this._currentScanNames || new Set();
+		const currentGames = [];
+		const cachedByHost = new Map();
 		for (const game of this.games) {
+			const key = normalizeArchiveName(game && (game.archiveName || game.name));
+			if (key && currentScan.has(key)) {
+				currentGames.push(game);
+				continue;
+			}
+			const hostKey = (game && game.cacheHost) ? String(game.cacheHost) : (currentHost || 'unknown');
+			if (!cachedByHost.has(hostKey)) cachedByHost.set(hostKey, []);
+			cachedByHost.get(hostKey).push(game);
+		}
+		for (const game of currentGames) {
 			game.uiElement = null;
 			this.showVGMFromZip(game);
 		}
+		if (cachedByHost.size > 0) {
+			for (const [hostKey, list] of cachedByHost.entries()) {
+				if (!list.length) continue;
+				const header = document.createElement('div');
+				header.className = 'vgmplayCacheHeader';
+				const labelHost = hostKey || currentHost || 'unknown';
+				header.textContent = `Cached before from: ${labelHost}`;
+				this.zipFileListWindow.appendChild(header);
+				for (const game of list) {
+					game.uiElement = null;
+					this.showVGMFromZip(game);
+				}
+			}
+		}
 		const isMobile = typeof window !== 'undefined' && window.innerWidth <= 600;
-		if (!isMobile && this.games.length > 10 && this.libraryState === 0) {
+		if (!isMobile && this.games.length > 10 && this.libraryState === 0 && this.standalone) {
 			this.libraryState = 2; // Jump to Grid Overview (Blue mode)
 			if (this.toggleDisplayZipFileListWindow) {
 				// We call it once to "apply" the state logic (it will increment to 3 then mod 3, so we set it to 1 first)

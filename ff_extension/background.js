@@ -1,19 +1,14 @@
-const api = (typeof browser !== 'undefined') ? browser : chrome;
-
-api.action.onClicked.addListener((tab) => {
-    console.log("[VGM] Action clicked, injecting to tab:", tab.id);
-    api.scripting.executeScript({
+chrome.action.onClicked.addListener((tab) => {
+    chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: togglePlayer
-    }).then(() => {
-        console.log("[VGM] Script injected successfully");
-    }).catch(err => {
-        console.error("[VGM] Injection failed:", err);
+        world: 'MAIN',
+        func: togglePlayer,
+        args: [chrome.runtime.getURL('')]
     });
 });
 
-function togglePlayer() {
-    console.log("[VGM] togglePlayer executed in tab context");
+function togglePlayer(extensionUrl) {
+    console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
     if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
@@ -47,38 +42,85 @@ function togglePlayer() {
 
     const shadow = root.attachShadow({ mode: 'open' });
 
-    // Add styles
+    // Initialize Module directly in the Main World
+    window.Module = window.Module || {};
+    if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
+    if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
+
+    // Add styles - inject directly into Shadow DOM for proper scoping
     const styleLink = document.createElement('link');
     styleLink.rel = 'stylesheet';
-    const api = (typeof browser !== 'undefined') ? browser : chrome;
-    styleLink.href = api.runtime.getURL('css/style.css');
+    styleLink.href = extensionUrl + 'css/style.css';
     shadow.appendChild(styleLink);
+
+    // Add extension-specific overrides
+    const style = document.createElement('style');
+    style.textContent = `
+        .vgmplayContainer {
+            position: fixed !important;
+            top: 20px !important;
+            left: 20px !important;
+            width: 350px !important;
+            height: 80vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+            overflow: hidden !important;
+        }
+        .vgmplayTitleWindow {
+            display: flex !important;
+            flex-shrink: 0 !important;
+        }
+        .vgmplayPlayerWindow {
+            display: block !important;
+            flex-shrink: 0 !important;
+        }
+        .vgmplayStandaloneGameGrid {
+            display: grid !important;
+            flex: 1 !important;
+            overflow-y: auto !important;
+        }
+        #vgmplayTracksContainer {
+            display: flex !important;
+            flex: 1 !important;
+            overflow-y: auto !important;
+        }
+    `;
+    shadow.appendChild(style);
 
     // Container for the player
     const container = document.createElement('div');
     container.id = 'vgmplay-container';
+    // Set container styles to ensure visibility and interactivity
+    container.style.cssText = `
+        all: initial !important;
+        display: block !important;
+        position: absolute !important;
+        bottom: 0 !important;
+        right: 0 !important;
+        width: 320px !important;
+        height: auto !important;
+        min-height: 200px !important;
+        pointer-events: auto !important;
+        overflow: visible !important;
+        z-index: 1 !important;
+    `;
     shadow.appendChild(container);
 
+    // Set options for the auto-init BEFORE loading the glue script
+    window.VGMPLAY_EXTENSION_OPTIONS = {
+        container: container,
+        shadowRoot: shadow,
+        baseURL: extensionUrl
+    };
+    console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set, loading glue script');
     // Load the glue script
     const script = document.createElement('script');
-    script.src = api.runtime.getURL('vgmplay-js-glue.js');
+    script.src = extensionUrl + 'vgmplay-js-glue.js';
     script.onload = () => {
-        console.log("[VGM] Glue script loaded");
-        // We need to trigger initialization in the Main World because VGMPlay_js is defined there.
-        // This runs in the Isolated World, so we inject another script tag.
-        const initScript = document.createElement('script');
-        initScript.textContent = `
-            if (!window.vgmPlayInstance) {
-                const root = document.getElementById('vgmplay-extension-root');
-                const container = root.shadowRoot.getElementById('vgmplay-container');
-                window.vgmPlayInstance = new VGMPlay_js({
-                    container: container,
-                    shadowRoot: root.shadowRoot,
-                    baseURL: '${api.runtime.getURL('')}'
-                });
-            }
-        `;
-        document.head.appendChild(initScript);
+        console.log('[VGM] Glue script loaded successfully');
+    };
+    script.onerror = (e) => {
+        console.error('[VGM] Failed to load glue script:', e);
     };
     document.head.appendChild(script);
 }

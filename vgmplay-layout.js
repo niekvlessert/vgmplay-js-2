@@ -40,8 +40,18 @@ export function installLayout(VGMPlay_js) {
 			this.standaloneGroupTransformY -= this.pos2;
 			this.dragTargetWindow.style.transform = `translate(${this.standaloneGroupTransformX}px, ${this.standaloneGroupTransformY}px)`;
 		} else {
-			this.vgmplayContainer.style.top = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
-			this.vgmplayContainer.style.left = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
+			const nextTop = (this.vgmplayContainer.offsetTop - this.pos2) + "px";
+			const nextLeft = (this.vgmplayContainer.offsetLeft - this.pos1) + "px";
+			if (this.isExtension && !this.standalone && this.vgmplayContainer.style && this.vgmplayContainer.style.setProperty) {
+				this.vgmplayContainer.style.setProperty('top', nextTop, 'important');
+				this.vgmplayContainer.style.setProperty('left', nextLeft, 'important');
+			} else {
+				this.vgmplayContainer.style.top = nextTop;
+				this.vgmplayContainer.style.left = nextLeft;
+			}
+			if (this.isExtension && !this.standalone && this.skippedWindowVisible && this._positionSkippedWindow) {
+				this._positionSkippedWindow();
+			}
 		}
 
 		if (this.libraryState === 1 && !this.standalone) {
@@ -90,6 +100,24 @@ export function installLayout(VGMPlay_js) {
 	VGMPlay_js.prototype.toggleDisplayZipFileListWindow = function () {
 		const isMobile = typeof window !== 'undefined' && window.innerWidth <= 600;
 		if (isMobile) return;
+
+		if (this.isExtension && !this.standalone) {
+			const nextVisible = !this.showZipFileListWindow;
+			this.libraryState = 0;
+			this.showZipFileListWindow = nextVisible;
+			if (this.tracksContainer) {
+				this.tracksContainer.style.display = nextVisible ? '' : 'none';
+			}
+			if (this.btnLibrary) {
+				this.btnLibrary.classList.remove('blue-active');
+				this.btnLibrary.classList.remove('red-active');
+				this.btnLibrary.classList.toggle('active', !nextVisible);
+			}
+			if (!nextVisible && this.zipFileListWindow) {
+				this.zipFileListWindow.scrollTop = 0;
+			}
+			return;
+		}
 
 		const maxStates = 3;
 		this.libraryState = (this.libraryState + 1) % maxStates;

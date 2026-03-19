@@ -96,8 +96,12 @@ class VGMPlay_js {
 		this._mousetrapStopCallbackPatched = false;
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
+		this.autoDownloadBytesLimit = this.standalone ? Number.POSITIVE_INFINITY : (5 * 1024 * 1024);
 		this.autoDownloadCount = 0;
+		this.autoDownloadBytes = 0;
+		this.autoCacheHits = 0;
 		this.autoOverflowURLs = [];
+		this.autoOverflowSizes = new Map();
 		this.noPlayableNotices = [];
 		this.autoScanDist = (typeof options.autoScanDist === 'undefined') ? this.standalone : !!options.autoScanDist;
 		this.autoScanDistBase = options.autoScanDistBase || '/dist/';
@@ -124,24 +128,34 @@ class VGMPlay_js {
 		this.visualSamplePosition = 0;
 		this.emulatorFinished = false;
 
-		// Bind dragging methods
-		this.elementDrag = this.elementDrag.bind(this);
-		this.stopDrag = this.stopDrag.bind(this);
-		this.dragStart = this.dragStart.bind(this);
+		// Bind dragging methods (check if they exist first, as they may be added by modules)
+		if (this.elementDrag) this.elementDrag = this.elementDrag.bind(this);
+		if (this.stopDrag) this.stopDrag = this.stopDrag.bind(this);
+		if (this.dragStart) this.dragStart = this.dragStart.bind(this);
 
 		// Determine base URL
 		this.baseURL = options.baseURL || '';
-		if (!this.baseURL) {
+		// If baseURL is still empty or looks like a web URL (not extension URL), try to fix it
+		if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
+			// Try to get from currentScript first
 			try {
 				const currentScript = document.currentScript;
 				if (currentScript && currentScript.src) {
-					this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
+					const scriptUrl = new URL(currentScript.src);
+					// If it's an extension URL, use it
+					if (scriptUrl.protocol === 'chrome-extension:' || scriptUrl.protocol === 'moz-extension:') {
+						this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
+					}
 				}
 			} catch (e) { }
-			if (!this.baseURL) {
-				const baseHref = document.baseURI || window.location.href;
-				this.baseURL = baseHref.substring(0, baseHref.lastIndexOf('/') + 1);
+			// Last resort: if still not set or is a web URL, we have a problem
+			if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
+				console.error('[VGM] Failed to determine correct baseURL for extension. BaseURL:', this.baseURL);
 			}
+		}
+		this.isExtension = !!(options && options.shadowRoot && options.container);
+		if (!this.isExtension && this.baseURL) {
+			this.isExtension = this.baseURL.startsWith('chrome-extension://') || this.baseURL.startsWith('moz-extension://');
 		}
 		let cacheBust = false;
 		try {
@@ -175,6 +189,21 @@ class VGMPlay_js {
 		}
 
 		// Load core scripts
+		// Ensure baseURL is correct before loading
+		if (!this.baseURL || (!this.baseURL.startsWith('chrome-extension://') && !this.baseURL.startsWith('moz-extension://'))) {
+			console.error('[VGM] baseURL is incorrect before loading core scripts:', this.baseURL);
+			// Try to get from currentScript
+			try {
+				const currentScript = document.currentScript;
+				if (currentScript && currentScript.src) {
+					const scriptUrl = new URL(currentScript.src);
+					if (scriptUrl.protocol === 'chrome-extension:' || scriptUrl.protocol === 'moz-extension:') {
+						this.baseURL = currentScript.src.substring(0, currentScript.src.lastIndexOf('/') + 1);
+						console.log('[VGM] Fixed baseURL from currentScript:', this.baseURL);
+					}
+				}
+			} catch (e) { }
+		}
 		var script = document.createElement("script");
 		script.src = this.baseURL + "vgmplay-js.js" + cacheSuffix;
 		var script3 = document.createElement("script");
@@ -188,9 +217,13 @@ class VGMPlay_js {
 
 		// Handle UI initialization
 		if (!this.useAsLibrary) {
-			var script2 = document.createElement("script");
-			script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
-			document.head.appendChild(script2);
+			// Load Mousetrap only if not in extension context (extensions can't load external scripts)
+			const isExtension = this.baseURL && (this.baseURL.startsWith('chrome-extension://') || this.baseURL.startsWith('moz-extension://'));
+			if (!isExtension) {
+				var script2 = document.createElement("script");
+				script2.src = "https://cdnjs.cloudflare.com/ajax/libs/mousetrap/1.4.6/mousetrap.min.js";
+				document.head.appendChild(script2);
+			}
 
 			var link = document.createElement('link');
 			link.rel = 'stylesheet';
@@ -286,6 +319,12 @@ class VGMPlay_js {
 				this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
 				if (this.memoryDisplay) this.memoryDisplay.style.display = 'none';
 				this._updateMemoryDisplay();
+			}
+
+			// Extension case: ensure container has proper dimensions and interactivity
+			if (options.container && options.shadowRoot && !this.standalone) {
+				console.log('[VGM] Extension case detected, applying container styles');
+				this.vgmplayContainer.style.cssText = 'position: fixed !important; top: 10px !important; left: 10px !important; bottom: 10px !important; width: 350px !important; height: auto !important; max-height: none !important; display: flex !important; flex-direction: column !important; overflow: visible !important; pointer-events: auto !important; z-index: 2147483647 !important;';
 			}
 
 			if (this.standalone) {
@@ -447,6 +486,23 @@ class VGMPlay_js {
 	}
 
 	setKeyBindings() {
+		if (typeof Mousetrap === 'undefined') {
+			if (this.isExtension && !this._extensionKeyFallback) {
+				this._extensionKeyFallback = true;
+				window.addEventListener('keydown', (e) => {
+					if (e.key === 'd' || e.key === 'D') {
+						this.toggleDebugMode();
+					}
+					if (e.key === 'w' || e.key === 'W') {
+						if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
+					}
+					if (e.key === 'p' || e.key === 'P') {
+						this.togglePlayback();
+					}
+				});
+			}
+			return;
+		}
 		if (!this._mousetrapStopCallbackPatched && typeof Mousetrap !== 'undefined') {
 			const prevStop = Mousetrap.stopCallback;
 			Mousetrap.stopCallback = (e, element, combo) => {
@@ -462,7 +518,15 @@ class VGMPlay_js {
 				if (e.keyCode == 32) e.preventDefault();
 			});
 
-			Mousetrap.bind('space', (e) => {
+			if (!this.isExtension) {
+				Mousetrap.bind('space', (e) => {
+					this.togglePlayback();
+					return false;
+				}, 'keydown');
+			}
+		}
+		if (this.isExtension) {
+			Mousetrap.bind('p', (e) => {
 				this.togglePlayback();
 				return false;
 			}, 'keydown');
@@ -499,17 +563,30 @@ class VGMPlay_js {
 		Mousetrap.bind('d', (e) => {
 			this.toggleDebugMode();
 		});
+		Mousetrap.bind('w', (e) => {
+			if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
+		});
 	}
 
 	loadWhenReady() {
+		const scanNames = new Set();
 		this.elms = document.getElementsByTagName("a");
 		this.len = this.elms.length;
 		for (var ii = 0; ii < this.len; ii++) {
 			const lower = this.elms[ii].href.toLowerCase();
+			try {
+				const rawName = this.elms[ii].href.split('/').pop().split('?')[0].split('#')[0];
+				const decoded = decodeURIComponent(rawName);
+				if (decoded) scanNames.add(decoded.toLowerCase());
+			} catch (e) { }
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
 			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
 				this._queueURL(this.elms[ii].href, false, true);
 			}
+		}
+		this._currentScanNames = scanNames;
+		if (this._renderZipGamesNow && this.games && this.games.length) {
+			this._renderZipGamesNow();
 		}
 		this.setKeyBindings();
 	}
@@ -1568,18 +1645,29 @@ class VGMPlay_js {
 		if (!files.length) return;
 
 		const seen = new Set();
+		const scanNames = new Set();
 		for (const url of files) {
 			const lower = url.toLowerCase().split('?')[0].split('#')[0];
 			const rawName = url.split('/').pop().split('?')[0].split('#')[0];
 			
 			let decodedName = rawName;
 			try { decodedName = decodeURIComponent(rawName); } catch (e) { }
+			const decodedKey = decodedName.toLowerCase();
+			if (decodedKey) scanNames.add(decodedKey);
+
+			if (this._cacheArchiveNames && this._cacheArchiveNames.has(decodedKey)) {
+				continue;
+			}
 
 			if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
 			if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
 
 			if (this._isArchiveUrl(lower)) {
-				this._queueURL(url, false, true);
+				if (this._queueAutoURL) {
+					await this._queueAutoURL(url, false);
+				} else {
+					this._queueURL(url, false, true);
+				}
 			} else {
 				const rawName = url.split('/').pop().split('?')[0].split('#')[0];
 				let name = rawName;
@@ -1602,11 +1690,22 @@ class VGMPlay_js {
 						this._applyExternalGameImageToExistingGames(name);
 					}
 				} else if (this.isPlayable(lower) || (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower)) {
-					this._queueURL(url, false, true);
+					if (this._queueAutoURL) {
+						await this._queueAutoURL(url, false);
+					} else {
+						this._queueURL(url, false, true);
+					}
 				} else {
 					// skip non-archive
 				}
 			}
+		}
+		this._currentScanNames = scanNames;
+		if (this._renderZipGamesNow && this.games && this.games.length) {
+			this._renderZipGamesNow();
+		}
+		if (this._renderSkippedDownloads) {
+			this._renderSkippedDownloads();
 		}
 	}
 
@@ -1887,6 +1986,15 @@ class VGMPlay_js {
 	}
 
 	_setOverviewMode(enabled) {
+		if (this.isExtension && !this.standalone) {
+			this.overviewMode = false;
+			if (this.vgmplayContainer) {
+				this.vgmplayContainer.classList.remove('vgmplayOverviewMode');
+			}
+			this._applyOverviewTrackFilter();
+			this._updateOverviewGridSelection();
+			return;
+		}
 		this.overviewMode = !!enabled;
 		if (this.vgmplayContainer) {
 			this.vgmplayContainer.classList.toggle('vgmplayOverviewMode', this.overviewMode);
@@ -2404,13 +2512,19 @@ VGMPlay_js.prototype.playRandom = function () {
 	this.playFileFromFS(false, playableList[fileIndex].filepath, gameIndex + 1, fileIndex);
 };
 
-if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id)) {
+if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.id) || window.VGMPLAY_EXTENSION_OPTIONS) {
+	console.log('[VGM] Auto-init condition met, VGMPLAY_EXTENSION_OPTIONS:', window.VGMPLAY_EXTENSION_OPTIONS);
 	const scriptEl = document.currentScript;
 	const data = scriptEl ? scriptEl.dataset : {};
-	const options = {};
-	if (data && typeof data.standalone !== 'undefined') {
-		options.standalone = data.standalone;
+	// Use extension options if available, otherwise build from data attributes
+	const options = window.VGMPLAY_EXTENSION_OPTIONS || {};
+	if (!window.VGMPLAY_EXTENSION_OPTIONS) {
+		// Only add standalone from data if not using extension options
+		if (data && typeof data.standalone !== 'undefined') {
+			options.standalone = data.standalone;
+		}
 	}
+	console.log('[VGM] Starting async initialization with options:', options);
 	(async () => {
 		let cacheSuffix = '';
 		try {
@@ -2469,8 +2583,10 @@ if (typeof window !== 'undefined' && !window.VGMPLAY_SKIP_AUTO_INIT && !window.v
 		await loadModule('./vgmplay-cache.js', 'installCache', 'cache');
 
 		installers.forEach((fn) => fn(VGMPlay_js));
+		console.log('[VGM] All modules loaded, creating VGMPlay instance');
 		var vgmplay_js = new VGMPlay_js(options);
 		window.vgmPlayInstance = vgmplay_js;
+		console.log('[VGM] VGMPlay instance created and assigned to window.vgmPlayInstance');
 		if (vgmplay_js && vgmplay_js._autoScanDist) {
 			setTimeout(() => {
 				vgmplay_js.checkEverythingReady().then(() => {

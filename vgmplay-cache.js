@@ -44,6 +44,7 @@ export function installCache(VGMPlay_js) {
 		try {
 			const metaText = FS.readFile(metaPath, { encoding: 'utf8' });
 			const meta = JSON.parse(metaText);
+			const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
 
 			if (meta.version !== 2) {
 				console.warn("[VGM] Cache version mismatch, clearing cache");
@@ -51,15 +52,51 @@ export function installCache(VGMPlay_js) {
 				return;
 			}
 
+			const normalizeArchiveName = (value) => {
+				if (!value) return '';
+				let name = String(value);
+				const base = name.split('?')[0].split('#')[0];
+				const last = base.split('/').pop() || base;
+				try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
+			};
+
 			// Restore fingerprints
 			if (meta.fingerprints) {
 				meta.fingerprints.forEach(f => this._cacheFingerprints.add(f));
 				meta.fingerprints.forEach(f => this.zipURLLoaded.push(f)); // Also add to zipURLLoaded so it's not downloaded
+				this._cacheRestoredFingerprints = new Set(meta.fingerprints);
+				this._cacheArchiveNames = new Set();
+				meta.fingerprints.forEach((f) => {
+					const base = String(f).split(':')[0];
+					if (base) {
+						this._cacheArchiveNames.add(base.toLowerCase());
+						const norm = normalizeArchiveName(base);
+						if (norm) this._cacheArchiveNames.add(norm);
+					}
+				});
 			}
 
 			// Restore games
 			if (meta.games && Array.isArray(meta.games)) {
-				this.games = meta.games.map(g => this._rebuildGameFromMeta(g));
+				this.games = meta.games.map(g => {
+					const rebuilt = this._rebuildGameFromMeta(g);
+					if (rebuilt && !rebuilt.cacheHost && metaHost) {
+						rebuilt.cacheHost = metaHost;
+					}
+					return rebuilt;
+				});
+				if (!this._cacheArchiveNames) this._cacheArchiveNames = new Set();
+				this._cacheRestoredByHost = new Map();
+				this.games.forEach((g) => {
+					const name = (g && g.archiveName) ? String(g.archiveName) : '';
+					if (name) {
+						this._cacheArchiveNames.add(name.toLowerCase());
+						const norm = normalizeArchiveName(name);
+						if (norm) this._cacheArchiveNames.add(norm);
+					}
+					const hostKey = (g && g.cacheHost) ? String(g.cacheHost) : 'unknown';
+					this._cacheRestoredByHost.set(hostKey, (this._cacheRestoredByHost.get(hostKey) || 0) + 1);
+				});
 			}
 
 			if (typeof meta.amountOfGamesLoaded !== 'undefined') {
@@ -85,7 +122,50 @@ export function installCache(VGMPlay_js) {
 					return;
 				}
 				if (this.debugMode) console.log(`[VGM] Restored ${this.games.length} games from cache`);
+				if (!this._cacheRestoreCounted) {
+					const restoredCount = this.games.length;
+					this.autoCacheHits = restoredCount;
+					this._cacheRestoredGameCount = restoredCount;
+					this._cacheRestoreCounted = true;
+				}
 				this._scheduleZipRender();
+				if (this._cacheArchiveNames) {
+					const wasOverflow = (this.autoOverflowURLs || []).length;
+					if (wasOverflow) {
+						this.autoOverflowURLs = this.autoOverflowURLs.filter((u) => {
+							const norm = normalizeArchiveName(u);
+							return !this._cacheArchiveNames.has(norm);
+						});
+					}
+					if (this.autoOverflowSizes && wasOverflow) {
+						for (const [u] of this.autoOverflowSizes) {
+							const norm = normalizeArchiveName(u);
+							if (this._cacheArchiveNames.has(norm)) {
+								this.autoOverflowSizes.delete(u);
+							}
+						}
+					}
+					if (Array.isArray(this.zipQueue) && this.zipQueue.length) {
+						this.zipQueue = this.zipQueue.filter((job) => {
+							if (!job || job.type !== 'url') return true;
+							const norm = normalizeArchiveName(job.data || job.name || '');
+							return !this._cacheArchiveNames.has(norm);
+						});
+					}
+					if (Array.isArray(this.zipURLPending) && this.zipURLPending.length) {
+						this.zipURLPending = this.zipURLPending.filter((u) => {
+							const norm = normalizeArchiveName(u);
+							return !this._cacheArchiveNames.has(norm);
+						});
+					}
+					if ((this.autoOverflowURLs || []).length === 0 && (!this.zipQueue || this.zipQueue.length === 0) && (!this.zipURLPending || this.zipURLPending.length === 0)) {
+						this.autoDownloadCount = 0;
+						this.autoDownloadBytes = 0;
+					}
+				}
+				if (this._renderSkippedDownloads) {
+					this._renderSkippedDownloads();
+				}
 			}
 
 		} catch (e) {
@@ -109,9 +189,13 @@ export function installCache(VGMPlay_js) {
 
 			const gamesToSave = [];
 			const conversionPromises = [];
+			const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
 
 			this.games.forEach((g, i) => {
 				const gCopy = { ...g };
+				if (!gCopy.cacheHost && currentHost) {
+					gCopy.cacheHost = currentHost;
+				}
 				
 				// We can't save Blobs nicely, so extract to a file and save path
 				if (g.png && g.png instanceof Blob) {
@@ -157,6 +241,7 @@ export function installCache(VGMPlay_js) {
 
 			const meta = {
 				version: 2,
+				cacheHost: currentHost || '',
 				amountOfGamesLoaded: this.amountOfGamesLoaded,
 				fingerprints: Array.from(this._cacheFingerprints),
 				games: gamesToSave
@@ -202,6 +287,9 @@ export function installCache(VGMPlay_js) {
 		delete game.lastRenderedCount;
 		delete game._overviewImageUrl;
 		delete game._overviewTile;
+		if (!game.cacheHost && typeof window !== 'undefined' && window.location) {
+			game.cacheHost = '';
+		}
 
 		if (game.coverPath) {
 			try {

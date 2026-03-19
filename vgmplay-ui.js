@@ -65,14 +65,22 @@ export function installUi(VGMPlay_js) {
 				<span id="vgmplayTime" class="vgmplayTime">0:00/0:00</span>
 			</div>
 		`;
-		this.buttonTogglePlayback = document.getElementById('buttonTogglePlayback');
-		this.vgmplayTime = document.getElementById('vgmplayTime');
-		this.btnBass = document.getElementById('btnBass');
-		this.btnReverb = document.getElementById('btnReverb');
-		this.btnRandom = document.getElementById('btnRandom');
-		this.btnLoop = document.getElementById('btnLoop');
-		this.btnLibrary = document.getElementById('btnLibrary');
-		this.btnSearch = document.getElementById('btnSearch');
+		const uiRoot = (this.vgmplayContainer && this.vgmplayContainer.getRootNode) ? this.vgmplayContainer.getRootNode() : document;
+		const byId = (id) => {
+			if (uiRoot && uiRoot.querySelector) {
+				const el = uiRoot.querySelector(`#${id}`);
+				if (el) return el;
+			}
+			return document.getElementById(id);
+		};
+		this.buttonTogglePlayback = byId('buttonTogglePlayback');
+		this.vgmplayTime = byId('vgmplayTime');
+		this.btnBass = byId('btnBass');
+		this.btnReverb = byId('btnReverb');
+		this.btnRandom = byId('btnRandom');
+		this.btnLoop = byId('btnLoop');
+		this.btnLibrary = byId('btnLibrary');
+		this.btnSearch = byId('btnSearch');
 
 		// Disable and hide library toggle on mobile
 		if (typeof window !== 'undefined' && window.innerWidth <= 600) {
@@ -84,7 +92,7 @@ export function installUi(VGMPlay_js) {
 		this.searchBar.style.display = 'none';
 		this.searchBar.innerHTML = `<input id="vgmplaySearchInput" type="text" placeholder="Search games...">`;
 		this.playerWindow.appendChild(this.searchBar);
-		this.searchInput = document.getElementById('vgmplaySearchInput');
+		this.searchInput = this.searchBar.querySelector("#vgmplaySearchInput");
 		this.searchInput.addEventListener('input', () => {
 			this.searchQuery = (this.searchInput.value || '').toLowerCase();
 			this._applyGameSearchFilter();
@@ -196,6 +204,11 @@ export function installUi(VGMPlay_js) {
 		this.skippedWindow.style.display = 'none';
 		this.skippedWindow.style.top = '20px';
 		this.skippedWindow.style.left = '300px';
+		if (this.isExtension && !this.standalone) {
+			this.skippedWindow.style.position = 'absolute';
+			this.skippedWindow.style.left = '0px';
+			this.skippedWindow.style.right = 'auto';
+		}
 
 		this.skippedHeader = document.createElement('div');
 		this.skippedHeader.className = 'vgmplaySkippedHeader';
@@ -220,6 +233,10 @@ export function installUi(VGMPlay_js) {
 		this.skippedAutoLimit = document.createElement('div');
 		this.skippedAutoLimit.className = 'vgmplaySkippedAutoLimit';
 		this.skippedWindow.appendChild(this.skippedAutoLimit);
+
+		this.skippedCacheClear = document.createElement('div');
+		this.skippedCacheClear.className = 'vgmplaySkippedCacheClear';
+		this.skippedWindow.appendChild(this.skippedCacheClear);
 
 		this.skippedList = document.createElement('div');
 		this.skippedList.className = 'vgmplaySkippedList';
@@ -246,7 +263,7 @@ export function installUi(VGMPlay_js) {
 		const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
 		const targets = [...buttons, ...tracks];
 		const idDescriptions = {
-			'buttonTogglePlayback': 'Play/Pause (Space)',
+			'buttonTogglePlayback': (this.isExtension ? 'Play/Pause (P)' : 'Play/Pause (Space)'),
 			'btnPrev': 'Previous Track (P)',
 			'btnNext': 'Next Track (N)',
 			'btnStop': 'Stop',
@@ -330,6 +347,9 @@ export function installUi(VGMPlay_js) {
 		this._updateSkippedNotice();
 		if (this.skippedAutoLimit) {
 			this._renderAutoLimitNotice();
+		}
+		if (this.skippedCacheClear) {
+			this._renderCacheClearPrompt();
 		}
 
 		// Add Debug Mode status display (only if toggled)
@@ -432,7 +452,7 @@ export function installUi(VGMPlay_js) {
 
 	VGMPlay_js.prototype._updateSkippedAutoHide = function () {
 		if (!this.skippedWindowVisible) return;
-		const needsAction = this.skippedDownloads.length > 0 || this.autoOverflowURLs.length > 0;
+		const needsAction = this.skippedDownloads.length > 0 || this.autoOverflowURLs.length > 0 || this._cacheClearPromptVisible;
 		const hasNotices = this.noPlayableNotices.length > 0 || this.debugModeHasBeenToggled;
 
 		if (needsAction || !hasNotices) {
@@ -466,14 +486,29 @@ export function installUi(VGMPlay_js) {
 
 	VGMPlay_js.prototype._renderAutoLimitNotice = function () {
 		const count = this.autoOverflowURLs.length;
+		let cacheCount = this.autoCacheHits || 0;
+		if (cacheCount === 0 && this._cacheRestoredGameCount) {
+			cacheCount = this._cacheRestoredGameCount;
+		}
+		const hostKey = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+		if (this._cacheRestoredByHost && this._cacheRestoredByHost.has(hostKey)) {
+			cacheCount = this._cacheRestoredByHost.get(hostKey);
+		}
 		if (count === 0) {
-			this.skippedAutoLimit.innerHTML = '';
+			if (cacheCount > 0 && (this.autoDownloadCount || 0) === 0) {
+				this.skippedAutoLimit.innerHTML = `
+					<div class="vgmplaySkippedAutoText">All games (${cacheCount}) on this site loaded from cache.</div>
+				`;
+			} else {
+				this.skippedAutoLimit.innerHTML = '';
+			}
 			return;
 		}
+		const downloadedCount = this.autoDownloadCount || 0;
 		this.skippedAutoLimit.innerHTML = `
-			<div class="vgmplaySkippedAutoText">Auto-download limit hit. ${count} file${count === 1 ? '' : 's'} waiting.</div>
+			<div class="vgmplaySkippedAutoText">Auto-download limit hit. ${cacheCount} file${cacheCount === 1 ? '' : 's'} read from cache, downloaded ${downloadedCount} extra, ${count} left.</div>
 			<div class="vgmplaySkippedAutoActions">
-				<button class="vgmplaySkippedLoadMore">Load 10 more</button>
+				<button class="vgmplaySkippedLoadMore">Load 10 more or &lt; 5MB</button>
 				<button class="vgmplaySkippedLoadAll">Load all</button>
 			</div>
 		`;
@@ -530,6 +565,38 @@ export function installUi(VGMPlay_js) {
 		this._renderSkippedDownloads();
 	};
 
+	VGMPlay_js.prototype._renderCacheClearPrompt = function () {
+		if (!this.skippedCacheClear) return;
+		if (!this._cacheClearPromptVisible) {
+			this.skippedCacheClear.innerHTML = '';
+			return;
+		}
+		this.skippedCacheClear.innerHTML = `
+			<div class="vgmplaySkippedAutoText">Delete all cache?</div>
+			<div class="vgmplaySkippedAutoActions">
+				<button class="vgmplayCacheClearYes">Yes</button>
+				<button class="vgmplayCacheClearNo">No</button>
+			</div>
+		`;
+		const yesBtn = this.skippedCacheClear.querySelector('.vgmplayCacheClearYes');
+		const noBtn = this.skippedCacheClear.querySelector('.vgmplayCacheClearNo');
+		yesBtn.addEventListener('click', () => {
+			if (this.clearCache) this.clearCache();
+			this._cacheClearPromptVisible = false;
+			this._renderSkippedDownloads();
+		});
+		noBtn.addEventListener('click', () => {
+			this._cacheClearPromptVisible = false;
+			this._renderSkippedDownloads();
+		});
+	};
+
+	VGMPlay_js.prototype._toggleCacheClearPrompt = function () {
+		this._cacheClearPromptVisible = !this._cacheClearPromptVisible;
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	};
+
 	VGMPlay_js.prototype._addDuplicateNotice = function (name) {
 		const safeName = name || 'File';
 		const msg = `${safeName} already exists and was skipped.`;
@@ -567,12 +634,31 @@ export function installUi(VGMPlay_js) {
 		}
 	};
 
-	VGMPlay_js.prototype._loadMoreAuto = function (count) {
-		let remaining = count;
-		while (this.autoOverflowURLs.length > 0 && remaining > 0) {
+	VGMPlay_js.prototype._loadMoreAuto = async function (count) {
+		const targetBytes = this.autoDownloadBytesLimit || (5 * 1024 * 1024);
+		let loadedBytes = 0;
+		let loadedCount = 0;
+		while (this.autoOverflowURLs.length > 0) {
+			if (count !== Infinity) {
+				if (loadedCount >= count && loadedBytes >= targetBytes) break;
+			}
 			const url = this.autoOverflowURLs.shift();
-			this._queueURL(url, false, false);
-			remaining--;
+			const knownSize = this.autoOverflowSizes ? this.autoOverflowSizes.get(url) : null;
+			if (this.autoOverflowSizes) this.autoOverflowSizes.delete(url);
+			const sizeBytes = (knownSize == null && this._getRemoteFileSize) ? await this._getRemoteFileSize(url) : knownSize;
+			const queued = this._queueAutoURL
+				? await this._queueAutoURL(url, false, { ignoreLimit: true, sizeBytes })
+				: (this._queueURL(url, false, false), true);
+			if (queued) {
+				loadedCount += 1;
+				if (sizeBytes != null) loadedBytes += sizeBytes;
+			}
+			if (count === Infinity) {
+				continue;
+			}
+			if (loadedBytes >= targetBytes && loadedCount >= count) {
+				break;
+			}
 		}
 		this._showSkippedWindow();
 		this._renderSkippedDownloads();
@@ -630,12 +716,25 @@ export function installUi(VGMPlay_js) {
 				}
 			}
 
+			if (this.isExtension && !this.standalone) {
+				const playerRect = this.playerWindow.getBoundingClientRect();
+				const skippedWidth = this.skippedWindow.offsetWidth;
+				const desiredLeft = playerRect.right + gap;
+				const maxLeft = Math.max(0, window.innerWidth - skippedWidth - 8);
+				this.skippedWindow.style.position = 'fixed';
+				this.skippedWindow.style.right = 'auto';
+				this.skippedWindow.style.left = Math.min(desiredLeft, maxLeft) + "px";
+				this.skippedWindow.style.top = playerRect.top + "px";
+				return;
+			}
+
 			if (isMobile) {
 				this.skippedWindow.style.left = playerLeft + "px";
 				const desiredTop = playerTop - this.skippedWindow.offsetHeight - gap;
 				this.skippedWindow.style.top = Math.max(0, desiredTop) + "px";
 			} else {
 				const desiredLeft = playerLeft + playerWidth + gap;
+				this.skippedWindow.style.right = "auto";
 				this.skippedWindow.style.left = desiredLeft + "px";
 				this.skippedWindow.style.top = playerTop + "px";
 			}

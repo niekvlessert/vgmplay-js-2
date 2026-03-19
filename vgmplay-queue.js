@@ -33,7 +33,7 @@ export function installQueue(VGMPlay_js) {
 		if (this.zipURLLoaded.some(u => u === url || u.startsWith(filename + ':'))) return;
 		if (this.zipURLPending.includes(url)) return;
 		if (isAuto && this.autoDownloadCount >= this.autoDownloadLimit) {
-			this._queueAutoOverflow(url);
+			this._queueAutoOverflow(url, null);
 			return;
 		}
 		this.zipURLPending.push(url);
@@ -42,13 +42,53 @@ export function installQueue(VGMPlay_js) {
 		this._processQueue();
 	};
 
-	VGMPlay_js.prototype._queueAutoOverflow = function (url) {
+	VGMPlay_js.prototype._queueAutoOverflow = function (url, sizeBytes = null) {
 		if (!this.autoOverflowURLs.includes(url)) {
 			this.autoOverflowURLs.push(url);
+			if (this.autoOverflowSizes) {
+				this.autoOverflowSizes.set(url, sizeBytes);
+			}
 		}
 		this._showSkippedWindow();
 		this._renderSkippedDownloads();
 		this._checkLargeOverflow(url);
+	};
+
+	VGMPlay_js.prototype._queueAutoURL = async function (url, forceLarge = false, opts = {}) {
+		const filename = this._getFileNameFromUrl(url);
+		if (this.zipURLLoaded.some(u => u === url || u.startsWith(filename + ':'))) return false;
+		if (this.zipURLPending.includes(url)) return false;
+
+		let sizeBytes = (typeof opts.sizeBytes === 'number') ? opts.sizeBytes : null;
+		if (sizeBytes == null && !this.standalone) {
+			sizeBytes = await this._getRemoteFileSize(url);
+		}
+
+		if (!this.standalone && sizeBytes != null && this._isCached) {
+			const fingerprint = filename + ':' + sizeBytes;
+			if (this._isCached(fingerprint)) {
+				if (!this._cacheRestoredFingerprints || !this._cacheRestoredFingerprints.has(fingerprint)) {
+					this.autoCacheHits = (this.autoCacheHits || 0) + 1;
+				}
+				return false;
+			}
+		}
+
+		const ignoreLimit = !!opts.ignoreLimit;
+		const canDownload = ignoreLimit || this.standalone || (this.autoDownloadCount < this.autoDownloadLimit || this.autoDownloadBytes < this.autoDownloadBytesLimit);
+		if (!canDownload) {
+			this._queueAutoOverflow(url, sizeBytes);
+			return false;
+		}
+
+		this.zipURLPending.push(url);
+		this.zipQueue.push({ type: 'url', data: url, forceLarge, name: filename });
+		this.autoDownloadCount = (this.autoDownloadCount || 0) + 1;
+		if (sizeBytes != null) {
+			this.autoDownloadBytes = (this.autoDownloadBytes || 0) + sizeBytes;
+		}
+		this._processQueue();
+		return true;
 	};
 
 	VGMPlay_js.prototype._checkLargeOverflow = async function (url) {

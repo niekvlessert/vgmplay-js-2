@@ -408,6 +408,24 @@ class VGMPlay_js {
 					uiParent.appendChild(this.tracksContainer);
 				}
 
+				if (!this.standalone && !this.standaloneGameGrid) {
+					if (!this.overviewOverlay) {
+						this.overviewOverlay = document.createElement('div');
+						this.overviewOverlay.className = 'vgmplayOverviewOverlay';
+						this.overviewOverlay.style.display = 'none';
+						const overlayRoot = (uiParent && uiParent.getRootNode) ? uiParent.getRootNode() : document;
+						if (overlayRoot && overlayRoot.appendChild) {
+							overlayRoot.appendChild(this.overviewOverlay);
+						} else {
+							uiParent.appendChild(this.overviewOverlay);
+						}
+					}
+					this.standaloneGameGrid = document.createElement('div');
+					this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid vgmplayExtensionGameGrid';
+					this.standaloneGameGrid.style.display = 'none';
+					this.overviewOverlay.appendChild(this.standaloneGameGrid);
+				}
+
 				this.zipFileListWindow = document.createElement('div');
 				this.zipFileListWindow.id = "vgmplayZipFileList";
 				this.tracksContainer.appendChild(this.zipFileListWindow);
@@ -674,6 +692,22 @@ class VGMPlay_js {
 				if (decoded) scanNames.add(decoded.toLowerCase());
 			} catch (e) { }
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
+			let rawName = '';
+			try { rawName = this.elms[ii].href.split('/').pop().split('?')[0].split('#')[0]; } catch (e) { }
+			let decodedName = rawName;
+			try { decodedName = decodeURIComponent(rawName); } catch (e) { }
+			const isExtImage = this._isExternalGameImage ? this._isExternalGameImage(decodedName || rawName) : false;
+			if (isExtImage) {
+				const url = this.elms[ii].href;
+				if (this._fetchUrlAsUint8) {
+					this._fetchUrlAsUint8(url).then((bytes) => {
+						if (!bytes) return;
+						this._registerExternalGameImage(decodedName || rawName || url, bytes);
+						this._applyExternalGameImageToExistingGames(decodedName || rawName || url);
+					});
+				}
+				continue;
+			}
 			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
 				this._queueURL(this.elms[ii].href, false, true);
 			}
@@ -2080,20 +2114,36 @@ class VGMPlay_js {
 	}
 
 	_setOverviewMode(enabled) {
-		if (this.isExtension && !this.standalone) {
-			this.overviewMode = false;
-			if (this.vgmplayContainer) {
-				this.vgmplayContainer.classList.remove('vgmplayOverviewMode');
-			}
-			this._applyOverviewTrackFilter();
-			this._updateOverviewGridSelection();
-			return;
-		}
 		this.overviewMode = !!enabled;
+		if (this.overviewMode && (!this.activeGame || (this.games && !this.games.includes(this.activeGame)))) {
+			if (this.games && this.games.length) {
+				this.activeGame = this.games[0];
+			}
+		}
+		if (this.overviewMode && this.activeGame) {
+			if (!this.activeGame.uiElement && this.showVGMFromZip) {
+				try { this.showVGMFromZip(this.activeGame); } catch (e) { }
+			}
+			if (this.activeGame.uiElement) {
+				this.activeGame.uiElement.dataset.expanded = 'true';
+				this.activeGame.uiElement.classList.add('vgmplayGameExpanded');
+				this.activeGame.uiElement.classList.remove('vgmplayGameCollapsed');
+			}
+		}
+		if (this.overviewMode && this.overviewOverlay && !this.standalone && this._positionOverviewOverlay) {
+			this._positionOverviewOverlay();
+		}
 		if (this.vgmplayContainer) {
 			this.vgmplayContainer.classList.toggle('vgmplayOverviewMode', this.overviewMode);
 		}
-		this._updateStandaloneRightPanel();
+		if (this.standalone) {
+			this._updateStandaloneRightPanel();
+		} else if (this.standaloneGameGrid) {
+			this.standaloneGameGrid.style.display = this.overviewMode ? 'grid' : 'none';
+			if (this.overviewOverlay) {
+				this.overviewOverlay.style.display = this.overviewMode ? 'flex' : 'none';
+			}
+		}
 		this._applyOverviewTrackFilter();
 		this._updateOverviewGridSelection();
 	}
@@ -2124,6 +2174,22 @@ class VGMPlay_js {
 			if (!game || !game._overviewTile) continue;
 			game._overviewTile.classList.toggle('active', this.activeGame && game === this.activeGame);
 		}
+	}
+
+	_positionOverviewOverlay() {
+		if (!this.overviewOverlay || !this.vgmplayContainer) return;
+		const rect = this.vgmplayContainer.getBoundingClientRect();
+		const gap = 12;
+		const top = Math.max(10, rect.top);
+		const left = Math.max(10, rect.right + gap);
+		const right = 10;
+		const bottom = 10;
+		const maxLeft = window.innerWidth - 220;
+		const safeLeft = Math.min(left, maxLeft);
+		this.overviewOverlay.style.top = `${top}px`;
+		this.overviewOverlay.style.left = `${safeLeft}px`;
+		this.overviewOverlay.style.right = `${right}px`;
+		this.overviewOverlay.style.bottom = `${bottom}px`;
 	}
 
 	_renderOverviewGrid() {

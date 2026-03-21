@@ -176,6 +176,37 @@
   overflow-y: auto;
 }
 
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayStandaloneGameGrid {
+  display: none;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-auto-rows: auto;
+  gap: 10px;
+  align-content: start;
+  border: 1px solid #333;
+  border-radius: 10px;
+  background: #101010;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.vgmplayOverviewOverlay {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: none;
+  flex-direction: column;
+  background: rgba(10, 10, 10, 0.94);
+  border: 1px solid #222;
+  border-radius: 12px;
+  padding: 12px;
+  z-index: 2147483646;
+  pointer-events: auto;
+}
+
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile {
   display: flex;
   flex-direction: column;
@@ -198,9 +229,39 @@
   z-index: 1;
 }
 
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1b1b1b;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #ddd;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  padding: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  gap: 4px;
+  min-height: 90px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  position: relative;
+  z-index: 1;
+}
+
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile:hover {
   transform: scale(1.04);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border-color: #00ff66;
+  background: #222;
+  z-index: 2;
+}
+
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTile:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
   border-color: #00ff66;
   background: #222;
   z-index: 2;
@@ -215,12 +276,32 @@
   border-radius: 4px;
 }
 
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTile img {
+  width: 100%;
+  height: auto;
+  max-height: 140px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 4px;
+}
+
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile.active {
   border-color: #00ff66;
   box-shadow: 0 0 0 1px #00ff66 inset;
 }
 
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTile.active {
+  border-color: #00ff66;
+  box-shadow: 0 0 0 1px #00ff66 inset;
+}
+
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTileText {
+  max-height: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTileText {
   max-height: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

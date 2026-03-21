@@ -35,14 +35,16 @@ export function installLibrary(VGMPlay_js) {
 			game.uiElement = null;
 			this.showVGMFromZip(game);
 		}
-		if (cachedByHost.size > 0 && this.isExtension) {
+		if (cachedByHost.size > 0) {
 			for (const [hostKey, list] of cachedByHost.entries()) {
 				if (!list.length) continue;
-				const header = document.createElement('div');
-				header.className = 'vgmplayCacheHeader';
-				const labelHost = hostKey || currentHost || 'unknown';
-				header.textContent = `Cached before from: ${labelHost}`;
-				this.zipFileListWindow.appendChild(header);
+				if (this.isExtension) {
+					const header = document.createElement('div');
+					header.className = 'vgmplayCacheHeader';
+					const labelHost = hostKey || currentHost || 'unknown';
+					header.textContent = `Cached before from: ${labelHost}`;
+					this.zipFileListWindow.appendChild(header);
+				}
 				for (const game of list) {
 					game.uiElement = null;
 					this.showVGMFromZip(game);

@@ -52,6 +52,9 @@ export function installLayout(VGMPlay_js) {
 			if (this.isExtension && !this.standalone && this.skippedWindowVisible && this._positionSkippedWindow) {
 				this._positionSkippedWindow();
 			}
+			if (this.isExtension && !this.standalone && this.overviewMode && this._positionOverviewOverlay) {
+				this._positionOverviewOverlay();
+			}
 		}
 
 		if (this.libraryState === 1 && !this.standalone) {
@@ -100,24 +103,6 @@ export function installLayout(VGMPlay_js) {
 	VGMPlay_js.prototype.toggleDisplayZipFileListWindow = function () {
 		const isMobile = typeof window !== 'undefined' && window.innerWidth <= 600;
 		if (isMobile) return;
-
-		if (this.isExtension && !this.standalone) {
-			const nextVisible = !this.showZipFileListWindow;
-			this.libraryState = 0;
-			this.showZipFileListWindow = nextVisible;
-			if (this.tracksContainer) {
-				this.tracksContainer.style.display = nextVisible ? '' : 'none';
-			}
-			if (this.btnLibrary) {
-				this.btnLibrary.classList.remove('blue-active');
-				this.btnLibrary.classList.remove('red-active');
-				this.btnLibrary.classList.toggle('active', !nextVisible);
-			}
-			if (!nextVisible && this.zipFileListWindow) {
-				this.zipFileListWindow.scrollTop = 0;
-			}
-			return;
-		}
 
 		const maxStates = 3;
 		this.libraryState = (this.libraryState + 1) % maxStates;

@@ -191,6 +191,20 @@
   overflow-y: auto;
 }
 
+/* When extension is in grid mode, use standalone-like styling */
+.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayStandaloneGameGrid {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  padding: 12px;
+  overflow-y: auto;
+  display: grid !important;
+}
+
+/* Show the overlay when in grid mode */
+.vgmplayOverviewOverlay.vgmplayExtensionGrid {
+  display: flex !important;
+}
+
 .vgmplayOverviewOverlay {
   position: fixed;
   top: 12px;
@@ -302,6 +316,42 @@
 }
 
 .vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTileText {
+  max-height: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* When extension is in grid mode, use standalone-like tile styling */
+.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile {
+  font-size: 11px;
+  padding: 8px;
+  gap: 6px;
+  min-height: 110px;
+}
+
+.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  border-color: #00ff66;
+  background: #222;
+  z-index: 2;
+}
+
+.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile img {
+  width: 100%;
+  height: auto;
+  max-height: 256px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 4px;
+}
+
+.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile.active {
+  border-color: #00ff66;
+  box-shadow: 0 0 0 1px #00ff66 inset;
+}
+
+.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTileText {
   max-height: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

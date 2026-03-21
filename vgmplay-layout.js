@@ -107,6 +107,26 @@ export function installLayout(VGMPlay_js) {
 		const maxStates = 3;
 		this.libraryState = (this.libraryState + 1) % maxStates;
 
+		if (this.vgmplayContainer) {
+			if (this.libraryState === 2) {
+				this.vgmplayContainer.classList.add('vgmplayExtensionGrid');
+				console.log('[VGMPlay] Added vgmplayExtensionGrid class. Container classes:', this.vgmplayContainer.className);
+			} else {
+				this.vgmplayContainer.classList.remove('vgmplayExtensionGrid');
+				console.log('[VGMPlay] Removed vgmplayExtensionGrid class. Container classes:', this.vgmplayContainer.className);
+			}
+		}
+		if (this.overviewOverlay) {
+			if (this.libraryState === 2) {
+				this.overviewOverlay.classList.add('vgmplayExtensionGrid');
+				console.log('[VGMPlay] Added vgmplayExtensionGrid class to overlay. Overlay classes:', this.overviewOverlay.className);
+			} else {
+				this.overviewOverlay.classList.remove('vgmplayExtensionGrid');
+				console.log('[VGMPlay] Removed vgmplayExtensionGrid class from overlay. Overlay classes:', this.overviewOverlay.className);
+			}
+		}
+		console.log('[VGMPlay] Library state changed to:', this.libraryState, '(0=Attached, 1=Floating, 2=Grid)');
+
 		if (this.libraryState === 0) {
 			// Attached
 			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
@@ -148,6 +168,10 @@ export function installLayout(VGMPlay_js) {
 				this.btnLibrary.classList.remove('red-active');
 			}
 			if (this._setOverviewMode) this._setOverviewMode(true);
+			// Don't hide the zip file list window - keep it visible like standalone player
+			if (this.zipFileListWindow) {
+				this.zipFileListWindow.style.display = 'block';
+			}
 		}
 	};
 }

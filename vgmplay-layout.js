@@ -1,15 +1,30 @@
 export function installLayout(VGMPlay_js) {
-	VGMPlay_js.prototype._bindScrollProxy = function (el) {
-		if (!el) return;
-		el.addEventListener('wheel', (e) => {
-			if (!this.tracksContainer || !this.zipFileListWindow) return;
-			if (!this.standalone || this.libraryState !== 1) return;
-			const list = this.zipFileListWindow;
-			if (list.scrollHeight <= list.clientHeight) return;
-			list.scrollTop += e.deltaY;
-			e.preventDefault();
-		}, { passive: false });
-	};
+VGMPlay_js.prototype._bindScrollProxy = function (el) {
+if (!el) return;
+el.addEventListener('wheel', (e) => {
+if (!this.tracksContainer || !this.zipFileListWindow) return;
+// For standalone: only proxy in floating mode (libraryState === 1)
+// For extension: proxy in all modes when the list is scrollable
+if (this.standalone && this.libraryState !== 1) return;
+const list = this.zipFileListWindow;
+const isScrollable = list.scrollHeight > list.clientHeight;
+if (isScrollable) {
+// Check if we're at the top or bottom of the scroll
+const atTop = list.scrollTop <= 0;
+const atBottom = list.scrollTop >= list.scrollHeight - list.clientHeight - 1;
+const scrollingUp = e.deltaY < 0;
+const scrollingDown = e.deltaY > 0;
+
+// Only prevent default if we're not at the edge in the direction we're scrolling
+if (!((atTop && scrollingUp) || (atBottom && scrollingDown))) {
+e.preventDefault();
+e.stopPropagation();
+// Manually scroll the element
+list.scrollTop += e.deltaY;
+}
+}
+}, { passive: false, capture: true });
+};
 
 	VGMPlay_js.prototype.dragStart = function (e) {
 		// Don't drag if clicking interactive elements
@@ -116,19 +131,10 @@ export function installLayout(VGMPlay_js) {
 				console.log('[VGMPlay] Removed vgmplayExtensionGrid class. Container classes:', this.vgmplayContainer.className);
 			}
 		}
-		if (this.overviewOverlay) {
-			if (this.libraryState === 2) {
-				this.overviewOverlay.classList.add('vgmplayExtensionGrid');
-				console.log('[VGMPlay] Added vgmplayExtensionGrid class to overlay. Overlay classes:', this.overviewOverlay.className);
-			} else {
-				this.overviewOverlay.classList.remove('vgmplayExtensionGrid');
-				console.log('[VGMPlay] Removed vgmplayExtensionGrid class from overlay. Overlay classes:', this.overviewOverlay.className);
-			}
-		}
 		console.log('[VGMPlay] Library state changed to:', this.libraryState, '(0=Attached, 1=Floating, 2=Grid)');
 
-		if (this.libraryState === 0) {
-			// Attached
+	if (this.libraryState === 0) {
+			// Attached (non-grid mode for extension)
 			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
 			this.showZipFileListWindow = true;
 			this.trackListTransformX = 0;
@@ -141,8 +147,37 @@ export function installLayout(VGMPlay_js) {
 				this.btnLibrary.classList.remove('red-active');
 			}
 			if (this._setOverviewMode) this._setOverviewMode(false);
+			// For extension in non-grid mode: set column layout styles via JS for Shadow DOM compatibility
+			if (!this.standalone && this.vgmplayContainer) {
+				// Use setProperty with 'important' priority to override any CSS
+				this.vgmplayContainer.style.setProperty('flex-direction', 'column', 'important');
+				this.vgmplayContainer.style.setProperty('width', '350px', 'important');
+				this.vgmplayContainer.style.setProperty('max-height', 'calc(100vh - 20px)', 'important');
+				this.vgmplayContainer.style.setProperty('height', 'auto', 'important');
+				this.vgmplayContainer.style.setProperty('padding', '6px', 'important');
+				this.vgmplayContainer.style.setProperty('gap', '6px', 'important');
+				// Also reset the root element to non-grid dimensions
+				const root = document.getElementById('vgmplay-extension-root');
+				if (root) {
+					root.style.setProperty('top', '10px', 'important');
+					root.style.setProperty('left', '10px', 'important');
+					root.style.setProperty('width', '350px', 'important');
+					root.style.setProperty('height', 'calc(100vh - 20px)', 'important');
+				}
+				// Move title and player windows to container (they will be at top)
+				if (this.titleWindow && this.titleWindow.parentNode !== this.vgmplayContainer) {
+					this.vgmplayContainer.appendChild(this.titleWindow);
+				}
+				if (this.playerWindow && this.playerWindow.parentNode !== this.vgmplayContainer) {
+					this.vgmplayContainer.appendChild(this.playerWindow);
+				}
+				// Move tracksContainer to container (it will be below player)
+				if (this.tracksContainer && this.tracksContainer.parentNode !== this.vgmplayContainer) {
+					this.vgmplayContainer.appendChild(this.tracksContainer);
+				}
+			}
 		} else if (this.libraryState === 1) {
-			// Floating
+			// Floating (non-grid mode for extension)
 			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
 			this.showZipFileListWindow = true;
 			if (this.standalone && this.tracksContainer) {
@@ -158,20 +193,112 @@ export function installLayout(VGMPlay_js) {
 				this.btnLibrary.classList.remove('red-active');
 			}
 			if (this._setOverviewMode) this._setOverviewMode(false);
+			// For extension in non-grid mode: set column layout styles via JS for Shadow DOM compatibility
+			if (!this.standalone && this.vgmplayContainer) {
+				// Use setProperty with 'important' priority to override any CSS
+				this.vgmplayContainer.style.setProperty('flex-direction', 'column', 'important');
+				this.vgmplayContainer.style.setProperty('width', '350px', 'important');
+				this.vgmplayContainer.style.setProperty('max-height', 'calc(100vh - 20px)', 'important');
+				this.vgmplayContainer.style.setProperty('height', 'auto', 'important');
+				this.vgmplayContainer.style.setProperty('padding', '6px', 'important');
+				this.vgmplayContainer.style.setProperty('gap', '6px', 'important');
+				// Also reset the root element to non-grid dimensions
+				const root = document.getElementById('vgmplay-extension-root');
+				if (root) {
+					root.style.setProperty('top', '10px', 'important');
+					root.style.setProperty('left', '10px', 'important');
+					root.style.setProperty('width', '350px', 'important');
+					root.style.setProperty('height', 'calc(100vh - 20px)', 'important');
+				}
+				// Move title and player windows to container (they will be at top)
+				if (this.titleWindow && this.titleWindow.parentNode !== this.vgmplayContainer) {
+					this.vgmplayContainer.appendChild(this.titleWindow);
+				}
+				if (this.playerWindow && this.playerWindow.parentNode !== this.vgmplayContainer) {
+					this.vgmplayContainer.appendChild(this.playerWindow);
+				}
+				// Move tracksContainer to container (it will be below player)
+				if (this.tracksContainer && this.tracksContainer.parentNode !== this.vgmplayContainer) {
+					this.vgmplayContainer.appendChild(this.tracksContainer);
+				}
+			}
 		} else if (this.libraryState === 2) {
 			// Overview grid mode (Blue)
 			if (this.tracksContainer) this.tracksContainer.style.display = 'block';
 			this.showZipFileListWindow = true;
 			if (this.btnLibrary) {
-				this.btnLibrary.classList.remove('active');
-				this.btnLibrary.classList.add('blue-active');
-				this.btnLibrary.classList.remove('red-active');
-			}
-			if (this._setOverviewMode) this._setOverviewMode(true);
-			// Don't hide the zip file list window - keep it visible like standalone player
-			if (this.zipFileListWindow) {
-				this.zipFileListWindow.style.display = 'block';
-			}
-		}
-	};
+this.btnLibrary.classList.remove('active');
+this.btnLibrary.classList.add('blue-active');
+this.btnLibrary.classList.remove('red-active');
 }
+// Set grid mode styles directly via JavaScript for Shadow DOM compatibility
+if (this.vgmplayContainer && !this.standalone) {
+// Use setProperty with 'important' priority to override any CSS
+this.vgmplayContainer.style.setProperty('flex-direction', 'row', 'important');
+this.vgmplayContainer.style.setProperty('width', '100vw', 'important');
+this.vgmplayContainer.style.setProperty('max-width', 'none', 'important');
+this.vgmplayContainer.style.setProperty('height', '100vh', 'important');
+this.vgmplayContainer.style.setProperty('max-height', 'none', 'important');
+this.vgmplayContainer.style.setProperty('padding', '0', 'important');
+this.vgmplayContainer.style.setProperty('gap', '0', 'important');
+// Also resize the root element to allow full-screen grid
+const root = document.getElementById('vgmplay-extension-root');
+if (root) {
+root.style.setProperty('top', '0', 'important');
+root.style.setProperty('left', '0', 'important');
+root.style.setProperty('width', '100vw', 'important');
+root.style.setProperty('max-width', 'none', 'important');
+root.style.setProperty('height', '100vh', 'important');
+}
+// Set tracksContainer styles for scrollable tracklist
+if (this.tracksContainer) {
+this.tracksContainer.style.setProperty('flex', '1', 'important');
+this.tracksContainer.style.setProperty('display', 'flex', 'important');
+this.tracksContainer.style.setProperty('flex-direction', 'column', 'important');
+this.tracksContainer.style.setProperty('min-height', '0', 'important');
+this.tracksContainer.style.setProperty('max-height', 'calc(100vh - 180px)', 'important');
+this.tracksContainer.style.setProperty('overflow', 'hidden', 'important');
+}
+// Set zipFileListWindow styles for scrolling
+if (this.zipFileListWindow) {
+this.zipFileListWindow.style.setProperty('flex', '1', 'important');
+this.zipFileListWindow.style.setProperty('min-height', '0', 'important');
+this.zipFileListWindow.style.setProperty('max-height', '100%', 'important');
+this.zipFileListWindow.style.setProperty('overflow-y', 'auto', 'important');
+this.zipFileListWindow.style.setProperty('overflow-x', 'hidden', 'important');
+}
+}
+		  if (this._setOverviewMode) this._setOverviewMode(true);
+		  // Don't hide the zip file list window - keep it visible like standalone player
+		  if (this.zipFileListWindow) {
+		    this.zipFileListWindow.style.display = 'block';
+		  }
+		  // For extension in grid mode: move elements to panel structure (player at top of left panel, tracks below)
+		  if (!this.standalone && this.standaloneLeft && this.standaloneGroup) {
+		// Move title and player windows to standaloneGroup FIRST (they will be at top)
+		if (this.titleWindow && this.titleWindow.parentNode !== this.standaloneGroup) {
+		this.standaloneGroup.appendChild(this.titleWindow);
+		}
+		if (this.playerWindow && this.playerWindow.parentNode !== this.standaloneGroup) {
+		this.standaloneGroup.appendChild(this.playerWindow);
+		}
+		// Move standaloneGroup to standaloneLeft FIRST (it will be at top)
+		if (this.standaloneGroup.parentNode !== this.standaloneLeft) {
+		this.standaloneLeft.appendChild(this.standaloneGroup);
+		}
+		// Move tracksContainer to standaloneLeft LAST (it will be below standaloneGroup)
+if (this.tracksContainer && this.tracksContainer.parentNode !== this.standaloneLeft) {
+this.standaloneLeft.appendChild(this.tracksContainer);
+}
+}
+}
+// Reposition KSS mini overlay when switching modes
+if (this._positionKssMiniOverlay) {
+this._positionKssMiniOverlay();
+}
+// Reposition skipped window (additional information) when switching modes
+if (this.skippedWindowVisible && this._positionSkippedWindow) {
+this._positionSkippedWindow();
+}
+}
+};

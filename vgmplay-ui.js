@@ -27,28 +27,59 @@ export function installUi(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._resetWindowPositions = function () {
-		if (!this.standalone) return;
+	// For standalone: reset transforms and positions
+	if (this.standalone) {
 		this.standaloneGroupTransformX = 0;
 		this.standaloneGroupTransformY = 0;
-		this.trackListTransformX = 0;
-		this.trackListTransformY = 0;
 		if (this.standaloneGroup) {
 			this.standaloneGroup.style.transform = 'none';
 			this.standaloneGroup.style.width = '';
-		}
-		if (this.tracksContainer) {
-			this.tracksContainer.style.transform = 'none';
 		}
 		if (this.vgmplayContainer) {
 			this.vgmplayContainer.style.top = '';
 			this.vgmplayContainer.style.left = '';
 		}
-		if (this.zipFileListWindow) {
-			this.zipFileListWindow.scrollTop = 0;
-		}
-	};
+	}
+	// For extension: reset position based on current mode
+	if (!this.standalone) {
+	  // Reset root element position based on current mode
+	  const root = document.getElementById('vgmplay-extension-root');
+	  if (this.libraryState === 2) {
+	    // Grid mode: reset to full screen position
+	    if (root) {
+	      root.style.setProperty('top', '0', 'important');
+	      root.style.setProperty('left', '0', 'important');
+	    }
+	    // Also reset vgmplayContainer position (which is set during drag)
+	    if (this.vgmplayContainer) {
+	      this.vgmplayContainer.style.setProperty('top', '0', 'important');
+	      this.vgmplayContainer.style.setProperty('left', '0', 'important');
+	    }
+	  } else {
+	    // Attached or floating mode: reset to default position
+	    if (root) {
+	      root.style.setProperty('top', '10px', 'important');
+	      root.style.setProperty('left', '10px', 'important');
+	    }
+	    // Also reset vgmplayContainer position (which is set during drag)
+	    if (this.vgmplayContainer) {
+	      this.vgmplayContainer.style.setProperty('top', '10px', 'important');
+	      this.vgmplayContainer.style.setProperty('left', '10px', 'important');
+	    }
+	  }
+	}
+	// Common reset for both standalone and extension
+	this.trackListTransformX = 0;
+	this.trackListTransformY = 0;
+	if (this.tracksContainer) {
+		this.tracksContainer.style.transform = 'none';
+	}
+	if (this.zipFileListWindow) {
+	this.zipFileListWindow.scrollTop = 0;
+	}
+};
 
-	VGMPlay_js.prototype.showPlayer = function () {
+VGMPlay_js.prototype.showPlayer = function () {
 		this.playerWindow.className = "vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = `
 			<div class="vgmplayControls">
@@ -128,21 +159,26 @@ export function installUi(VGMPlay_js) {
 			}
 		});
 		if (!this._searchGlobalKeyHandler) {
-			this._searchGlobalKeyHandler = (e) => {
-				if (e.key !== 'Escape') return;
-				e.preventDefault();
-				this.searchQuery = "";
-				if (this.searchInput) this.searchInput.value = "";
-				this._applyGameSearchFilter();
-				this._collapseAllGames();
-				if (this.zipFileListWindow) this.zipFileListWindow.scrollTop = 0;
-				if (this.standalone) this._resetWindowPositions();
-				if (this.searchBarVisible) {
-					this.searchBarVisible = false;
-					if (this.searchBar) this.searchBar.style.display = 'none';
-				}
-			};
-			document.addEventListener('keydown', this._searchGlobalKeyHandler);
+		this._searchGlobalKeyHandler = (e) => {
+		if (e.key !== 'Escape') return;
+		e.preventDefault();
+		this.searchQuery = "";
+		if (this.searchInput) this.searchInput.value = "";
+		this._applyGameSearchFilter();
+		this._collapseAllGames();
+		if (this.zipFileListWindow) this.zipFileListWindow.scrollTop = 0;
+		// Reset window positions for both standalone and extension
+		this._resetWindowPositions();
+		// In grid mode, filter to show only the active game
+		if (this.libraryState === 2 && this._applyOverviewTrackFilter) {
+		this._applyOverviewTrackFilter();
+		}
+		if (this.searchBarVisible) {
+		this.searchBarVisible = false;
+		if (this.searchBar) this.searchBar.style.display = 'none';
+		}
+		};
+		document.addEventListener('keydown', this._searchGlobalKeyHandler);
 		}
 
 		// Create progress bar
@@ -223,9 +259,8 @@ export function installUi(VGMPlay_js) {
 		this.skippedWindow.style.top = '20px';
 		this.skippedWindow.style.left = '300px';
 		if (this.isExtension && !this.standalone) {
-			this.skippedWindow.style.position = 'absolute';
-			this.skippedWindow.style.left = '0px';
-			this.skippedWindow.style.right = 'auto';
+		// For extension, use fixed positioning and let _positionSkippedWindow handle the exact position
+		this.skippedWindow.style.position = 'fixed';
 		}
 
 		this.skippedHeader = document.createElement('div');

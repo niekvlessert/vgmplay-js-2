@@ -230,16 +230,14 @@ class VGMPlay_js {
 				document.head.appendChild(script2);
 			}
 
-			var link = document.createElement('link');
-			link.rel = 'stylesheet';
-			link.type = 'text/css';
-			link.href = this.baseURL + 'css/style.css' + cacheSuffix;
-
-			// Inject styles into Head or Shadow Root
-			if (options.shadowRoot) {
-				options.shadowRoot.appendChild(link);
-			} else {
-				document.head.appendChild(link);
+			// Skip creating link element for extension - CSS is loaded via fetch in background.js
+			// This prevents double-loading of CSS which causes specificity issues
+			if (!options.shadowRoot) {
+			  var link = document.createElement('link');
+			  link.rel = 'stylesheet';
+			  link.type = 'text/css';
+			  link.href = this.baseURL + 'css/style.css' + cacheSuffix;
+			  document.head.appendChild(link);
 			}
 
 			// Container logic
@@ -258,98 +256,124 @@ class VGMPlay_js {
 				this.vgmplayContainer.classList.add('vgmplayMobile');
 			}
 
-			if (this.standalone && !this.isLibrary) {
-				document.documentElement.style.height = '100%';
-				document.body.style.height = '100%';
-				document.body.style.margin = '0';
-				document.body.style.background = '#2a2a2a';
-				document.body.style.overflow = 'hidden';
-				this.vgmplayContainer.style.position = 'fixed';
-				this.vgmplayContainer.style.top = '0';
-				this.vgmplayContainer.style.left = '0';
-				this.vgmplayContainer.style.width = '100vw';
-				this.vgmplayContainer.style.height = '100vh';
+	if (this.standalone && !this.isLibrary) {
+		document.documentElement.style.height = '100%';
+		document.body.style.height = '100%';
+		document.body.style.margin = '0';
+		document.body.style.background = '#2a2a2a';
+		document.body.style.overflow = 'hidden';
+		this.vgmplayContainer.style.position = 'fixed';
+		this.vgmplayContainer.style.top = '0';
+		this.vgmplayContainer.style.left = '0';
+		this.vgmplayContainer.style.width = '100vw';
+		this.vgmplayContainer.style.height = '100vh';
 
-				this.standaloneLeft = document.createElement('div');
-				this.standaloneLeft.className = 'vgmplayStandaloneLeft';
-				this.vgmplayContainer.appendChild(this.standaloneLeft);
+		this.standaloneLeft = document.createElement('div');
+		this.standaloneLeft.className = 'vgmplayStandaloneLeft';
+		this.vgmplayContainer.appendChild(this.standaloneLeft);
 
-				this.standaloneGroup = document.createElement('div');
-				this.standaloneGroup.className = 'vgmplayStandaloneGroup';
-				this.standaloneLeft.appendChild(this.standaloneGroup);
+		this.standaloneGroup = document.createElement('div');
+		this.standaloneGroup.className = 'vgmplayStandaloneGroup';
+		this.standaloneLeft.appendChild(this.standaloneGroup);
 
-				this.standaloneRight = document.createElement('div');
-				this.standaloneRight.className = 'vgmplayStandaloneRight';
-				this.vgmplayContainer.appendChild(this.standaloneRight);
+		this.standaloneRight = document.createElement('div');
+		this.standaloneRight.className = 'vgmplayStandaloneRight';
+		this.vgmplayContainer.appendChild(this.standaloneRight);
 
-				this.standaloneAnalyzerEl = document.createElement('div');
-				this.standaloneAnalyzerEl.className = 'vgmplayStandaloneAnalyzer';
-				this.standaloneRight.appendChild(this.standaloneAnalyzerEl);
+		this.standaloneAnalyzerEl = document.createElement('div');
+		this.standaloneAnalyzerEl.className = 'vgmplayStandaloneAnalyzer';
+		this.standaloneRight.appendChild(this.standaloneAnalyzerEl);
 
-				this.standaloneGameGrid = document.createElement('div');
-				this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
-				this.standaloneRight.appendChild(this.standaloneGameGrid);
+		this.standaloneGameGrid = document.createElement('div');
+		this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
+		this.standaloneRight.appendChild(this.standaloneGameGrid);
 
-				const menuEl = document.getElementById('vgmplayMenu');
-				if (menuEl) {
-					menuEl.style.display = 'none';
-				}
+		const menuEl = document.getElementById('vgmplayMenu');
+		if (menuEl) {
+			menuEl.style.display = 'none';
+		}
 
-				this.standaloneOverlay = document.createElement('div');
-				this.standaloneOverlay.className = 'vgmplayStandaloneOverlay';
-				this.standaloneOverlay.innerHTML = `
-					<div class="vgmplayMemoryDisplay"></div>
-					<br>
-					<label class="vgmplayStandaloneLabel">Spectrum</label>
-					<select class="vgmplayStandaloneSelect">
-						<option value="off">Off</option>
-						<option value="bars">Big Bars</option>
-						<option value="lines">Lines</option>
-						<option value="dual">Dual</option>
-						<option value="oct6">1/6 Octave</option>
-						<option value="radialApple">Radial (Apple ][)</option>
-						<option value="linePrism">Line Prism (Dual Vertical)</option>
-					</select>
-				`;
-				this.standaloneRight.appendChild(this.standaloneOverlay);
-				this.standaloneSelect = this.standaloneOverlay.querySelector('.vgmplayStandaloneSelect');
-				this.standaloneSelect.value = this.rightPanelMode;
-				this.standaloneSelect.addEventListener('change', () => {
-					this.rightPanelMode = this.standaloneSelect.value;
-					this._updateStandaloneRightPanel();
-				});
-				this._updateStandaloneSelectOptions();
+		this.standaloneOverlay = document.createElement('div');
+		this.standaloneOverlay.className = 'vgmplayStandaloneOverlay';
+		this.standaloneOverlay.innerHTML = `
+<div class="vgmplayMemoryDisplay"></div>
+<br>
+<label class="vgmplayStandaloneLabel">Spectrum</label>
+<select class="vgmplayStandaloneSelect">
+<option value="off">Off</option>
+<option value="bars">Big Bars</option>
+<option value="lines">Lines</option>
+<option value="dual">Dual</option>
+<option value="oct6">1/6 Octave</option>
+<option value="radialApple">Radial (Apple ][)</option>
+<option value="linePrism">Line Prism (Dual Vertical)</option>
+</select>
+`;
+		this.standaloneRight.appendChild(this.standaloneOverlay);
+		this.standaloneSelect = this.standaloneOverlay.querySelector('.vgmplayStandaloneSelect');
+		this.standaloneSelect.value = this.rightPanelMode;
+		this.standaloneSelect.addEventListener('change', () => {
+			this.rightPanelMode = this.standaloneSelect.value;
+			this._updateStandaloneRightPanel();
+		});
+		this._updateStandaloneSelectOptions();
 
-				// Memory display
-				this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
-				if (this.memoryDisplay) this.memoryDisplay.style.display = 'none';
-				this._updateMemoryDisplay();
+		// Memory display
+		this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
+		if (this.memoryDisplay) this.memoryDisplay.style.display = 'none';
+		this._updateMemoryDisplay();
+	}
+
+	// Extension case: create the panel structure (but elements will be in container directly for non-grid mode)
+	if (!this.standalone) {
+	this.standaloneLeft = document.createElement('div');
+	this.standaloneLeft.className = 'vgmplayStandaloneLeft';
+	this.vgmplayContainer.appendChild(this.standaloneLeft);
+	
+	this.standaloneGroup = document.createElement('div');
+	this.standaloneGroup.className = 'vgmplayStandaloneGroup';
+	this.standaloneLeft.appendChild(this.standaloneGroup);
+	
+	this.standaloneRight = document.createElement('div');
+	this.standaloneRight.className = 'vgmplayStandaloneRight';
+	this.vgmplayContainer.appendChild(this.standaloneRight);
+	
+	this.standaloneGameGrid = document.createElement('div');
+	this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
+	this.standaloneGameGrid.style.display = 'none';
+	this.standaloneRight.appendChild(this.standaloneGameGrid);
+	
+	// Note: tracksContainer, titleWindow, and playerWindow will be created in the container directly
+	// and moved to the panel structure when entering grid mode
+	}
+
+	// Extension case: ensure container has proper dimensions and interactivity
+	if (options.container && options.shadowRoot && !this.standalone) {
+		if (window.__VGM_DEBUG__) {
+			console.log('[VGM] Extension case detected, applying container styles');
+		}
+		// Default width for normal mode, will be overridden by grid mode CSS
+		this.vgmplayContainer.style.cssText = 'position: fixed !important; top: 10px !important; left: 10px !important; bottom: 10px !important; width: 350px !important; height: auto !important; max-height: none !important; display: flex !important; flex-direction: column !important; overflow: visible !important; pointer-events: auto !important; z-index: 2147483647 !important;';
+	}
+
+	if (this.standalone) {
+		const children = Array.from(document.body.children);
+		const hiddenWrapper = document.createElement('div');
+		hiddenWrapper.id = 'vgmplayHiddenContent';
+		hiddenWrapper.style.display = 'none';
+		for (const child of children) {
+			if (child !== this.vgmplayContainer) {
+				hiddenWrapper.appendChild(child);
 			}
+		}
+		if (hiddenWrapper.childNodes.length) {
+			document.body.appendChild(hiddenWrapper);
+		}
+	}
 
-			// Extension case: ensure container has proper dimensions and interactivity
-			if (options.container && options.shadowRoot && !this.standalone) {
-				if (window.__VGM_DEBUG__) {
-					console.log('[VGM] Extension case detected, applying container styles');
-				}
-				this.vgmplayContainer.style.cssText = 'position: fixed !important; top: 10px !important; left: 10px !important; bottom: 10px !important; width: 350px !important; height: auto !important; max-height: none !important; display: flex !important; flex-direction: column !important; overflow: visible !important; pointer-events: auto !important; z-index: 2147483647 !important;';
-			}
-
-			if (this.standalone) {
-				const children = Array.from(document.body.children);
-				const hiddenWrapper = document.createElement('div');
-				hiddenWrapper.id = 'vgmplayHiddenContent';
-				hiddenWrapper.style.display = 'none';
-				for (const child of children) {
-					if (child !== this.vgmplayContainer) {
-						hiddenWrapper.appendChild(child);
-					}
-				}
-				if (hiddenWrapper.childNodes.length) {
-					document.body.appendChild(hiddenWrapper);
-				}
-			}
-
-			const uiParent = this.standalone ? this.standaloneGroup : this.vgmplayContainer;
+	// For standalone, use standaloneGroup as uiParent
+	// For extension, use vgmplayContainer directly (elements will be moved to panel structure when entering grid mode)
+	const uiParent = this.standalone ? this.standaloneGroup : this.vgmplayContainer;
 
 			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
@@ -399,44 +423,35 @@ class VGMPlay_js {
 				this.showPlayer();
 				this._bindScrollProxy(this.playerWindow);
 			}
-			if (this.displayZipFileList) {
-				this.tracksContainer = document.createElement('div');
-				this.tracksContainer.id = "vgmplayTracksContainer";
-				if (this.standalone) {
-					this.standaloneLeft.appendChild(this.tracksContainer);
-				} else {
-					uiParent.appendChild(this.tracksContainer);
-				}
-
-				if (!this.standalone && !this.standaloneGameGrid) {
-					if (!this.overviewOverlay) {
-						this.overviewOverlay = document.createElement('div');
-						this.overviewOverlay.className = 'vgmplayOverviewOverlay';
-						this.overviewOverlay.style.display = 'none';
-						const overlayRoot = (uiParent && uiParent.getRootNode) ? uiParent.getRootNode() : document;
-						if (overlayRoot && overlayRoot.appendChild) {
-							overlayRoot.appendChild(this.overviewOverlay);
-						} else {
-							uiParent.appendChild(this.overviewOverlay);
-						}
-					}
-					this.standaloneGameGrid = document.createElement('div');
-					this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid vgmplayExtensionGameGrid';
-					this.standaloneGameGrid.style.display = 'none';
-					this.overviewOverlay.appendChild(this.standaloneGameGrid);
-				}
-
-				this.zipFileListWindow = document.createElement('div');
-				this.zipFileListWindow.id = "vgmplayZipFileList";
-				this.tracksContainer.appendChild(this.zipFileListWindow);
-				this.showZipFileListWindow = true;
-				this.zipFileListWindow.className = "vgmplayZipFileListWindow";
-
-				this.loader = document.createElement('div');
-				this.loader.className = 'vgmplayLoader';
-				this.loader.innerHTML = 'Loading track data';
-				this.zipFileListWindow.appendChild(this.loader);
-			}
+	if (this.displayZipFileList) {
+	// For extension, tracksContainer is created in the container directly (not in panel structure)
+	// It will be moved to the panel structure when entering grid mode
+	if (!this.tracksContainer) {
+	this.tracksContainer = document.createElement('div');
+	this.tracksContainer.id = "vgmplayTracksContainer";
+	if (this.standalone) {
+	this.standaloneLeft.appendChild(this.tracksContainer);
+	} else {
+	// For extension, add to container directly
+	this.vgmplayContainer.appendChild(this.tracksContainer);
+	}
+	}
+	
+	this.zipFileListWindow = document.createElement('div');
+	this.zipFileListWindow.id = "vgmplayZipFileList";
+	this.tracksContainer.appendChild(this.zipFileListWindow);
+	this.showZipFileListWindow = true;
+	this.zipFileListWindow.className = "vgmplayZipFileListWindow";
+	// Bind scroll proxy to prevent site background scrolling
+	if (this._bindScrollProxy) {
+	  this._bindScrollProxy(this.zipFileListWindow);
+	}
+	
+	this.loader = document.createElement('div');
+	this.loader.className = 'vgmplayLoader';
+	this.loader.innerHTML = 'Loading track data';
+	this.zipFileListWindow.appendChild(this.loader);
+	}
 			this.setupDropZone();
 			this._createSkippedWindow();
 			if (this.standalone) {
@@ -2114,12 +2129,31 @@ class VGMPlay_js {
 	}
 
 	_setOverviewMode(enabled) {
-		this.overviewMode = !!enabled;
-		if (this.overviewMode && (!this.activeGame || (this.games && !this.games.includes(this.activeGame)))) {
-			if (this.games && this.games.length) {
-				this.activeGame = this.games[0];
-			}
-		}
+	  this.overviewMode = !!enabled;
+	  if (this.overviewMode && (!this.activeGame || (this.games && !this.games.includes(this.activeGame)))) {
+	    if (this.games && this.games.length) {
+	      // Try to find a game from the current site first
+	      const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+	      const currentScan = this._currentScanNames || new Set();
+	      const normalizeArchiveName = (value) => {
+	        if (!value) return '';
+	        const base = String(value).split('?')[0].split('#')[0];
+	        const last = base.split('/').pop() || base;
+	        try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
+	      };
+	      let foundSiteGame = null;
+	      for (const game of this.games) {
+	        const key = normalizeArchiveName(game && (game.archiveName || game.name));
+	        const isFromCurrentScan = key && currentScan.has(key);
+	        const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
+	        if (isFromCurrentScan || isFromCurrentHostCache) {
+	          foundSiteGame = game;
+	          break;
+	        }
+	      }
+	      this.activeGame = foundSiteGame || this.games[0];
+	    }
+	  }
 		if (this.overviewMode && this.activeGame) {
 			if (!this.activeGame.uiElement && this.showVGMFromZip) {
 				try { this.showVGMFromZip(this.activeGame); } catch (e) { }
@@ -2137,12 +2171,14 @@ class VGMPlay_js {
 			this.vgmplayContainer.classList.toggle('vgmplayOverviewMode', this.overviewMode);
 		}
 		if (this.standalone) {
-			this._updateStandaloneRightPanel();
+		  this._updateStandaloneRightPanel();
 		} else if (this.standaloneGameGrid) {
-			this.standaloneGameGrid.style.display = this.overviewMode ? 'grid' : 'none';
-			if (this.overviewOverlay) {
-				this.overviewOverlay.style.display = this.overviewMode ? 'flex' : 'none';
-			}
+		  // Extension: show game grid in right panel when in overview mode
+		  this.standaloneGameGrid.style.display = this.overviewMode ? 'grid' : 'none';
+		  // Hide the analyzer overlay in grid mode
+		  if (this.standaloneOverlay) {
+		    this.standaloneOverlay.style.display = this.overviewMode ? 'none' : '';
+		  }
 		}
 		this._applyOverviewTrackFilter();
 		this._updateOverviewGridSelection();
@@ -2193,56 +2229,117 @@ class VGMPlay_js {
 	}
 
 	_renderOverviewGrid() {
-		if (!this.standaloneGameGrid || !this.games) return;
-		this.standaloneGameGrid.innerHTML = '';
-		const normalizeTitle = (value) => {
-			if (!value) return value;
-			if (this._normalizeGameTitle) {
-				const normalized = this._normalizeGameTitle(value);
-				return normalized || value;
-			}
-			return value;
-		};
-		for (const game of this.games) {
-			if (!game || !game.files || !game.files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()))) {
-				continue;
-			}
-			const tile = document.createElement('button');
-			tile.type = 'button';
-			tile.className = 'vgmplayOverviewTile';
-			const name = normalizeTitle(game.name || game.archiveName || 'Unknown Game');
-
-			if (game.png) {
-				if (!game._overviewImageUrl) {
-					game._overviewImageUrl = URL.createObjectURL(game.png);
-				}
-				const img = document.createElement('img');
-				img.src = game._overviewImageUrl;
-				img.alt = name;
-				tile.appendChild(img);
-			} else {
-				const text = document.createElement('div');
-				text.className = 'vgmplayOverviewTileText';
-				text.textContent = name;
-				tile.appendChild(text);
-			}
-
-			tile.title = name;
-			tile.addEventListener('click', () => {
-				this.activeGame = game;
-				this._applyOverviewTrackFilter();
-				this._updateOverviewGridSelection();
-				if (game.uiElement) {
-					game.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-				}
-			});
-			game._overviewTile = tile;
-			this.standaloneGameGrid.appendChild(tile);
-		}
-		this._updateOverviewGridSelection();
-		if (this.overviewMode) {
-			this._applyOverviewTrackFilter();
-		}
+	if (!this.standaloneGameGrid || !this.games) return;
+	this.standaloneGameGrid.innerHTML = '';
+	const normalizeTitle = (value) => {
+	if (!value) return value;
+	if (this._normalizeGameTitle) {
+	const normalized = this._normalizeGameTitle(value);
+	return normalized || value;
+	}
+	return value;
+	};
+	
+	// Group games by site
+	const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+	const currentScan = this._currentScanNames || new Set();
+	const normalizeArchiveName = (value) => {
+	if (!value) return '';
+	const base = String(value).split('?')[0].split('#')[0];
+	const last = base.split('/').pop() || base;
+	try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
+	};
+	
+	// Group games: current site first, then other sites
+	const currentSiteGames = [];
+	const gamesByHost = new Map(); // host -> games
+	
+	for (const game of this.games) {
+	if (!game || !game.files || !game.files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()))) {
+	continue;
+	}
+	const key = normalizeArchiveName(game && (game.archiveName || game.name));
+	const isFromCurrentScan = key && currentScan.has(key);
+	const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
+	
+	if (isFromCurrentScan || isFromCurrentHostCache) {
+	currentSiteGames.push(game);
+	} else {
+	const host = game.cacheHost || 'Other';
+	if (!gamesByHost.has(host)) gamesByHost.set(host, []);
+	gamesByHost.get(host).push(game);
+	}
+	}
+	
+	// Helper function to create a tile
+	const createTile = (game) => {
+	const tile = document.createElement('button');
+	tile.type = 'button';
+	tile.className = 'vgmplayOverviewTile';
+	const name = normalizeTitle(game.name || game.archiveName || 'Unknown Game');
+	
+	if (game.png) {
+	if (!game._overviewImageUrl) {
+	game._overviewImageUrl = URL.createObjectURL(game.png);
+	}
+	const img = document.createElement('img');
+	img.src = game._overviewImageUrl;
+	img.alt = name;
+	tile.appendChild(img);
+	} else {
+	const text = document.createElement('div');
+	text.className = 'vgmplayOverviewTileText';
+	text.textContent = name;
+	tile.appendChild(text);
+	}
+	
+	tile.title = name;
+	tile.addEventListener('click', () => {
+	this.activeGame = game;
+	this._applyOverviewTrackFilter();
+	this._updateOverviewGridSelection();
+	if (game.uiElement) {
+	game.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+	});
+	game._overviewTile = tile;
+	return tile;
+	};
+	
+	// Render current site games first
+	for (const game of currentSiteGames) {
+	const tile = createTile(game);
+	this.standaloneGameGrid.appendChild(tile);
+	}
+	
+	// Render other sites with separators
+	const otherHosts = Array.from(gamesByHost.keys()).sort();
+	for (const host of otherHosts) {
+	const games = gamesByHost.get(host);
+	if (!games.length) continue;
+	
+	// Add separator with label for this site
+	if (currentSiteGames.length > 0 || otherHosts.indexOf(host) > 0) {
+	const label = document.createElement('div');
+	label.className = 'vgmplayGridSeparatorLabel';
+	label.textContent = `Cached from: ${host}`;
+	this.standaloneGameGrid.appendChild(label);
+	const separator = document.createElement('div');
+	separator.className = 'vgmplayGridSeparator';
+	this.standaloneGameGrid.appendChild(separator);
+	}
+	
+	// Render games for this site
+	for (const game of games) {
+	const tile = createTile(game);
+	this.standaloneGameGrid.appendChild(tile);
+	}
+	}
+	
+	this._updateOverviewGridSelection();
+	if (this.overviewMode) {
+	this._applyOverviewTrackFilter();
+	}
 	}
 
 

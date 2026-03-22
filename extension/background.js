@@ -321,46 +321,20 @@ function togglePlayer(extensionUrl) {
         }
     };
 
-    // Add styles - inject directly into Shadow DOM for proper scoping
-    const styleLink = document.createElement('link');
-    styleLink.rel = 'stylesheet';
-    styleLink.href = extensionUrl + 'css/style.css';
-    shadow.appendChild(styleLink);
-
-    // Add extension-specific overrides
+    // Add styles - load CSS content and inject directly for better Shadow DOM compatibility
     const style = document.createElement('style');
-    style.textContent = `
-        .vgmplayContainer {
-            position: fixed !important;
-            top: 10px !important;
-            left: 10px !important;
-            width: 350px !important;
-            bottom: 10px !important;
-            height: auto !important;
-            display: flex !important;
-            flex-direction: column !important;
-            overflow: visible !important;
-        }
-        .vgmplayTitleWindow {
-            display: flex !important;
-            flex-shrink: 0 !important;
-        }
-        .vgmplayPlayerWindow {
-            display: block !important;
-            flex-shrink: 0 !important;
-        }
-        .vgmplayStandaloneGameGrid {
-            display: grid !important;
-            flex: 1 !important;
-            overflow-y: auto !important;
-        }
-        #vgmplayTracksContainer {
-            display: flex !important;
-            flex: 1 !important;
-            overflow-y: auto !important;
-        }
-    `;
     shadow.appendChild(style);
+    
+    // Fetch and inject CSS
+    fetch(extensionUrl + 'css/style.css')
+      .then(response => response.text())
+      .then(css => {
+        style.textContent = css;
+        console.log('[VGM] CSS loaded and injected, length:', css.length);
+      })
+      .catch(err => {
+        console.error('[VGM] Failed to load CSS:', err);
+      });
 
     // Container for the player
     const container = document.createElement('div');

@@ -36,30 +36,25 @@ export function installLibrary(VGMPlay_js) {
 			this.showVGMFromZip(game);
 		}
 		if (cachedByHost.size > 0) {
-			for (const [hostKey, list] of cachedByHost.entries()) {
-				if (!list.length) continue;
-				if (this.isExtension) {
-					const header = document.createElement('div');
-					header.className = 'vgmplayCacheHeader';
-					const labelHost = hostKey || currentHost || 'unknown';
-					header.textContent = `Cached before from: ${labelHost}`;
-					this.zipFileListWindow.appendChild(header);
-				}
-				for (const game of list) {
-					game.uiElement = null;
-					this.showVGMFromZip(game);
-				}
-			}
+		for (const [hostKey, list] of cachedByHost.entries()) {
+		if (!list.length) continue;
+		// Don't add header in tracklist - it's now shown in the grid
+		for (const game of list) {
+		game.uiElement = null;
+		this.showVGMFromZip(game);
 		}
-		const isMobile = typeof window !== 'undefined' && window.innerWidth <= 600;
-		if (!isMobile && this.games.length > 10 && this.libraryState === 0 && this.standalone) {
-			this.libraryState = 2; // Jump to Grid Overview (Blue mode)
-			if (this.toggleDisplayZipFileListWindow) {
-				// We call it once to "apply" the state logic (it will increment to 3 then mod 3, so we set it to 1 first)
-				this.libraryState = 1; 
-				this.toggleDisplayZipFileListWindow();
-			}
 		}
+		}
+	const isMobile = typeof window !== 'undefined' && window.innerWidth <= 600;
+	// Auto-switch to grid mode for both standalone and extension when > 10 games
+	if (!isMobile && this.games.length > 10 && this.libraryState === 0) {
+		this.libraryState = 2; // Jump to Grid Overview (Blue mode)
+		if (this.toggleDisplayZipFileListWindow) {
+			// We call it once to "apply" the state logic (it will increment to 3 then mod 3, so we set it to 1 first)
+			this.libraryState = 1;
+			this.toggleDisplayZipFileListWindow();
+		}
+	}
 		if (this._renderOverviewGrid) {
 			this._renderOverviewGrid();
 		}

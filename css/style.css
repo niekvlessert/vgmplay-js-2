@@ -11,6 +11,40 @@
   pointer-events: auto;
 }
 
+/* Extension base styles - apply when not standalone */
+.vgmplayContainer:not(.vgmplayStandalone) {
+  position: fixed !important;
+  top: 10px !important;
+  left: 10px !important;
+  width: 350px !important;
+  max-height: calc(100vh - 20px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: visible !important;
+}
+
+/* Extension grid mode base - more specific to win over non-grid rule */
+.vgmplayContainer.vgmplayExtensionGrid:not(.vgmplayStandalone) {
+  flex-direction: row !important;
+  width: 90vw !important;
+  max-width: 1200px !important;
+  height: 90vh !important;
+  max-height: none !important;
+}
+
+/* Extension non-grid mode: ensure proper layout */
+.vgmplayContainer:not(.vgmplayStandalone):not(.vgmplayExtensionGrid) .vgmplayTitleWindow {
+  flex-shrink: 0 !important;
+}
+.vgmplayContainer:not(.vgmplayStandalone):not(.vgmplayExtensionGrid) .vgmplayPlayerWindow {
+  flex-shrink: 0 !important;
+}
+.vgmplayContainer:not(.vgmplayStandalone):not(.vgmplayExtensionGrid) #vgmplayTracksContainer {
+  flex: 1 !important;
+  min-height: 100px !important;
+  overflow-y: auto !important;
+}
+
 /* Extension-specific overrides */
 #vgmplay-container .vgmplayTitleWindow,
 #vgmplay-container .vgmplayPlayerWindow,
@@ -19,6 +53,56 @@
   top: auto !important;
   left: auto !important;
   margin: 0 !important;
+}
+
+/* Extension non-grid mode: hide the panel structure */
+.vgmplayContainer:not(.vgmplayStandalone):not(.vgmplayExtensionGrid) .vgmplayStandaloneLeft {
+display: none !important;
+}
+
+.vgmplayContainer:not(.vgmplayStandalone):not(.vgmplayExtensionGrid) .vgmplayStandaloneRight {
+display: none !important;
+}
+
+/* Extension grid mode: show left panel with proper structure */
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayStandaloneLeft {
+display: flex;
+width: 280px;
+min-width: 280px;
+padding: 10px;
+flex-direction: column;
+gap: 8px;
+height: 100%;
+background: #2a2a2a;
+}
+
+/* Extension grid mode: group structure */
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayStandaloneGroup {
+display: flex;
+flex-direction: column;
+gap: 8px;
+position: relative;
+width: 266px;
+align-self: flex-start;
+z-index: 70;
+pointer-events: none;
+flex-shrink: 0;
+}
+
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayStandaloneGroup .vgmplayPlayerWindow,
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayStandaloneGroup .vgmplayTitleWindow {
+pointer-events: auto;
+}
+
+/* Extension grid mode: right panel */
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayStandaloneRight {
+  flex: 1;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: #2a2a2a;
+  height: 100%;
 }
 
 #vgmplay-container {
@@ -40,18 +124,46 @@
   flex-direction: column !important;
 }
 
+/* Extension grid mode: use row layout like standalone player */
+#vgmplay-container .vgmplayContainer.vgmplayExtensionGrid {
+flex-direction: row !important;
+align-items: stretch !important;
+width: 90vw !important;
+max-width: 1200px !important;
+height: 90vh !important;
+}
+
+/* Extension grid mode: show the game grid - use !important to override */
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayStandaloneGameGrid {
+  display: grid !important;
+  flex: 1 !important;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+  grid-auto-rows: auto !important;
+  gap: 12px !important;
+  align-content: start !important;
+  border: 1px solid #333 !important;
+  border-radius: 10px !important;
+  background: #101010 !important;
+  padding: 12px !important;
+  overflow-y: auto !important;
+  min-height: 0 !important;
+}
+
+/* Extension non-grid mode: use column layout - use !important to override */
+.vgmplayContainer:not(.vgmplayStandalone):not(.vgmplayExtensionGrid) {
+  flex-direction: column !important;
+  width: 350px !important;
+  height: auto !important;
+}
+
 #vgmplay-container .vgmplayTitleWindow,
 #vgmplay-container .vgmplayPlayerWindow {
   margin: 0 0 6px 0 !important;
 }
 
 #vgmplay-container .vgmplaySkippedWindow {
-  position: absolute;
-  z-index: 2147483647;
-  max-width: none;
-  left: 0;
-  right: auto;
-  top: 20px;
+z-index: 2147483647;
+max-width: none;
 }
 
 #vgmplay-container #vgmplayTracksContainer {
@@ -176,33 +288,45 @@
   overflow-y: auto;
 }
 
-.vgmplayContainer:not(.vgmplayStandalone) .vgmplayStandaloneGameGrid {
-  display: none;
-  width: 100%;
-  height: 100%;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  grid-auto-rows: auto;
-  gap: 10px;
-  align-content: start;
-  border: 1px solid #333;
-  border-radius: 10px;
-  background: #101010;
-  padding: 12px;
-  overflow-y: auto;
+/* Hide game grid for non-standalone, non-grid mode */
+.vgmplayContainer:not(.vgmplayStandalone):not(.vgmplayExtensionGrid) .vgmplayStandaloneGameGrid {
+  display: none !important;
 }
 
 /* When extension is in grid mode, use standalone-like styling */
-.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayStandaloneGameGrid {
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  padding: 12px;
-  overflow-y: auto;
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayStandaloneGameGrid {
+  flex: 1 !important;
   display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
+  grid-auto-rows: auto !important;
+  gap: 12px !important;
+  align-content: start !important;
+  border: 1px solid #333 !important;
+  border-radius: 10px !important;
+  background: #101010 !important;
+  padding: 12px !important;
+  overflow-y: auto !important;
+  min-height: 0 !important;
 }
 
-/* Show the overlay when in grid mode */
-.vgmplayOverviewOverlay.vgmplayExtensionGrid {
-  display: flex !important;
+/* Extension grid mode: tracks container styling */
+.vgmplayContainer.vgmplayExtensionGrid #vgmplayTracksContainer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 180px);
+  z-index: 10;
+}
+
+/* Extension grid mode: make zipFileListWindow scrollable */
+/* Use #vgmplay-container to override the non-grid height:auto rule */
+#vgmplay-container .vgmplayContainer.vgmplayExtensionGrid .vgmplayZipFileListWindow {
+  flex: 1;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .vgmplayOverviewOverlay {
@@ -222,47 +346,47 @@
 }
 
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: #1b1b1b;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #ddd;
-  font-size: 11px;
-  line-height: 1.2;
-  text-align: center;
-  padding: 8px;
-  cursor: pointer;
-  overflow: hidden;
-  gap: 6px;
-  min-height: 110px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-  position: relative;
-  z-index: 1;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+background: #1b1b1b;
+border: 1px solid #333;
+border-radius: 6px;
+color: #ddd;
+font-size: 11px;
+line-height: 1.2;
+text-align: center;
+padding: 8px;
+cursor: pointer;
+overflow: visible;
+gap: 6px;
+height: auto;
+transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+position: relative;
+z-index: 1;
 }
 
 .vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: #1b1b1b;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #ddd;
-  font-size: 10px;
-  line-height: 1.2;
-  text-align: center;
-  padding: 6px;
-  cursor: pointer;
-  overflow: hidden;
-  gap: 4px;
-  min-height: 90px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
-  position: relative;
-  z-index: 1;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+background: #1b1b1b;
+border: 1px solid #333;
+border-radius: 6px;
+color: #ddd;
+font-size: 10px;
+line-height: 1.2;
+text-align: center;
+padding: 6px;
+cursor: pointer;
+overflow: visible;
+gap: 4px;
+height: auto;
+transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+position: relative;
+z-index: 1;
 }
 
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile:hover {
@@ -284,7 +408,7 @@
 .vgmplayContainer.vgmplayStandalone .vgmplayOverviewTile img {
   width: 100%;
   height: auto;
-  max-height: 256px;
+  max-height: none;
   object-fit: contain;
   background: #000;
   border-radius: 4px;
@@ -293,7 +417,7 @@
 .vgmplayContainer:not(.vgmplayStandalone) .vgmplayOverviewTile img {
   width: 100%;
   height: auto;
-  max-height: 140px;
+  max-height: none;
   object-fit: contain;
   background: #000;
   border-radius: 4px;
@@ -322,14 +446,16 @@
 }
 
 /* When extension is in grid mode, use standalone-like tile styling */
-.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile {
-  font-size: 11px;
-  padding: 8px;
-  gap: 6px;
-  min-height: 110px;
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayOverviewTile {
+font-size: 11px;
+line-height: 1.2;
+padding: 8px;
+gap: 6px;
+height: auto;
+overflow: visible;
 }
 
-.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile:hover {
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayOverviewTile:hover {
   transform: scale(1.04);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   border-color: #00ff66;
@@ -337,24 +463,45 @@
   z-index: 2;
 }
 
-.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile img {
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayOverviewTile img {
   width: 100%;
   height: auto;
-  max-height: 256px;
+  max-height: none;
   object-fit: contain;
   background: #000;
   border-radius: 4px;
 }
 
-.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTile.active {
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayOverviewTile.active {
   border-color: #00ff66;
   box-shadow: 0 0 0 1px #00ff66 inset;
 }
 
-.vgmplayOverviewOverlay.vgmplayExtensionGrid .vgmplayOverviewTileText {
+.vgmplayContainer.vgmplayExtensionGrid .vgmplayOverviewTileText {
   max-height: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Grid separator between site games and other games */
+.vgmplayGridSeparator {
+grid-column: 1 / -1;
+height: 2px;
+background: linear-gradient(90deg, transparent, #444, transparent);
+margin: 8px 0;
+border-radius: 1px;
+}
+
+/* Grid separator label for cached games */
+.vgmplayGridSeparatorLabel {
+grid-column: 1 / -1;
+font-size: 10px;
+padding: 4px 6px;
+margin: 4px 0;
+color: #b7ffcc;
+text-transform: uppercase;
+letter-spacing: 0.4px;
+text-align: left;
 }
 
 .vgmplayContainer.vgmplayMobile .vgmplayStandaloneRight {

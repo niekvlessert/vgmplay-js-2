@@ -1257,12 +1257,16 @@ class VGMPlay_js {
 					if (toggle) toggle.click();
 				}
 				// If game changed, scroll it into view
-				if (this.activeGame && this.activeGame !== oldActiveGame && this.activeGame.uiElement) {
-					this.activeGame.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-				}
-			}
-			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
-			await this.checkEverythingReady();
+      if (this.activeGame && this.activeGame !== oldActiveGame && this.activeGame.uiElement) {
+        this.activeGame.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+    if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
+    // Reset KSS channel mute/solo states when switching tracks
+    if (this._resetKssChannelStates) {
+      this._resetKssChannelStates();
+    }
+    await this.checkEverythingReady();
 
 			if (!this.isPlayable(file)) {
 				return;
@@ -2462,23 +2466,25 @@ class VGMPlay_js {
 			return;
 		}
 
-		try {
-			const path = '/' + targetName;
-			if (FS.analyzePath(path).exists) {
-				FS.unlink(path);
-			}
-			FS.createDataFile('/', targetName, bytes, true, true);
-			if (!this._romLoaded[key]) {
-				const opts = { typeLabel: label, isRom: true };
-				if (type === 'munt') opts.isMuntRom = true;
-				this._addNoPlayableNotice(name || targetName, opts);
-				this._romLoaded[key] = true;
-			}
-		} catch (e) {
-			console.error("Error saving ROM file:", e);
-			this._queueRomRetry(bytes, name, type);
-		}
-	}
+  try {
+    const path = '/' + targetName;
+    if (FS.analyzePath(path).exists) {
+      FS.unlink(path);
+    }
+    FS.createDataFile('/', targetName, bytes, true, true);
+    if (!this._romLoaded[key]) {
+      const opts = { typeLabel: label, isRom: true };
+      if (type === 'munt') opts.isMuntRom = true;
+      this._addNoPlayableNotice(name || targetName, opts);
+      this._romLoaded[key] = true;
+    }
+    // Also cache the ROM file for persistence across sessions
+    this._cacheRomFile(bytes, targetName, type);
+  } catch (e) {
+    console.error("Error saving ROM file:", e);
+    this._queueRomRetry(bytes, name, type);
+  }
+}
 
 	_queueRomRetry(bytes, name, romType) {
 		if (!bytes || !bytes.buffer) return;
@@ -2506,11 +2512,114 @@ class VGMPlay_js {
 					}
 				}
 			}
-			if (this._pendingRomLoads.length) {
-				this._schedulePendingRomRetry();
-			}
-		});
-	}
+    if (this._pendingRomLoads.length) {
+      this._schedulePendingRomRetry();
+    }
+  });
+}
+
+// Cache ROM file to IndexedDB for persistence across sessions
+_cacheRomFile(bytes, name, type) {
+if (!this._cacheBridgeAvailable()) return;
+const path = '/' + name;
+// Convert to base64 to avoid ArrayBuffer serialization issues with IndexedDB
+let b64 = null;
+if (bytes instanceof Uint8Array) {
+let binary = '';
+const chunkSize = 0x8000;
+for (let i = 0; i < bytes.length; i += chunkSize) {
+const sub = bytes.subarray(i, i + chunkSize);
+binary += String.fromCharCode.apply(null, sub);
+}
+b64 = btoa(binary);
+} else if (bytes instanceof ArrayBuffer) {
+const arr = new Uint8Array(bytes);
+let binary = '';
+const chunkSize = 0x8000;
+for (let i = 0; i < arr.length; i += chunkSize) {
+const sub = arr.subarray(i, i + chunkSize);
+binary += String.fromCharCode.apply(null, sub);
+}
+b64 = btoa(binary);
+} else if (typeof bytes === 'string') {
+b64 = bytes; // already base64
+}
+if (b64) {
+this._cacheBridgeRequest('putFiles', { files: [{ path, b64 }] }).then((resp) => {
+if (resp && resp.error) {
+console.warn('[VGM] Failed to cache ROM file:', name, resp.error);
+} else if (this.debugMode) {
+console.log('[VGM] ROM file cached:', name, 'size:', bytes.length || bytes.byteLength);
+}
+});
+} else {
+console.warn('[VGM] Could not convert ROM to base64 for caching:', name);
+}
+}
+
+// Restore ROM files from cache on startup
+async _restoreRomsFromCache() {
+if (!this._cacheBridgeAvailable()) return;
+const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM'];
+if (this.debugMode) console.log('[VGM] Requesting ROM files from cache:', romPaths);
+const resp = await this._cacheBridgeRequest('getFiles', { paths: romPaths });
+if (this.debugMode) console.log('[VGM] ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
+if (resp && resp.files && resp.files.length) {
+for (const item of resp.files) {
+if (!item || !item.path) continue;
+const name = item.path.split('/').pop();
+const romType = this._getRomType(name);
+if (romType) {
+// Handle both base64 and binary data formats (same as _bridgeFetchFiles)
+let bytes = null;
+if (item.b64) {
+const binary = atob(item.b64);
+const len = binary.length;
+bytes = new Uint8Array(len);
+for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+if (this.debugMode) console.log('[VGM] Decoded b64, size:', bytes.byteLength);
+} else if (item.data) {
+bytes = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
+if (this.debugMode) console.log('[VGM] Using data, size:', bytes.byteLength);
+} else {
+if (this.debugMode) console.log('[VGM] ROM item has no data:', name);
+continue;
+}
+if (this.debugMode) console.log('[VGM] Restoring ROM:', name, 'type:', romType, 'size:', bytes.byteLength);
+// Write directly to FS - we're called after FS is ready in _doInit
+if (typeof FS !== 'undefined' && FS.writeFile) {
+const path = '/' + name;
+try {
+if (FS.analyzePath(path).exists) {
+FS.unlink(path);
+}
+FS.writeFile(path, bytes);
+this._romLoaded = this._romLoaded || {};
+let key = romType === 'munt' ? ('munt:' + name.toUpperCase()) : ('opl4:yrw801.rom');
+// Show notice that ROM was loaded from cache
+if (!this._romLoaded[key]) {
+const label = romType === 'munt' ? 'Munt ROM' : 'OPL4 ROM (YRW801)';
+const opts = { typeLabel: label, isRom: true, fromCache: true };
+if (romType === 'munt') opts.isMuntRom = true;
+this._addNoPlayableNotice(name, opts);
+}
+this._romLoaded[key] = true;
+if (this.debugMode) console.log('[VGM] ROM restored successfully:', path, 'key:', key);
+// Verify the file was written
+const stat = FS.stat(path);
+if (this.debugMode) console.log('[VGM] ROM file size in FS:', stat.size);
+} catch (e) {
+console.error('[VGM] Failed to restore ROM from cache:', name, e);
+}
+} else {
+console.warn('[VGM] FS not available for ROM restoration');
+}
+}
+}
+} else {
+if (this.debugMode) console.log('[VGM] No ROM files found in cache');
+}
+}
 
 }
 // ---- Progress bar & seek ----
@@ -2689,34 +2798,37 @@ VGMPlay_js.prototype.toggleLoopMode = function () {
 		this.currentTrackSupportsLoop = this._trackSupportsLoop();
 	}
 
-	// When disabling loop on a vgmstream track: the C side plays forever so
-	// visualSamplePosition (derived from AudioContext time) may already be past
-	// totalSampleCount if the track has looped. In that case the JS fade would
-	// fire instantly. Instead, anchor a fresh 2-second fade from current position.
-	if (wasLooping && this.loopMode !== 1 &&
-		this.IsVGMStream && this.IsVGMStream() &&
-		this.isVGMPlaying && this.context) {
-		const elapsed = this.context.currentTime - this.playbackStartTime;
-		const currentSample = Math.max(0, this.startSample + (elapsed * this.sampleRate));
-		const FADE_SECS = 2.0;
-		const FADE_SAMPLES = FADE_SECS * this.sampleRate;
-		if (currentSample + FADE_SAMPLES > this.totalSampleCount) {
-			// Anchor progress tracking to current position
-			this.startSample = currentSample;
-			this.playbackStartTime = this.context.currentTime;
-			this.visualSamplePosition = currentSample;
-			this.totalSampleCount = currentSample + FADE_SAMPLES;
-			// Explicitly schedule the gain fade — don't rely on _checkTrackEnd's
-			// next tick which may see inconsistent state at this boundary.
-			this.isFadingOut = true;
-			try {
-				const now = this.context.currentTime;
-				this.masterGain.gain.cancelScheduledValues(now);
-				this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-				this.masterGain.gain.linearRampToValueAtTime(0, now + FADE_SECS);
-			} catch (e) { }
-		}
-	}
+  // When disabling loop on a vgmstream track: the C side plays forever so
+  // visualSamplePosition (derived from AudioContext time) may already be past
+  // totalSampleCount if the track has looped. In that case the JS fade would
+  // fire instantly. Instead, anchor a fresh 2-second fade from current position.
+  // Also apply similar logic for KSS files which can loop indefinitely.
+  if (wasLooping && this.loopMode !== 1 && this.isVGMPlaying && this.context) {
+    const isVgmStream = this.IsVGMStream && this.IsVGMStream();
+    const isKss = this.isKSSActive;
+    if (isVgmStream || isKss) {
+      const elapsed = this.context.currentTime - this.playbackStartTime;
+      const currentSample = Math.max(0, this.startSample + (elapsed * this.sampleRate));
+      const FADE_SECS = 2.0;
+      const FADE_SAMPLES = FADE_SECS * this.sampleRate;
+      if (currentSample + FADE_SAMPLES > this.totalSampleCount) {
+        // Anchor progress tracking to current position
+        this.startSample = currentSample;
+        this.playbackStartTime = this.context.currentTime;
+        this.visualSamplePosition = currentSample;
+        this.totalSampleCount = currentSample + FADE_SAMPLES;
+        // Explicitly schedule the gain fade — don't rely on _checkTrackEnd's
+        // next tick which may see inconsistent state at this boundary.
+        this.isFadingOut = true;
+        try {
+          const now = this.context.currentTime;
+          this.masterGain.gain.cancelScheduledValues(now);
+          this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+          this.masterGain.gain.linearRampToValueAtTime(0, now + FADE_SECS);
+        } catch (e) { }
+      }
+    }
+  }
 };
 
 VGMPlay_js.prototype._changeTrackInGame = async function (action) {

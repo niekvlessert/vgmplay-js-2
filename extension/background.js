@@ -107,9 +107,12 @@ async function cacheGetFiles(paths) {
     const results = await Promise.all(reqs);
     await txComplete(tx);
     for (const { path, val } of results) {
-        if (val) {
-            if (val && val.b64) {
-                files.push({ path, b64: val.b64 });
+    if (val) {
+    if (window.__VGM_DEBUG__) {
+    console.log('[VGM Cache] getFiles path:', path, 'val type:', typeof val, 'isBlob:', val instanceof Blob, 'isArrayBuffer:', val instanceof ArrayBuffer, 'val.b64:', !!val?.b64, 'val.data:', !!val?.data, 'val.data type:', typeof val?.data, 'val.data instanceof ArrayBuffer:', val?.data instanceof ArrayBuffer, 'val.len:', val?.len);
+    }
+    if (val && val.b64) {
+    files.push({ path, b64: val.b64 });
             } else if (val instanceof Blob) {
                 const buf = await val.arrayBuffer();
                 const bytes = new Uint8Array(buf);
@@ -130,16 +133,42 @@ async function cacheGetFiles(paths) {
                 }
                 files.push({ path, b64: btoa(binary) });
             } else if (val && val.data instanceof ArrayBuffer) {
-                const bytes = new Uint8Array(val.data);
-                let binary = '';
-                const chunkSize = 0x8000;
-                for (let i = 0; i < bytes.length; i += chunkSize) {
-                    const sub = bytes.subarray(i, i + chunkSize);
-                    binary += String.fromCharCode.apply(null, sub);
-                }
-                files.push({ path, b64: btoa(binary) });
+            const bytes = new Uint8Array(val.data);
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+            const sub = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, sub);
+            }
+            files.push({ path, b64: btoa(binary) });
+            } else if (val && val.data && val.len) {
+            // Handle case where val.data is a plain object (IndexedDB structured clone issue)
+            // Reconstruct the ArrayBuffer from the stored length
+            const data = val.data;
+            let bytes = null;
+            if (data instanceof ArrayBuffer) {
+            bytes = new Uint8Array(data);
+            } else if (data && typeof data === 'object') {
+            // data might be a plain object with indexed properties (from structured clone)
+            const len = val.len;
+            bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+            bytes[i] = data[i] || 0;
+            }
+            }
+            if (bytes) {
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+            const sub = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, sub);
+            }
+            files.push({ path, b64: btoa(binary) });
             } else {
-                files.push({ path, data: val.buffer ? val.buffer : val });
+            files.push({ path, data: val });
+            }
+            } else {
+            files.push({ path, data: val.buffer ? val.buffer : val });
             }
         } else {
             missing.push(path);
@@ -149,22 +178,24 @@ async function cacheGetFiles(paths) {
 }
 
 async function cachePutFiles(files) {
-    const db = await openCacheDb();
-    const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
-    const store = tx.objectStore(CACHE_FILES_STORE);
-    for (const item of files) {
-        if (!item || !item.path) continue;
-        if (item.b64) {
-            const len = item.b64.length;
-            store.put({ b64: item.b64, len }, item.path);
-            continue;
-        }
-        if (!item.data) continue;
-        const data = item.data instanceof ArrayBuffer ? item.data : (item.data.buffer || item.data);
-        const len = data ? data.byteLength : 0;
-        store.put({ data, len }, item.path);
-    }
-    await txComplete(tx);
+const db = await openCacheDb();
+const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
+const store = tx.objectStore(CACHE_FILES_STORE);
+for (const item of files) {
+if (!item || !item.path) continue;
+if (item.b64) {
+const len = item.b64.length;
+if (window.__VGM_DEBUG__) console.log('[VGM Cache] putFiles b64 path:', item.path, 'len:', len);
+store.put({ b64: item.b64, len }, item.path);
+continue;
+}
+if (!item.data) continue;
+const data = item.data instanceof ArrayBuffer ? item.data : (item.data.buffer || item.data);
+const len = data ? data.byteLength : 0;
+if (window.__VGM_DEBUG__) console.log('[VGM Cache] putFiles data path:', item.path, 'len:', len, 'data type:', typeof data, 'isArrayBuffer:', data instanceof ArrayBuffer);
+store.put({ data, len }, item.path);
+}
+await txComplete(tx);
 }
 
 async function cacheClearAll() {

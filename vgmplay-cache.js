@@ -122,27 +122,33 @@ export function installCache(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._restoreCacheFromBridge = async function () {
-		const resp = await this._cacheBridgeRequest('getMeta');
-		if (!resp || !resp.meta) {
-			if (this.debugMode) console.log('[VGM] No shared cache metadata found');
-			return;
-		}
-		const meta = resp.meta;
-		const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
-		if (meta.version !== 2) {
-			if (this.debugMode) console.warn("[VGM] Shared cache version mismatch, ignoring shared cache");
-			this._cacheFingerprints.clear();
-			this.games = [];
-			this.zipURLLoaded = [];
-			this.amountOfGamesLoaded = 0;
-			this._cacheArchiveNames = new Set();
-			this._cacheRestoredByHost = new Map();
-			this.autoCacheHits = 0;
-			this._cacheRestoredGameCount = 0;
-			return;
-		}
+  const resp = await this._cacheBridgeRequest('getMeta');
+  if (!resp || !resp.meta) {
+    if (this.debugMode) console.log('[VGM] No shared cache metadata found');
+    return;
+  }
+  const meta = resp.meta;
+  const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
+  if (meta.version !== 2) {
+    if (this.debugMode) console.warn("[VGM] Shared cache version mismatch, ignoring shared cache");
+    this._cacheFingerprints.clear();
+    this.games = [];
+    this.zipURLLoaded = [];
+    this.amountOfGamesLoaded = 0;
+    this._cacheArchiveNames = new Set();
+    this._cacheRestoredByHost = new Map();
+    this.autoCacheHits = 0;
+    this._cacheRestoredGameCount = 0;
+    return;
+  }
 
-		const normalizeArchiveName = (value) => {
+  // Restore ROM files FIRST before any games are loaded
+  // This ensures OPL4 and Munt ROMs are available when VGM files are loaded
+  if (this._restoreRomsFromCache) {
+    await this._restoreRomsFromCache();
+  }
+
+  const normalizeArchiveName = (value) => {
 			if (!value) return '';
 			let name = String(value);
 			const base = name.split('?')[0].split('#')[0];
@@ -275,15 +281,15 @@ export function installCache(VGMPlay_js) {
 					});
 				}
 				if ((this.autoOverflowURLs || []).length === 0 && (!this.zipQueue || this.zipQueue.length === 0) && (!this.zipURLPending || this.zipURLPending.length === 0)) {
-					this.autoDownloadCount = 0;
-					this.autoDownloadBytes = 0;
-				}
-			}
-			if (this._renderSkippedDownloads) {
-				this._renderSkippedDownloads();
-			}
-		}
-	};
+      this.autoDownloadCount = 0;
+        this.autoDownloadBytes = 0;
+      }
+    }
+    if (this._renderSkippedDownloads) {
+      this._renderSkippedDownloads();
+    }
+  }
+};
 	VGMPlay_js.prototype._initCache = function () {
 		return new Promise((resolve) => {
 			this._cacheFingerprints = new Set();

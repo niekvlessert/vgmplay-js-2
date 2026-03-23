@@ -576,7 +576,15 @@ this.playerWindow.appendChild(this.kssMiniOverlayEl);
 				const y = height - v * height;
 				ctx.lineTo(x, y);
 			}
-			ctx.stroke();
-		});
-	};
+      ctx.stroke();
+    });
+  };
+
+  // Reset KSS channel mute/solo states when switching tracks
+  VGMPlay_js.prototype._resetKssChannelStates = function () {
+    if (!this.kssChannelStates || !this.kssChannelDefs) return;
+    this.kssChannelStates = this.kssChannelDefs.map(() => ({ mute: false, solo: false }));
+    this._applyKssChannelMasks();
+    this._updateKssChannelButtons();
+  };
 }

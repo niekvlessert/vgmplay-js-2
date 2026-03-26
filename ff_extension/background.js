@@ -8,8 +8,10 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 function togglePlayer(extensionUrl) {
-    console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
-    if (window.vgmPlayerInjected) {
+  // Guard for service worker context where window doesn't exist
+  if (typeof window === 'undefined') return;
+  if (window.__VGM_DEBUG__) console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
+  if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
             container.style.display = container.style.display === 'none' ? 'block' : 'none';
@@ -112,15 +114,15 @@ function togglePlayer(extensionUrl) {
         shadowRoot: shadow,
         baseURL: extensionUrl
     };
-    console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set, loading glue script');
-    // Load the glue script
-    const script = document.createElement('script');
-    script.src = extensionUrl + 'vgmplay-js-glue.js';
-    script.onload = () => {
-        console.log('[VGM] Glue script loaded successfully');
-    };
-    script.onerror = (e) => {
-        console.error('[VGM] Failed to load glue script:', e);
-    };
+  if (window.__VGM_DEBUG__) console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set, loading glue script');
+  // Load the glue script
+  const script = document.createElement('script');
+  script.src = extensionUrl + 'vgmplay-js-glue.js';
+  script.onload = () => {
+    if (window.__VGM_DEBUG__) console.log('[VGM] Glue script loaded successfully');
+  };
+  script.onerror = (e) => {
+    if (window.__VGM_DEBUG__) console.error('[VGM] Failed to load glue script:', e);
+  };
     document.head.appendChild(script);
 }

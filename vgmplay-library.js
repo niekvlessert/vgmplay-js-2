@@ -141,21 +141,32 @@ export function installLibrary(VGMPlay_js) {
 					}
 				}
 
-				if (game.png) {
-					const url = URL.createObjectURL(game.png);
-					const img = new Image();
-					img.src = url;
-					img.style.width = '256px';
-					img.style.height = 'auto';
-					img.style.objectFit = 'contain';
-					img.style.background = '#000';
-					img.style.maxHeight = '212px';
-					img.style.display = 'block';
-					img.className = 'vgmplayGameToggle';
-					gameWrap.appendChild(img);
-					gameWrap.appendChild(document.createElement("br"));
-				} else {
-					const placeholder = document.createElement("div");
+				if (game.png && game.png.size > 0) {
+    if (this.debugMode) console.log('[VGM] Game PNG exists, size:', game.png.size, 'type:', game.png.type);
+    const url = URL.createObjectURL(game.png);
+    const img = new Image();
+    img.onload = () => {
+      if (this.debugMode) console.log('[VGM] Image loaded successfully for game:', game.name);
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = (e) => {
+      if (this.debugMode) console.error('[VGM] Image failed to load for game:', game.name, 'blob size:', game.png ? game.png.size : 'none', 'type:', game.png ? game.png.type : 'none', e);
+    };
+    img.src = url;
+    img.style.width = '256px';
+    img.style.height = 'auto';
+    img.style.objectFit = 'contain';
+    img.style.background = '#000';
+    img.style.maxHeight = '212px';
+    img.style.display = 'block';
+    img.className = 'vgmplayGameToggle';
+    gameWrap.appendChild(img);
+    gameWrap.appendChild(document.createElement("br"));
+  } else {
+    if (game.png && game.png.size === 0) {
+      if (this.debugMode) console.warn('[VGM] Game PNG is empty, skipping image for game:', game.name);
+    }
+    const placeholder = document.createElement("div");
 					placeholder.className = "game-name-placeholder";
 
 					// Try to get game name from first track if possible
@@ -365,8 +376,8 @@ export function installLibrary(VGMPlay_js) {
 						trackContainer.appendChild(a);
 						playableList.push({ filepath: fullPath, linkElement: a, lengthSec: trackLengthSeconds, title: nameSpan.textContent });
 					} catch (e) {
-						console.error("[UI] Error getting track length for:", fullPath, e);
-					}
+    if (this.debugMode) console.error("[UI] Error getting track length for:", fullPath, e);
+  }
 				}
 			}
 			game.lastRenderedCount = files.length;

@@ -4,30 +4,39 @@ export function installCache(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._cacheBridgeRequest = function (action, payload = {}) {
-		return new Promise((resolve) => {
-			if (!this._cacheBridgeAvailable()) {
-				resolve({ error: 'cache bridge unavailable' });
-				return;
-			}
-			try {
-				chrome.runtime.sendMessage({ type: 'vgm-cache', action, payload }, (resp) => {
-					if (chrome.runtime.lastError) {
-						const msg = chrome.runtime.lastError.message;
-						if (this.debugMode) console.warn('[VGM] Cache bridge error:', action, msg);
-						resolve({ error: msg });
-						return;
-					}
-					if (resp && resp.error && this.debugMode) {
-						console.warn('[VGM] Cache bridge error:', action, resp.error);
-					}
-					resolve(resp || {});
-				});
-			} catch (e) {
-				if (this.debugMode) console.warn('[VGM] Cache bridge exception:', action, e);
-				resolve({ error: String(e) });
-			}
-		});
-	};
+	return new Promise((resolve) => {
+		if (!this._cacheBridgeAvailable()) {
+			resolve({ error: 'cache bridge unavailable' });
+			return;
+		}
+		try {
+			chrome.runtime.sendMessage({ type: 'vgm-cache', action, payload }, (resp) => {
+				if (chrome.runtime.lastError) {
+				    const msg = chrome.runtime.lastError.message;
+				    // Only show chrome.runtime errors when debugging is enabled
+				    if (this.debugMode) {
+				        console.warn('[VGM] Cache bridge error:', action, msg);
+				    }
+				    resolve({ error: msg });
+				    return;
+				}
+				if (resp && resp.error) {
+				    // Only show response errors when debugging is enabled
+				    if (this.debugMode) {
+				        console.warn('[VGM] Cache bridge error:', action, resp.error);
+				    }
+				}
+				resolve(resp || {});
+			});
+		} catch (e) {
+		    // Only show exceptions when debugging is enabled
+		    if (this.debugMode) {
+		        console.warn('[VGM] Cache bridge exception:', action, e);
+		    }
+		    resolve({ error: String(e) });
+		}
+	});
+};
 
 	VGMPlay_js.prototype._cacheBridgeMissing = async function (paths) {
 		if (!paths || !paths.length) return [];
@@ -66,39 +75,52 @@ export function installCache(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._bridgeFetchFiles = async function (paths) {
-		if (!paths || !paths.length) return;
-		const uniq = Array.from(new Set(paths.filter(Boolean)));
-		const chunkSize = 20;
-		for (let i = 0; i < uniq.length; i += chunkSize) {
-			const chunk = uniq.slice(i, i + chunkSize);
-			const resp = await this._cacheBridgeRequest('getFiles', { paths: chunk });
-			if (resp && resp.files && Array.isArray(resp.files)) {
-				for (const item of resp.files) {
-					if (!item || !item.path) continue;
-					let arr = null;
-					if (item.b64) {
-						const binary = atob(item.b64);
-						const len = binary.length;
-						const bytes = new Uint8Array(len);
-						for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-						arr = bytes;
-					} else if (item.data) {
-						arr = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
-					} else {
-						continue;
-					}
-					if (arr.byteLength === 0 && this.debugMode) {
-						console.warn('[VGM] Shared cache returned empty file:', item.path);
-					}
-					this._ensureDirForFile(item.path);
-					try { FS.writeFile(item.path, arr); } catch (e) { }
-				}
-			}
-			if (resp && resp.missing && resp.missing.length && this.debugMode) {
-				console.warn('[VGM] Shared cache missing files:', resp.missing.slice(0, 5), resp.missing.length > 5 ? '...' : '');
-			}
-		}
-	};
+  if (!paths || !paths.length) return;
+  const uniq = Array.from(new Set(paths.filter(Boolean)));
+  const chunkSize = 20;
+  for (let i = 0; i < uniq.length; i += chunkSize) {
+    const chunk = uniq.slice(i, i + chunkSize);
+    const resp = await this._cacheBridgeRequest('getFiles', { paths: chunk });
+    if (resp && resp.files && Array.isArray(resp.files)) {
+      for (const item of resp.files) {
+        if (!item || !item.path) continue;
+        let arr = null;
+        if (item.b64) {
+          const binary = atob(item.b64);
+          const len = binary.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+          arr = bytes;
+        } else if (item.data) {
+          arr = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
+        } else {
+          continue;
+        }
+        if (arr.byteLength === 0) {
+          if (item.path.includes('cover_')) {
+            // Cover files may be empty on some sites, suppress unless debug
+          } else if (this.debugMode) {
+            console.warn('[VGM] Shared cache returned empty file:', item.path);
+          }
+        }
+        if (item.path.includes('cover_') && this.debugMode) {
+          console.log('[VGM] Writing cover file from bridge:', item.path, 'size:', arr.byteLength);
+        }
+        this._ensureDirForFile(item.path);
+        try { FS.writeFile(item.path, arr); } catch (e) { }
+      }
+    }
+    if (resp && resp.missing && resp.missing.length) {
+      const missingCovers = resp.missing.filter(p => p.includes('cover_'));
+      if (missingCovers.length && this.debugMode) {
+        console.warn('[VGM] Shared cache missing cover files:', missingCovers);
+      }
+      if (this.debugMode) {
+        console.warn('[VGM] Shared cache missing files:', resp.missing.slice(0, 5), resp.missing.length > 5 ? '...' : '');
+      }
+    }
+  }
+};
 
 	VGMPlay_js.prototype._collectCacheFilePaths = function () {
 		const out = [];
@@ -183,7 +205,7 @@ export function installCache(VGMPlay_js) {
 		// Restore games
 		if (meta.games && Array.isArray(meta.games)) {
 			this.games = meta.games.map(g => {
-				const rebuilt = this._rebuildGameFromMeta(g);
+				const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
 				if (rebuilt && !rebuilt.cacheHost && metaHost) {
 					rebuilt.cacheHost = metaHost;
 				}
@@ -304,20 +326,20 @@ export function installCache(VGMPlay_js) {
 				}
 				FS.mount(FS.filesystems.IDBFS, {}, '/cache');
 				FS.syncfs(true, (err) => {
-					if (err) {
-						console.error("[VGM] Failed to sync IDBFS (read):", err);
-						resolve();
-						return;
-					}
+    if (err) {
+      if (this.debugMode) console.error("[VGM] Failed to sync IDBFS (read):", err);
+      resolve();
+      return;
+    }
 
-					this._cacheReady = true;
-					this._restoreCache();
-					resolve();
-				});
-			} catch (e) {
-				console.error("[VGM] Failed to init IDBFS:", e);
-				resolve();
-			}
+    this._cacheReady = true;
+    this._restoreCache();
+    resolve();
+  });
+  } catch (e) {
+    if (this.debugMode) console.error("[VGM] Failed to init IDBFS:", e);
+    resolve();
+  }
 		});
 	};
 
@@ -333,11 +355,11 @@ export function installCache(VGMPlay_js) {
 			const meta = JSON.parse(metaText);
 			const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
 
-			if (meta.version !== 2) {
-				console.warn("[VGM] Cache version mismatch, clearing cache");
-				this.clearCache();
-				return;
-			}
+  if (meta.version !== 2) {
+    if (this.debugMode) console.warn("[VGM] Cache version mismatch, clearing cache");
+    this.clearCache();
+    return;
+  }
 
 			const normalizeArchiveName = (value) => {
 				if (!value) return '';
@@ -366,7 +388,7 @@ export function installCache(VGMPlay_js) {
 			// Restore games
 			if (meta.games && Array.isArray(meta.games)) {
 				this.games = meta.games.map(g => {
-					const rebuilt = this._rebuildGameFromMeta(g);
+					const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
 					if (rebuilt && !rebuilt.cacheHost && metaHost) {
 						rebuilt.cacheHost = metaHost;
 					}
@@ -404,10 +426,10 @@ export function installCache(VGMPlay_js) {
 					return !anyExisting;
 				});
 				if (missing) {
-					console.warn("[VGM] Cached files missing, clearing cache");
-					this.clearCache();
-					return;
-				}
+    if (this.debugMode) console.warn("[VGM] Cached files missing, clearing cache");
+    this.clearCache();
+    return;
+  }
 				if (this.debugMode) console.log(`[VGM] Restored ${this.games.length} games from cache`);
 				if (!this._cacheRestoreCounted) {
 					const restoredCount = this.games.length;
@@ -456,8 +478,8 @@ export function installCache(VGMPlay_js) {
 			}
 
 		} catch (e) {
-			console.error("[VGM] Failed to parse cache metadata:", e);
-		}
+    if (this.debugMode) console.error("[VGM] Failed to parse cache metadata:", e);
+  }
 	};
 
 	VGMPlay_js.prototype._saveCache = async function () {
@@ -495,14 +517,14 @@ export function installCache(VGMPlay_js) {
 							try {
 								FS.writeFile(coverPath, arr);
 							} catch (e) {
-								console.error("[VGM] Failed to write cover file:", coverPath, e);
-							}
+    if (this.debugMode) console.error("[VGM] Failed to write cover file:", coverPath, e);
+  }
 							resolve();
 						};
 						reader.onerror = () => {
-							console.error("[VGM] Failed to read cover Blob:", coverPath);
-							resolve();
-						};
+    if (this.debugMode) console.error("[VGM] Failed to read cover Blob:", coverPath);
+    resolve();
+  };
 						reader.readAsArrayBuffer(g.png);
 					});
 					
@@ -603,22 +625,22 @@ export function installCache(VGMPlay_js) {
 			}
 
 			FS.syncfs(false, (err) => {
-				if (err) {
-					console.error("[VGM] Failed to sync IDBFS (write):", err);
-				} else {
-					if (this.debugMode) console.log("[VGM] Cache saved to IDBFS");
-				}
-				this._cacheSaveInFlight = false;
-				if (this._cacheSaveQueued) {
-					this._cacheSaveQueued = false;
-					this._saveCache();
-				}
-			});
+    if (err) {
+      if (this.debugMode) console.error("[VGM] Failed to sync IDBFS (write):", err);
+    } else {
+      if (this.debugMode) console.log("[VGM] Cache saved to IDBFS");
+    }
+    this._cacheSaveInFlight = false;
+    if (this._cacheSaveQueued) {
+      this._cacheSaveQueued = false;
+      this._saveCache();
+    }
+  });
 
-		} catch (e) {
-			console.error("[VGM] Failed to write cache metadata:", e);
-			this._cacheSaveInFlight = false;
-		}
+  } catch (e) {
+    if (this.debugMode) console.error("[VGM] Failed to write cache metadata:", e);
+    this._cacheSaveInFlight = false;
+  }
 	};
 
 	VGMPlay_js.prototype._isCached = function (fingerprint) {
@@ -630,40 +652,54 @@ export function installCache(VGMPlay_js) {
 		this.zipURLLoaded.push(fingerprint);
 	};
 
-	VGMPlay_js.prototype._rebuildGameFromMeta = function (metaGame) {
-		const game = { ...metaGame };
-		game._fromCache = true;
+	VGMPlay_js.prototype._rebuildGameFromMeta = function (metaGame, debugMode) {
+  const game = { ...metaGame };
+  game._fromCache = true;
 
-		// Ensure no broken UI state is loaded from old cache versions
-		delete game.uiElement;
-		delete game.trackContainer;
-		delete game.playableList;
-		delete game.lastRenderedCount;
-		delete game._overviewImageUrl;
-		delete game._overviewTile;
-		if (!game.cacheHost && typeof window !== 'undefined' && window.location) {
-			game.cacheHost = '';
-		}
+  // Ensure no broken UI state is loaded from old cache versions
+  delete game.uiElement;
+  delete game.trackContainer;
+  delete game.playableList;
+  delete game.lastRenderedCount;
+  delete game._overviewImageUrl;
+  delete game._overviewTile;
+  if (!game.cacheHost && typeof window !== 'undefined' && window.location) {
+    game.cacheHost = '';
+  }
 
-		if (game.coverPath) {
-			try {
-				if (FS.analyzePath(game.coverPath).exists) {
-					const arr = FS.readFile(game.coverPath);
-					game.png = new Blob([arr], { type: "image/png" });
-				}
-			} catch (e) {
-				console.error("[VGM] Failed to restore cover:", game.coverPath, e);
-			}
-		}
+  if (game.coverPath) {
+    try {
+      if (FS.analyzePath(game.coverPath).exists) {
+        const arr = FS.readFile(game.coverPath);
+        if (debugMode) console.log('[VGM] Restoring cover from path:', game.coverPath, 'size:', arr.length);
+        if (arr.length > 0) {
+          // Verify PNG signature
+          if (arr.length >= 8 && arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4E && arr[3] === 0x47 && arr[4] === 0x0D && arr[5] === 0x0A && arr[6] === 0x1A && arr[7] === 0x0A) {
+            game.png = new Blob([arr], { type: "image/png" });
+          } else if (debugMode) {
+            console.warn('[VGM] Cover file PNG signature mismatch:', game.coverPath, 'first bytes:', Array.from(arr.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+            game.png = null;
+          }
+        } else if (debugMode) {
+          console.warn('[VGM] Cover file is empty:', game.coverPath);
+          game.png = null;
+        }
+      } else if (debugMode) {
+        console.warn('[VGM] Cover path does not exist:', game.coverPath);
+      }
+    } catch (e) {
+      if (debugMode) console.error("[VGM] Failed to restore cover:", game.coverPath, e);
+    }
+  }
 
-		return game;
-	};
+  return game;
+};
 
 	VGMPlay_js.prototype.clearCache = function () {
-		if (!this._cacheReady) {
-			console.warn("[VGM] Cannot clear cache before it is initialized.");
-			return;
-		}
+  if (!this._cacheReady) {
+    if (this.debugMode) console.warn("[VGM] Cannot clear cache before it is initialized.");
+    return;
+  }
 
 		try {
 			// Helper to recursively delete an FS directory
@@ -720,24 +756,24 @@ export function installCache(VGMPlay_js) {
 			}
 
 			FS.syncfs(false, (err) => {
-				if (err) {
-					console.error("[VGM] Failed to sync cleared cache to IDBFS:", err);
-					return;
-				}
-				console.log("[VGM] Cache successfully cleared.");
-				if (this._renderSkippedDownloads) this._renderSkippedDownloads();
-				if (this._showSkippedWindow) this._showSkippedWindow();
-				if (this.vgmplayContainer && this.vgmplayContainer.getRootNode) {
-					// ensure UI reflects cleared state
-					this._scheduleZipRender();
-				}
-				if (typeof window !== 'undefined' && window.location) {
-					setTimeout(() => window.location.reload(), 100);
-				}
-			});
+    if (err) {
+      if (this.debugMode) console.error("[VGM] Failed to sync cleared cache to IDBFS:", err);
+      return;
+    }
+    console.log("[VGM] Cache successfully cleared.");
+    if (this._renderSkippedDownloads) this._renderSkippedDownloads();
+    if (this._showSkippedWindow) this._showSkippedWindow();
+    if (this.vgmplayContainer && this.vgmplayContainer.getRootNode) {
+      // ensure UI reflects cleared state
+      this._scheduleZipRender();
+    }
+    if (typeof window !== 'undefined' && window.location) {
+      setTimeout(() => window.location.reload(), 100);
+    }
+  });
 
-		} catch (e) {
-			console.error("[VGM] Error clearing cache:", e);
-		}
+  } catch (e) {
+    if (this.debugMode) console.error("[VGM] Error clearing cache:", e);
+  }
 	};
 }

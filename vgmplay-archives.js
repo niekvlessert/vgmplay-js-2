@@ -340,6 +340,11 @@ export function installArchives(VGMPlay_js) {
 				game.name = name;
 				this.games.push(game);
 				anyPlayable = true;
+			} else if (game.png && game.png.size > 0) {
+				// Add game even without playable files if it has a PNG cover
+				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+				game.name = name;
+				this.games.push(game);
 			}
 			await maybeYield();
 		}

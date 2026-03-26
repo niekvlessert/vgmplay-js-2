@@ -126,9 +126,9 @@ export function installQueue(VGMPlay_js) {
 								FS.createDataFile("/", originalFilename || "remote_file.vgm", byteArray, true, true);
 								resolve(destPath);
 							} catch (e) {
-								console.error("FS Error loading direct file:", e);
-								resolve(null);
-							}
+    if (this.debugMode) console.error("FS Error loading direct file:", e);
+    resolve(null);
+  }
 						} else {
 							resolve(null);
 						}
@@ -198,9 +198,9 @@ export function installQueue(VGMPlay_js) {
 								}
 								classContext.zipURLLoaded.push(job.data);
 							} else {
-								console.error("Failed to load archive from URL:", job.data);
-								next();
-							}
+    if (this.debugMode) console.error("Failed to load archive from URL:", job.data);
+    next();
+  }
 							classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
 						}
 					}

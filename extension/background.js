@@ -95,22 +95,23 @@ async function cachePutMeta(meta) {
 }
 
 async function cacheGetFiles(paths) {
-    const db = await openCacheDb();
-    const tx = db.transaction(CACHE_FILES_STORE, 'readonly');
-    const store = tx.objectStore(CACHE_FILES_STORE);
-    const files = [];
-    const missing = [];
-    const reqs = paths.map((path) => {
-        const req = store.get(path);
-        return reqToPromise(req).then((val) => ({ path, val }));
-    });
-    const results = await Promise.all(reqs);
-    await txComplete(tx);
-    for (const { path, val } of results) {
-    if (val) {
-    if (window.__VGM_DEBUG__) {
-    console.log('[VGM Cache] getFiles path:', path, 'val type:', typeof val, 'isBlob:', val instanceof Blob, 'isArrayBuffer:', val instanceof ArrayBuffer, 'val.b64:', !!val?.b64, 'val.data:', !!val?.data, 'val.data type:', typeof val?.data, 'val.data instanceof ArrayBuffer:', val?.data instanceof ArrayBuffer, 'val.len:', val?.len);
-    }
+	const db = await openCacheDb();
+	const tx = db.transaction(CACHE_FILES_STORE, 'readonly');
+	const store = tx.objectStore(CACHE_FILES_STORE);
+	const files = [];
+	const missing = [];
+	const reqs = paths.map((path) => {
+		const req = store.get(path);
+		return reqToPromise(req).then((val) => ({ path, val }));
+	});
+	const results = await Promise.all(reqs);
+	await txComplete(tx);
+	const isDebug = (typeof window !== 'undefined' && window.__VGM_DEBUG__) || (typeof self !== 'undefined' && self.__VGM_DEBUG__);
+	for (const { path, val } of results) {
+		if (val) {
+			if (isDebug) {
+				console.log('[VGM Cache] getFiles path:', path, 'val type:', typeof val, 'isBlob:', val instanceof Blob, 'isArrayBuffer:', val instanceof ArrayBuffer, 'val.b64:', !!val?.b64, 'val.data:', !!val?.data, 'val.data type:', typeof val?.data, 'val.data instanceof ArrayBuffer:', val?.data instanceof ArrayBuffer, 'val.len:', val?.len);
+			}
     if (val && val.b64) {
     files.push({ path, b64: val.b64 });
             } else if (val instanceof Blob) {
@@ -178,24 +179,25 @@ async function cacheGetFiles(paths) {
 }
 
 async function cachePutFiles(files) {
-const db = await openCacheDb();
-const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
-const store = tx.objectStore(CACHE_FILES_STORE);
-for (const item of files) {
-if (!item || !item.path) continue;
-if (item.b64) {
-const len = item.b64.length;
-if (window.__VGM_DEBUG__) console.log('[VGM Cache] putFiles b64 path:', item.path, 'len:', len);
-store.put({ b64: item.b64, len }, item.path);
-continue;
-}
-if (!item.data) continue;
-const data = item.data instanceof ArrayBuffer ? item.data : (item.data.buffer || item.data);
-const len = data ? data.byteLength : 0;
-if (window.__VGM_DEBUG__) console.log('[VGM Cache] putFiles data path:', item.path, 'len:', len, 'data type:', typeof data, 'isArrayBuffer:', data instanceof ArrayBuffer);
-store.put({ data, len }, item.path);
-}
-await txComplete(tx);
+	const db = await openCacheDb();
+	const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
+	const store = tx.objectStore(CACHE_FILES_STORE);
+	const isDebug = (typeof window !== 'undefined' && window.__VGM_DEBUG__) || (typeof self !== 'undefined' && self.__VGM_DEBUG__);
+	for (const item of files) {
+		if (!item || !item.path) continue;
+		if (item.b64) {
+			const len = item.b64.length;
+			if (isDebug) console.log('[VGM Cache] putFiles b64 path:', item.path, 'len:', len);
+			store.put({ b64: item.b64, len }, item.path);
+			continue;
+		}
+		if (!item.data) continue;
+		const data = item.data instanceof ArrayBuffer ? item.data : (item.data.buffer || item.data);
+		const len = data ? data.byteLength : 0;
+		if (isDebug) console.log('[VGM Cache] putFiles data path:', item.path, 'len:', len, 'data type:', typeof data, 'isArrayBuffer:', data instanceof ArrayBuffer);
+		store.put({ data, len }, item.path);
+	}
+	await txComplete(tx);
 }
 
 async function cacheClearAll() {
@@ -252,8 +254,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 function installDebugBridge() {
-    if (window.__VGM_DEBUG_SNAPSHOT__) return;
-    window.__VGM_DEBUG_SNAPSHOT__ = () => new Promise((resolve) => {
+  // Guard for service worker context where window doesn't exist
+  if (typeof window === 'undefined') return;
+  if (window.__VGM_DEBUG_SNAPSHOT__) return;
+  window.__VGM_DEBUG_SNAPSHOT__ = () => new Promise((resolve) => {
         const id = Date.now() + Math.random();
         const handler = (e) => {
             if (e.source !== window) return;
@@ -288,7 +292,9 @@ function installDebugBridge() {
 }
 
 function togglePlayer(extensionUrl) {
-    if (window.__VGM_DEBUG__) {
+  // Guard for service worker context where window doesn't exist
+  if (typeof window === 'undefined') return { injected: false };
+  if (window.__VGM_DEBUG__) {
         console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
     }
     if (window.vgmPlayerInjected) {
@@ -360,12 +366,12 @@ function togglePlayer(extensionUrl) {
     fetch(extensionUrl + 'css/style.css')
       .then(response => response.text())
       .then(css => {
-        style.textContent = css;
-        console.log('[VGM] CSS loaded and injected, length:', css.length);
-      })
-      .catch(err => {
-        console.error('[VGM] Failed to load CSS:', err);
-      });
+    style.textContent = css;
+    if (window.__VGM_DEBUG__) console.log('[VGM] CSS loaded and injected, length:', css.length);
+  })
+  .catch(err => {
+    if (window.__VGM_DEBUG__) console.error('[VGM] Failed to load CSS:', err);
+  });
 
     // Container for the player
     const container = document.createElement('div');

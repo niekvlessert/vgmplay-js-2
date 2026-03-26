@@ -83,9 +83,9 @@ export function installAudio(VGMPlay_js) {
 					}
 				};
 			} catch (err) {
-				console.error('AudioWorklet failed to load:', err);
-				return false;
-			}
+    if (this.debugMode) console.error('AudioWorklet failed to load:', err);
+    return false;
+  }
 
 			this.isWebAudioInitialized = true;
 			await this._ensureAudioMotion();

@@ -8,9 +8,11 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 function togglePlayer(extensionUrl) {
-  // Guard for service worker context where window doesn't exist
-  if (typeof window === 'undefined') return;
-  if (window.__VGM_DEBUG__) console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
+// Guard for service worker context where window doesn't exist
+if (typeof window === 'undefined') return;
+// Auto-enable debug mode
+window.__VGM_DEBUG__ = true;
+if (window.__VGM_DEBUG__) console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
   if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
@@ -42,12 +44,15 @@ function togglePlayer(extensionUrl) {
     `;
     document.documentElement.appendChild(root);
 
-    const shadow = root.attachShadow({ mode: 'open' });
+const shadow = root.attachShadow({ mode: 'open' });
 
-    // Initialize Module directly in the Main World
-    window.Module = window.Module || {};
-    if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
-    if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
+// Initialize Module directly in the Main World
+window.Module = window.Module || {};
+if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
+if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
+if (typeof window.__VGM_DEBUG__ === 'undefined') {
+	window.__VGM_DEBUG__ = true;
+}
 
     // Add styles - inject directly into Shadow DOM for proper scoping
     const styleLink = document.createElement('link');

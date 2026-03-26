@@ -292,11 +292,13 @@ function installDebugBridge() {
 }
 
 function togglePlayer(extensionUrl) {
-  // Guard for service worker context where window doesn't exist
-  if (typeof window === 'undefined') return { injected: false };
-  if (window.__VGM_DEBUG__) {
-        console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
-    }
+	// Guard for service worker context where window doesn't exist
+	if (typeof window === 'undefined') return { injected: false };
+	// Auto-enable debug mode
+	window.__VGM_DEBUG__ = true;
+	if (window.__VGM_DEBUG__) {
+		console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
+	}
     if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
@@ -330,12 +332,12 @@ function togglePlayer(extensionUrl) {
 
     const shadow = root.attachShadow({ mode: 'open' });
 
-    // Initialize Module in the isolated world before loading core scripts
-    window.__VGM_RUNTIME_READY__ = false;
-    window.Module = window.Module || {};
-    if (typeof window.__VGM_DEBUG__ === 'undefined') {
-        window.__VGM_DEBUG__ = false;
-    }
+	// Initialize Module in the isolated world before loading core scripts
+	window.__VGM_RUNTIME_READY__ = false;
+	window.Module = window.Module || {};
+	if (typeof window.__VGM_DEBUG__ === 'undefined') {
+		window.__VGM_DEBUG__ = true;
+	}
     if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
     if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
     const base = extensionUrl;

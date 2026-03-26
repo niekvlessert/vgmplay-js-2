@@ -202,15 +202,19 @@ export function installCache(VGMPlay_js) {
 		}
 		await this._bridgeFetchFiles(coverPaths);
 
-		// Restore games
-		if (meta.games && Array.isArray(meta.games)) {
-			this.games = meta.games.map(g => {
-				const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
-				if (rebuilt && !rebuilt.cacheHost && metaHost) {
-					rebuilt.cacheHost = metaHost;
-				}
-				return rebuilt;
-			});
+// Restore games
+	if (meta.games && Array.isArray(meta.games)) {
+		this.games = meta.games.map(g => {
+			const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
+			if (rebuilt && !rebuilt.cacheHost && metaHost) {
+				rebuilt.cacheHost = metaHost;
+			}
+			// Apply any pending external images to restored games
+			if (rebuilt && rebuilt.archiveName && this._applyExternalGameImage && this._pendingExternalGameImages) {
+				this._applyExternalGameImage(rebuilt, rebuilt.archiveName, false);
+			}
+			return rebuilt;
+		});
 			if (!this._cacheArchiveNames) this._cacheArchiveNames = new Set();
 			this._cacheRestoredByHost = new Map();
 			this.games.forEach((g) => {
@@ -265,8 +269,10 @@ export function installCache(VGMPlay_js) {
 				this._cacheRestoredGameCount = 0;
 				return;
 			}
-			if (this.debugMode) console.log(`[VGM] Restored ${this.games.length} games from shared cache`);
-			if (!this._cacheRestoreCounted) {
+		if (this.debugMode) console.log(`[VGM] Restored ${this.games.length} games from shared cache`);
+		// Sort games alphabetically after restoring from cache
+		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+		if (!this._cacheRestoreCounted) {
 				const restoredCount = this.games.length;
 				this.autoCacheHits = restoredCount;
 				this._cacheRestoredGameCount = restoredCount;

@@ -875,12 +875,12 @@ class VGMPlay_js {
 				});
 			}
 
-			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
-			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
-			console.log('[VGM] Game loaded:', derivedName, 'archiveName:', sourceName, 'files:', filteredFiles.length);
-			if (this._applyExternalGameImage && sourceName) {
-			    this._applyExternalGameImage(game, sourceName, false);
-			}
+const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
+	console.log('[VGM] Game loaded:', derivedName, 'archiveName:', sourceName, 'files:', filteredFiles.length, 'pendingImages:', this._pendingExternalGameImages ? Object.keys(this._pendingExternalGameImages) : []);
+	if (this._applyExternalGameImage && sourceName) {
+		this._applyExternalGameImage(game, sourceName, false);
+	}
 			this.tempGameInfo = null;
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -925,7 +925,7 @@ class VGMPlay_js {
 			this.amountOfGamesLoaded++;
 			const gamePath = this._getGamePath(this.amountOfGamesLoaded);
 			this._makedirs(gamePath);
-			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null };
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName };
 			gamesByKey[gameKey] = game;
 			gamesInOrder.push(game);
 			return game;
@@ -1692,159 +1692,188 @@ class VGMPlay_js {
     // Use window.__VGM_DEBUG__ for immediate logging (before debugMode is set)
     if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Trying to find matching image for archive:', baseName, 'url:', archiveUrl);
 
-  // Check if a matching image is listed on the page (in _currentScanNames)
-  const scanNames = this._currentScanNames;
-  const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
-  let foundImageExt = null;
-  for (const ext of imageExts) {
-    const imageName = (baseName + ext).toLowerCase();
-    if (scanNames && scanNames.has(imageName)) {
-      foundImageExt = ext;
-      break;
-    }
-  }
+	// Check if a matching image is listed on the page (in _currentScanNames)
+	const scanNames = this._currentScanNames;
+	const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
+	let foundImageExt = null;
+	for (const ext of imageExts) {
+		const imageName = (baseName + ext).toLowerCase();
+		if (scanNames && scanNames.has(imageName)) {
+			foundImageExt = ext;
+			break;
+		}
+	}
 
-    // If a matching image is listed on the page, fetch it directly
-    if (foundImageExt) {
-      const imageUrl = directory + baseName + foundImageExt;
-      if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Image found in scan names, fetching:', imageUrl);
-      this._fetchUrlAsUint8(imageUrl).then(bytes => {
-        if (bytes && bytes.length > 0) {
-          if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Found matching image for archive:', imageUrl, 'size:', bytes.length);
-          this._registerExternalGameImage(baseName + foundImageExt, bytes);
-          this._applyExternalGameImageToExistingGames(baseName + foundImageExt);
-        }
-      }).catch(() => {
-        // Image not found, silently ignore
-      });
-      return;
-    }
+	const debugLog = (msg, ...args) => {
+		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+			console.log(msg, ...args);
+		}
+	};
 
-    // If no matching image is listed on the page, try all image extensions as fallback
-    // This handles cases where the image exists on the server but isn't linked on the page
-    console.log('[VGM] Trying to find image for archive:', baseName, 'in directory:', directory);
-    this._tryFetchImageWithFallbacks(directory, baseName, imageExts, 0);
+	debugLog('[VGM] _tryFetchMatchingImageForArchive:', 'baseName:', baseName, 'scanNames size:', scanNames ? scanNames.size : 0, 'foundImageExt:', foundImageExt);
+
+	// If a matching image is listed on the page, fetch it directly
+	if (foundImageExt) {
+		const imageUrl = directory + baseName + foundImageExt;
+		debugLog('[VGM] Image found in scan names, fetching:', imageUrl);
+		this._fetchUrlAsUint8(imageUrl).then(bytes => {
+			debugLog('[VGM] _fetchUrlAsUint8 callback for', imageUrl, 'bytes:', bytes ? bytes.length : 'null');
+			if (bytes && bytes.length > 0) {
+				debugLog('[VGM] Found matching image for archive:', imageUrl, 'size:', bytes.length);
+				this._registerExternalGameImage(baseName + foundImageExt, bytes);
+				this._applyExternalGameImageToExistingGames(baseName + foundImageExt);
+			}
+		}).catch((err) => {
+			debugLog('[VGM] Image fetch failed:', imageUrl, err);
+		});
+		return;
+	}
+
+	// If no matching image is listed on the page, try all image extensions as fallback
+	// This handles cases where the image exists on the server but isn't linked on the page
+	debugLog('[VGM] Trying to find image for archive:', baseName, 'in directory:', directory);
+	this._tryFetchImageWithFallbacks(directory, baseName, imageExts, 0);
 }
 
 async _tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex) {
-    if (startIndex >= extensions.length) {
-        // All extensions tried, no image found
-        console.log('[VGM] No image found for archive:', baseName, 'tried extensions:', extensions.join(', '));
-        return;
-    }
-    const ext = extensions[startIndex];
-    const imageUrl = directory + baseName + ext;
-    console.log('[VGM] Trying image URL:', imageUrl);
-    try {
-        const bytes = await this._fetchUrlAsUint8(imageUrl);
-        if (bytes && bytes.length > 0) {
-            console.log('[VGM] Found matching image for archive:', imageUrl, 'size:', bytes.length);
-            this._registerExternalGameImage(baseName + ext, bytes);
-            this._applyExternalGameImageToExistingGames(baseName + ext);
-        } else {
-            // Try next extension
-            this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
-        }
-    } catch (e) {
-        // Image not found with this extension, try next
-        this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
-    }
+	const debugLog = (msg, ...args) => {
+		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+			console.log(msg, ...args);
+		}
+	};
+
+	if (startIndex >= extensions.length) {
+		// All extensions tried, no image found
+		debugLog('[VGM] No image found for archive:', baseName, 'tried extensions:', extensions.join(', '));
+		return;
+	}
+	const ext = extensions[startIndex];
+	const imageUrl = directory + baseName + ext;
+	debugLog('[VGM] Trying image URL:', imageUrl);
+	try {
+		const bytes = await this._fetchUrlAsUint8(imageUrl);
+		debugLog('[VGM] _fetchUrlAsUint8 result for', imageUrl, ':', bytes ? bytes.length : 'null');
+		if (bytes && bytes.length > 0) {
+			debugLog('[VGM] Found matching image for archive:', imageUrl, 'size:', bytes.length);
+			this._registerExternalGameImage(baseName + ext, bytes);
+			this._applyExternalGameImageToExistingGames(baseName + ext);
+		} else {
+			// Try next extension
+			this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+		}
+	} catch (e) {
+		debugLog('[VGM] _tryFetchImageWithFallbacks error:', imageUrl, e);
+		// Image not found with this extension, try next
+		this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+	}
 }
 
-	_registerExternalGameImage(name, byteArray) {
-		if (!name || !byteArray) return;
-		
-		// DEBUG: Display image on screen for testing
-		try {
-			const blob = new Blob([byteArray], { type: 'image/png' });
-			const url = URL.createObjectURL(blob);
-			console.log('[VGM] DEBUG: Image registered:', name, 'blob size:', blob.size, 'url:', url);
-			// Create temporary image to verify it works
-			const img = new Image();
-			img.onload = () => console.log('[VGM] DEBUG: Image loads OK:', name);
-			img.onerror = (e) => console.log('[VGM] DEBUG: Image fails to load:', name, e);
-			img.src = url;
-		} catch(e) {
-			console.log('[VGM] DEBUG: Error creating image:', name, e);
+_registerExternalGameImage(name, byteArray) {
+	if (!name || !byteArray) {
+		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+			console.log('[VGM] _registerExternalGameImage: invalid params', 'name:', name, 'byteArray:', byteArray ? byteArray.length : 'null');
 		}
-		const key = this._baseNameNoExt(name).toLowerCase();
-		if (!key) return;
-		if (!this._pendingExternalGameImages) this._pendingExternalGameImages = {};
-		try {
-			let mime = 'image/png';
-			const lower = name.toLowerCase();
-			if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
-			else if (lower.endsWith('.webp')) mime = 'image/webp';
-			else if (lower.endsWith('.png')) mime = 'image/png';
-			this._pendingExternalGameImages[key] = new Blob([byteArray], { type: mime });
-		} catch (e) {
-    if (this.debugMode) console.error('[VGM] Failed to cache external game image', name, e);
-  }
+		return;
 	}
 
-	_applyExternalGameImage(game, archiveName, overrideOnly) {
-		if (!game || !archiveName || !this._pendingExternalGameImages) {
-			console.log('[VGM] _applyExternalGameImage: early return', 'game:', !!game, 'archiveName:', archiveName, 'pending:', !!this._pendingExternalGameImages);
+	const debugLog = (msg, ...args) => {
+		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+			console.log(msg, ...args);
+		}
+	};
+
+	debugLog('[VGM] _registerExternalGameImage:', name, 'size:', byteArray.length);
+
+	const key = this._baseNameNoExt(name).toLowerCase();
+	if (!key) {
+		debugLog('[VGM] _registerExternalGameImage: no key for', name);
+		return;
+	}
+	if (!this._pendingExternalGameImages) this._pendingExternalGameImages = {};
+	try {
+		const lower = name.toLowerCase();
+		let mime = 'image/jpeg';
+		if (lower.endsWith('.png')) mime = 'image/png';
+		else if (lower.endsWith('.webp')) mime = 'image/webp';
+		else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+		this._pendingExternalGameImages[key] = new Blob([byteArray], { type: mime });
+		debugLog('[VGM] Registered external game image:', key, 'mime:', mime, 'blob size:', this._pendingExternalGameImages[key].size);
+	} catch (e) {
+		if (this.debugMode) console.error('[VGM] Failed to cache external game image', name, e);
+	}
+}
+
+_applyExternalGameImage(game, archiveName, overrideOnly) {
+	const debugLog = (msg, ...args) => {
+		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+			console.log(msg, ...args);
+		}
+	};
+
+	if (!game || !archiveName || !this._pendingExternalGameImages) {
+		debugLog('[VGM] _applyExternalGameImage: early return', 'game:', !!game, 'archiveName:', archiveName, 'pending:', !!this._pendingExternalGameImages);
+		return;
+	}
+	const key = this._baseNameNoExt(archiveName).toLowerCase();
+	debugLog('[VGM] _applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key]);
+	const blob = this._pendingExternalGameImages[key];
+	if (!blob) {
+		debugLog('[VGM] _applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
+		return;
+	}
+	if (!overrideOnly || !game.png) {
+		game.png = blob;
+		debugLog('[VGM] _applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size);
+	}
+}
+
+	_applyExternalGameImageToExistingGames(imageName) {
+		const debugLog = (msg, ...args) => {
+			if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+				console.log(msg, ...args);
+			}
+		};
+
+		debugLog("[VGM] _applyExternalGameImageToExistingGames called, imageName:", imageName, "games.length:", this.games ? this.games.length : 0);
+		if (!this.games || !this.games.length) {
+			debugLog('[VGM] No games to apply image to:', imageName);
 			return;
 		}
-		const key = this._baseNameNoExt(archiveName).toLowerCase();
-		console.log('[VGM] _applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key]);
-		const blob = this._pendingExternalGameImages[key];
-		if (!blob) return;
-		if (!overrideOnly || !game.png) {
-			game.png = blob;
+		const key = this._baseNameNoExt(imageName).toLowerCase();
+		if (!key) return;
+		debugLog('[VGM] Applying image to existing games, key:', key, 'games count:', this.games.length);
+		let anyUpdated = false;
+		for (const game of this.games) {
+			if (!game) continue;
+			const archiveName = game.archiveName || game.name || '';
+			const base = this._baseNameNoExt(archiveName).toLowerCase();
+			debugLog('[VGM] Checking game:', game.name, 'archiveName:', archiveName, 'base:', base, 'key:', key);
+			if (base === key) {
+				this._applyExternalGameImage(game, archiveName, false);
+				anyUpdated = true;
+				if (game.uiElement) {
+					const img = game.uiElement.querySelector('img.vgmplayGameToggle');
+					if (img && game.png) {
+						try {
+							img.src = URL.createObjectURL(game.png);
+						} catch (e) { }
+						continue;
+					}
+					if (game.uiElement.parentNode) {
+						game.uiElement.parentNode.removeChild(game.uiElement);
+					}
+					game.uiElement = null;
+				}
+				if (this.showVGMFromZip) {
+					this.showVGMFromZip(game);
+				}
+			}
 		}
-	}
-
-  _applyExternalGameImageToExistingGames(imageName) {
-    console.log("[VGM] _applyExternalGameImageToExistingGames called, imageName:", imageName, "games.length:", this.games ? this.games.length : 0);
-    if (!this.games || !this.games.length) {
-      if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] No games to apply image to:', imageName);
-      return;
-    }
-    const key = this._baseNameNoExt(imageName).toLowerCase();
-    if (!key) return;
-    if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Applying image to existing games, key:', key, 'games count:', this.games.length);
-    let anyUpdated = false;
-    for (const game of this.games) {
-      if (!game) continue;
-      const archiveName = game.archiveName || game.name || '';
-      const base = this._baseNameNoExt(archiveName).toLowerCase();
-      if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Checking game:', game.name, 'archiveName:', archiveName, 'base:', base, 'key:', key);
-      if (base === key) {
-        this._applyExternalGameImage(game, archiveName, false);
-        anyUpdated = true;
-      } else {
-        // Debug: log when no match
-        console.log('[VGM] _applyExternalGameImageToExistingGames: NO MATCH', 'game.base:', base, 'key:', key);
-        // Force re-render if game has uiElement
-        if (game.uiElement) {
-          console.log('[VGM] Image applied to game with UI, should update:', game.name);
-        }
-        if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Matched! Applying image to game:', game.name);
-        if (game.uiElement) {
-          const img = game.uiElement.querySelector('img.vgmplayGameToggle');
-          if (img && game.png) {
-            try {
-              img.src = URL.createObjectURL(game.png);
-            } catch (e) { }
-            continue;
-          }
-          if (game.uiElement.parentNode) {
-            game.uiElement.parentNode.removeChild(game.uiElement);
-          }
-          game.uiElement = null;
-        }
-        if (this.showVGMFromZip) {
-          this.showVGMFromZip(game);
-        }
-      }
-    }
-    if (anyUpdated && this._renderZipGamesNow) {
-      this._renderZipGamesNow();
-    }
-    if (anyUpdated && this._saveCache) {
-      this._saveCache();
+		if (anyUpdated && this._renderZipGamesNow) {
+			this._renderZipGamesNow();
+		}
+		if (anyUpdated && this._saveCache) {
+			this._saveCache();
 		}
 	}
 
@@ -1900,16 +1929,25 @@ async _tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex) {
 		}
 	}
 
-	async _fetchUrlAsUint8(url) {
-		try {
-			const resp = await fetch(url, { cache: 'no-store' });
-			if (!resp.ok) return null;
-			const buf = await resp.arrayBuffer();
-			return new Uint8Array(buf);
-		} catch (e) {
-			return null;
+async _fetchUrlAsUint8(url) {
+	const debugLog = (msg, ...args) => {
+		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+			console.log(msg, ...args);
 		}
+	};
+	debugLog('[VGM] _fetchUrlAsUint8 called for:', url);
+	try {
+		const resp = await fetch(url, { cache: 'no-store' });
+		debugLog('[VGM] _fetchUrlAsUint8 response:', url, 'status:', resp.status, 'ok:', resp.ok);
+		if (!resp.ok) return null;
+		const buf = await resp.arrayBuffer();
+		debugLog('[VGM] _fetchUrlAsUint8 buffer size:', url, buf.byteLength);
+		return new Uint8Array(buf);
+	} catch (e) {
+		debugLog('[VGM] _fetchUrlAsUint8 error:', url, e);
+		return null;
 	}
+}
 
 	async _autoScanDist() {
 		if (!this.autoScanDist || this._autoScanDistDone) return;

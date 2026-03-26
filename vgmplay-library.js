@@ -97,14 +97,20 @@ export function installLibrary(VGMPlay_js) {
 			game._midiSorted = true;
 		}
 		const hasPlayable = files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()));
-		if (!hasPlayable) {
-			if (game.uiElement && game.uiElement.parentNode) {
-				game.uiElement.parentNode.removeChild(game.uiElement);
-			}
-			game.uiElement = null;
-			return;
+	if (!hasPlayable) {
+		if (game.uiElement && game.uiElement.parentNode) {
+			game.uiElement.parentNode.removeChild(game.uiElement);
 		}
-		const suppressHeader = false;
+		game.uiElement = null;
+		return;
+	}
+
+	// Apply any pending external images before rendering
+	if (game.archiveName && this._applyExternalGameImage && this._pendingExternalGameImages) {
+		this._applyExternalGameImage(game, game.archiveName, false);
+	}
+
+	const suppressHeader = false;
 		const gameIndex = this.games.indexOf(game) + 1;
 		const normalizeTitle = (value) => {
 			if (!value) return value;

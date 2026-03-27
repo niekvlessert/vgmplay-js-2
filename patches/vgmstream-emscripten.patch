@@ -1,0 +1,62 @@
+diff --git a/cmake/dependencies/speex.cmake b/cmake/dependencies/speex.cmake
+index fe5a2d9a..2c6d582a 100644
+--- a/cmake/dependencies/speex.cmake
++++ b/cmake/dependencies/speex.cmake
+@@ -1,17 +1,22 @@
+ if(NOT WIN32 AND USE_SPEEX)
+-	if(NOT SPEEX_PATH)
+-		find_package(Speex QUIET)
+-		
+-		if(Speex_FOUND)
+-			set(SPEEX_SOURCE "(system)")
+-		endif()
++if(NOT SPEEX_PATH)
++	find_package(Speex QUIET)
++
++	if(Speex_FOUND)
++		set(SPEEX_SOURCE "(system)")
+ 	endif()
+-	if(SPEEX_PATH OR NOT Speex_FOUND)
+-		FetchDependency(SPEEX
+-			DIR speex
+-			GIT_REPOSITORY https://gitlab.xiph.org/xiph/speex
+-			GIT_TAG Speex-1.2.1
+-		)
++endif()
++if(SPEEX_PATH OR NOT Speex_FOUND)
++	FetchDependency(SPEEX
++		DIR speex
++		FETCH_PRIORITY file git
++
++		FILE_DOWNLOAD https://downloads.xiph.org/releases/speex/speex-1.2.1.tar.gz
++		FILE_SUBDIR speex-1.2.1
++
++		GIT_REPOSITORY https://gitlab.xiph.org/xiph/speex
++		GIT_TAG Speex-1.2.1
++	)
+ 		
+ 		if(SPEEX_PATH)
+ 			set(SPEEX_LINK_PATH ${SPEEX_BIN}/libspeex/.libs/libspeex.a)
+@@ -26,19 +31,19 @@ if(NOT WIN32 AND USE_SPEEX)
+ 			
+ 			file(MAKE_DIRECTORY ${SPEEX_BIN})
+ 			add_custom_target(SPEEX_CONFIGURE
+-				COMMAND "${SPEEX_PATH}/configure" --enable-static --disable-shared --disable-binaries --with-pic CC="${CMAKE_C_COMPILER}" AR="${CMAKE_AR}" RANLIB="${CMAKE_RANLIB}"
++				COMMAND emconfigure "${SPEEX_PATH}/configure" --host=none --enable-static --disable-shared --disable-binaries --with-pic CC="${CMAKE_C_COMPILER}" AR="${CMAKE_AR}" RANLIB="${CMAKE_RANLIB}"
+ 				DEPENDS ${SPEEX_PATH}/configure
+ 				BYPRODUCTS ${SPEEX_BIN}/Makefile
+ 				WORKING_DIRECTORY ${SPEEX_BIN}
+ 			)
+ 			add_custom_target(SPEEX_MAKE
+-				COMMAND make
++				COMMAND emmake make -C libspeex libspeex.la
+ 				DEPENDS ${SPEEX_BIN}/Makefile
+ 				BYPRODUCTS ${SPEEX_LINK_PATH} ${SPEEX_BIN}
+ 				WORKING_DIRECTORY ${SPEEX_BIN}
+ 			)
+ 			
+-			add_library(speex STATIC IMPORTED)
++			add_library(speex STATIC IMPORTED GLOBAL)
+ 			if(NOT EXISTS ${SPEEX_LINK_PATH})
+ 				add_dependencies(speex SPEEX_MAKE)
+ 			endif()

@@ -44,6 +44,6 @@ apply_patch "sexypsf" "sexypsf.patch"
 apply_patch "libkss" "libkss.patch" "--ignore-whitespace"
 apply_patch "lazyusf" "lazyusf.patch"
 apply_patch "monkeys-audio" "monkeys-audio.patch"
-apply_patch "vgmstream" "vgmstream.patch"
+apply_patch "vgmstream" "vgmstream-emscripten.patch"
 
 echo "--- Patching Complete ---"

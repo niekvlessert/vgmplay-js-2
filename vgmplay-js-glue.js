@@ -875,11 +875,12 @@ class VGMPlay_js {
 				});
 			}
 
-const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+	const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
 	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
-	console.log('[VGM] Game loaded:', derivedName, 'archiveName:', sourceName, 'files:', filteredFiles.length, 'pendingImages:', this._pendingExternalGameImages ? Object.keys(this._pendingExternalGameImages) : []);
+	console.log('[VGM] Game loaded:', derivedName, 'archiveName:', sourceName, 'files:', filteredFiles.length, 'pngFromZip:', !!pngFile, 'pendingImages:', this._pendingExternalGameImages ? Object.keys(this._pendingExternalGameImages) : []);
 	if (this._applyExternalGameImage && sourceName) {
 		this._applyExternalGameImage(game, sourceName, false);
+		console.log('[VGM] After _applyExternalGameImage:', 'game.png:', !!game.png, 'game.png.size:', game.png ? game.png.size : 'null');
 	}
 			this.tempGameInfo = null;
 			this.games.push(game);
@@ -1803,29 +1804,31 @@ _registerExternalGameImage(name, byteArray) {
 	}
 }
 
-_applyExternalGameImage(game, archiveName, overrideOnly) {
-	const debugLog = (msg, ...args) => {
-		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-			console.log(msg, ...args);
-		}
-	};
+	_applyExternalGameImage(game, archiveName, overrideOnly) {
+		const debugLog = (msg, ...args) => {
+			if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
+				console.log(msg, ...args);
+			}
+		};
 
-	if (!game || !archiveName || !this._pendingExternalGameImages) {
-		debugLog('[VGM] _applyExternalGameImage: early return', 'game:', !!game, 'archiveName:', archiveName, 'pending:', !!this._pendingExternalGameImages);
-		return;
+		if (!game || !archiveName || !this._pendingExternalGameImages) {
+			debugLog('[VGM] _applyExternalGameImage: early return', 'game:', !!game, 'archiveName:', archiveName, 'pending:', !!this._pendingExternalGameImages);
+			return;
+		}
+		const key = this._baseNameNoExt(archiveName).toLowerCase();
+		debugLog('[VGM] _applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key], 'availableKeys:', Object.keys(this._pendingExternalGameImages));
+		const blob = this._pendingExternalGameImages[key];
+		if (!blob) {
+			debugLog('[VGM] _applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
+			return;
+		}
+		if (!overrideOnly || !game.png) {
+			game.png = blob;
+			debugLog('[VGM] _applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size, 'game.png:', game.png ? game.png.size : 'null');
+		} else {
+			debugLog('[VGM] _applyExternalGameImage: skipped (overrideOnly:', overrideOnly, 'game.png:', !!game.png, ')');
+		}
 	}
-	const key = this._baseNameNoExt(archiveName).toLowerCase();
-	debugLog('[VGM] _applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key]);
-	const blob = this._pendingExternalGameImages[key];
-	if (!blob) {
-		debugLog('[VGM] _applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
-		return;
-	}
-	if (!overrideOnly || !game.png) {
-		game.png = blob;
-		debugLog('[VGM] _applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size);
-	}
-}
 
 	_applyExternalGameImageToExistingGames(imageName) {
 		const debugLog = (msg, ...args) => {
@@ -1834,12 +1837,12 @@ _applyExternalGameImage(game, archiveName, overrideOnly) {
 			}
 		};
 
-		debugLog("[VGM] _applyExternalGameImageToExistingGames called, imageName:", imageName, "games.length:", this.games ? this.games.length : 0);
+		const key = this._baseNameNoExt(imageName).toLowerCase();
+		debugLog("[VGM] _applyExternalGameImageToExistingGames called, imageName:", imageName, "key:", key, "games.length:", this.games ? this.games.length : 0);
 		if (!this.games || !this.games.length) {
 			debugLog('[VGM] No games to apply image to:', imageName);
 			return;
 		}
-		const key = this._baseNameNoExt(imageName).toLowerCase();
 		if (!key) return;
 		debugLog('[VGM] Applying image to existing games, key:', key, 'games count:', this.games.length);
 		let anyUpdated = false;
@@ -1847,7 +1850,7 @@ _applyExternalGameImage(game, archiveName, overrideOnly) {
 			if (!game) continue;
 			const archiveName = game.archiveName || game.name || '';
 			const base = this._baseNameNoExt(archiveName).toLowerCase();
-			debugLog('[VGM] Checking game:', game.name, 'archiveName:', archiveName, 'base:', base, 'key:', key);
+			debugLog('[VGM] Checking game:', game.name, 'archiveName:', archiveName, 'base:', base, 'key:', key, 'match:', base === key);
 			if (base === key) {
 				this._applyExternalGameImage(game, archiveName, false);
 				anyUpdated = true;

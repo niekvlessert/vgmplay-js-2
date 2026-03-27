@@ -98,6 +98,7 @@ export function installArchives(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
+		console.log('[VGM-ARCHIVES] processZipBuffer called:', sourceName, 'byteArray size:', byteArray.byteLength);
 		const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.zip';
 		const fingerprint = cleanName + ':' + byteArray.byteLength;
 		
@@ -185,19 +186,21 @@ export function installArchives(VGMPlay_js) {
 				} catch (e) {
 					console.error("Error creating file in FS:", e);
 				}
-				const lower = relPath.toLowerCase();
-				if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
-				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
-					const txt = FS.readFile(fullPath, { encoding: "utf8" });
-					if (lower.includes("gameinfo")) {
-						// Store it in a variable since 'game' object isn't created yet
-						this.tempGameInfo = txt;
-					} else {
-						txtFile = txt;
-					}
+		const lower = relPath.toLowerCase();
+			if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
+			if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
+				const txt = FS.readFile(fullPath, { encoding: "utf8" });
+				if (lower.includes("gameinfo")) {
+					this.tempGameInfo = txt;
+				} else {
+					txtFile = txt;
 				}
-				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-				await maybeYield();
+			}
+			if (lower.endsWith(".png")) {
+				pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+				console.log('[VGM-ARCHIVES] Found PNG in archive:', relPath, 'size:', pngFile.size);
+			}
+			await maybeYield();
 			}
 
 			const filteredFiles = entries.filter(e => e && e.filepath);
@@ -213,11 +216,13 @@ export function installArchives(VGMPlay_js) {
 				});
 			}
 
-			const derivedName = this._deriveVgmGameName(filteredFiles, cleanName || "Archive");
-			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName, _fromCache: false };
-			if (this._applyExternalGameImage && sourceName) {
-				this._applyExternalGameImage(game, cleanName, false);
-			}
+		const derivedName = this._deriveVgmGameName(filteredFiles, cleanName || "Archive");
+		var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName, _fromCache: false };
+		console.log('[VGM-ARCHIVES] Game created:', derivedName, 'hasPNG:', !!game.png, 'pngSize:', game.png ? game.png.size : 0);
+		if (this._applyExternalGameImage && sourceName) {
+			this._applyExternalGameImage(game, cleanName, false);
+		}
+		console.log('[VGM-ARCHIVES] After external image apply:', derivedName, 'hasPNG:', !!game.png, 'pngSize:', game.png ? game.png.size : 0);
 			this.tempGameInfo = null;
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));

@@ -805,6 +805,7 @@ class VGMPlay_js {
 	}
 
 	async _processArchiveEntries(entries, fileDataByPath, sourceName = '', hasKss = false) {
+		console.log('[VGM] _processArchiveEntries called:', sourceName, 'entries:', entries.length, 'hasKss:', hasKss, 'fileDataByPath size:', fileDataByPath.size);
 		const yieldEvery = 50;
 		let sinceYield = 0;
 		const maybeYield = async () => {
@@ -827,8 +828,14 @@ class VGMPlay_js {
 			if (!entry || !entry.filepath) continue;
 			const relPath = entry.filepath;
 			const fileArray = fileDataByPath.get(relPath);
-			if (!fileArray) continue;
+			if (!fileArray) {
+				if (this.debugMode) console.log("[VGM] No fileArray for:", relPath);
+				continue;
+			}
 			const lowerRel = relPath.toLowerCase();
+			if (lowerRel.endsWith('.png')) {
+				if (this.debugMode) console.log("[VGM] PNG file found in archive entries:", relPath, "size:", fileArray.length);
+			}
 			const isImage = lowerRel.endsWith('.png') || lowerRel.endsWith('.jpg') || lowerRel.endsWith('.jpeg') || lowerRel.endsWith('.gif') || lowerRel.endsWith('.bmp') || lowerRel.endsWith('.webp');
 			const fullPath = gamePath + "/" + relPath;
 
@@ -855,10 +862,13 @@ class VGMPlay_js {
 						txtFile = txt;
 					}
 				}
-				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-				if (isImage && !lower.endsWith(".png")) {
-    if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
-  }
+	if (lower.endsWith(".png")) {
+				pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+				if (this.debugMode) console.log("[VGM] Found PNG in archive:", relPath);
+			}
+			if (isImage && !lower.endsWith(".png")) {
+				if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
+			}
 				await maybeYield();
 			}
 
@@ -877,10 +887,11 @@ class VGMPlay_js {
 
 	const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
 	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
-	console.log('[VGM] Game loaded:', derivedName, 'archiveName:', sourceName, 'files:', filteredFiles.length, 'pngFromZip:', !!pngFile, 'pendingImages:', this._pendingExternalGameImages ? Object.keys(this._pendingExternalGameImages) : []);
+	const key = this._baseNameNoExt(sourceName).toLowerCase();
+	console.log('[VGM] ZIP Game loaded:', derivedName, 'archiveName:', sourceName, 'key:', key, 'pendingImages:', this._pendingExternalGameImages ? Object.keys(this._pendingExternalGameImages).filter(k => k.includes('antarctic') || k.includes('athletic') || k.includes('aleste')) : []);
 	if (this._applyExternalGameImage && sourceName) {
 		this._applyExternalGameImage(game, sourceName, false);
-		console.log('[VGM] After _applyExternalGameImage:', 'game.png:', !!game.png, 'game.png.size:', game.png ? game.png.size : 'null');
+		console.log('[VGM] After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
 	}
 			this.tempGameInfo = null;
 			this.games.push(game);
@@ -1655,11 +1666,17 @@ class VGMPlay_js {
 		return links;
 	}
 
-	_baseNameNoExt(p) {
-		const file = String(p || '').split('/').pop();
-		const dot = file.lastIndexOf('.');
-		return dot > 0 ? file.substring(0, dot) : file;
+_baseNameNoExt(p) {
+	const file = String(p || '').split('/').pop();
+	const dot = file.lastIndexOf('.');
+	const base = dot > 0 ? file.substring(0, dot) : file;
+	// Decode URL encoding to handle filenames like "Antarctic%20Adventure.zip"
+	try {
+		return decodeURIComponent(base);
+	} catch (e) {
+		return base;
 	}
+}
 
 	_isExternalGameImage(p) {
   const lower = String(p || '').toLowerCase();
@@ -1818,15 +1835,15 @@ _registerExternalGameImage(name, byteArray) {
 		const key = this._baseNameNoExt(archiveName).toLowerCase();
 		debugLog('[VGM] _applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key], 'availableKeys:', Object.keys(this._pendingExternalGameImages));
 		const blob = this._pendingExternalGameImages[key];
-		if (!blob) {
-			debugLog('[VGM] _applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
-			return;
-		}
-		if (!overrideOnly || !game.png) {
-			game.png = blob;
-			debugLog('[VGM] _applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size, 'game.png:', game.png ? game.png.size : 'null');
-		} else {
-			debugLog('[VGM] _applyExternalGameImage: skipped (overrideOnly:', overrideOnly, 'game.png:', !!game.png, ')');
+	if (!blob) {
+		debugLog('[VGM] _applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
+		return;
+	}
+	if (!game.png) {
+		game.png = blob;
+		debugLog('[VGM] _applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size, 'game.png:', game.png ? game.png.size : 'null');
+	} else {
+		debugLog('[VGM] _applyExternalGameImage: skipped (game already has PNG:', game.png.size, 'bytes)');
 		}
 	}
 

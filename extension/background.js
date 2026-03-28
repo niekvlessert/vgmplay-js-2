@@ -1,3 +1,51 @@
+let archiveWorker = null;
+let archiveWorkerJobs = new Map();
+let archiveWorkerSeq = 1;
+
+function getArchiveWorker() {
+  if (archiveWorker) return archiveWorker;
+  try {
+    const workerUrl = chrome.runtime.getURL('archive-worker.js');
+    archiveWorker = new Worker(workerUrl);
+    archiveWorker.onmessage = (e) => {
+      const msg = e.data || {};
+      const job = archiveWorkerJobs.get(msg.id);
+      if (!job) return;
+      if (msg.type === 'meta') {
+        job.hasKss = !!msg.hasKss;
+        job.entries = msg.entries || [];
+        return;
+      }
+      if (msg.type === 'file') {
+        const buf = msg.data;
+        const arr = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
+        job.fileDataByPath.set(msg.path, arr);
+        return;
+      }
+      if (msg.type === 'error') {
+        archiveWorkerJobs.delete(msg.id);
+        job.reject(new Error(msg.message || "Archive worker error"));
+        return;
+      }
+      if (msg.type === 'done') {
+        archiveWorkerJobs.delete(msg.id);
+        job.resolve({
+          entries: job.entries.map((p) => ({ filepath: p })),
+          fileDataByPath: job.fileDataByPath,
+          hasKss: job.hasKss
+        });
+      }
+    };
+    archiveWorker.onerror = (e) => {
+      console.error("[VGM Background] Archive worker error:", e);
+    };
+    return archiveWorker;
+  } catch (e) {
+    console.error("[VGM Background] Failed to start archive worker:", e);
+    return null;
+  }
+}
+
 chrome.action.onClicked.addListener((tab) => {
     chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -240,11 +288,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ ok: true });
                 return;
             }
-            if (message.action === 'clearAll') {
-                await cacheClearAll();
-                sendResponse({ ok: true });
-                return;
-            }
+  if (message.action === 'clearAll') {
+    await cacheClearAll();
+    sendResponse({ ok: true });
+    return;
+  }
+  if (message.action === 'extractArchive') {
+    const { kind, buffer, id } = message.payload || {};
+    const worker = getArchiveWorker();
+    if (!worker) {
+      sendResponse({ error: 'Archive worker unavailable' });
+      return;
+    }
+    const jobId = archiveWorkerSeq++;
+    const job = {
+      resolve: (result) => {
+        const entries = result.entries || [];
+        const files = [];
+        for (const [path, data] of result.fileDataByPath || []) {
+          const arr = data instanceof Uint8Array ? data : new Uint8Array(data);
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let i = 0; i < arr.length; i += chunkSize) {
+            const sub = arr.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, sub);
+          }
+          files.push({ path, b64: btoa(binary) });
+        }
+        chrome.tabs.sendMessage(sender.tab.id, { 
+          type: 'vgm-archive-extract-result', 
+          id, 
+          entries: entries.map(e => e.filepath),
+          files,
+          hasKss: result.hasKss 
+        });
+      },
+      reject: (err) => {
+        chrome.tabs.sendMessage(sender.tab.id, { 
+          type: 'vgm-archive-extract-result', 
+          id, 
+          error: err.message || String(err) 
+        });
+      },
+      entries: [],
+      hasKss: false,
+      fileDataByPath: new Map()
+    };
+    archiveWorkerJobs.set(jobId, job);
+    const baseUrl = chrome.runtime.getURL('');
+    worker.postMessage({ type: 'extract', id: jobId, kind, buffer, baseURL: baseUrl }, [buffer]);
+    sendResponse({ ok: true, jobId });
+    return;
+  }
             sendResponse({ error: 'unknown action' });
         } catch (e) {
             sendResponse({ error: String(e) });

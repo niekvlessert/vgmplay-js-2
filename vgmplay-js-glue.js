@@ -59,9 +59,11 @@ class VGMPlay_js {
 		this.zipURLPending = [];
 		this._isLoadingFile = false;
 		this._loadLock = Promise.resolve();
-		this.archiveWorker = null;
-		this._archiveWorkerJobs = new Map();
-		this._archiveWorkerSeq = 1;
+  this.archiveWorker = null;
+  this._archiveWorkerJobs = new Map();
+  this._archiveWorkerSeq = 1;
+  this._backgroundExtractJobs = new Map();
+  this._backgroundExtractSeq = 1;
 		this.pendingZipRender = false;
 		this._lastSeekAt = 0;
 		this._lastSeekWasMUS = false;
@@ -3223,25 +3225,36 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 					window.postMessage({ type: 'VGM_DEBUG_SNAPSHOT_RESPONSE', id: data.id, payload }, '*');
 				});
 			}
-			if (!window.__VGM_CACHE_BRIDGE_LISTENER__) {
-				window.__VGM_CACHE_BRIDGE_LISTENER__ = true;
-				window.addEventListener('message', async (e) => {
-					if (e.source !== window) return;
-					const data = e.data || {};
-					if (data.type !== 'VGM_CACHE_BRIDGE_REQUEST') return;
-					const vgm = window.vgmplay_js || window.vgmPlayInstance;
-					let payload = { error: 'vgmplay_js not found' };
-					try {
-						if (vgm && vgm._cacheBridgeRequest) {
-							payload = await vgm._cacheBridgeRequest(data.action, data.payload || {});
-						}
-					} catch (err) {
-						payload = { error: String(err) };
-					}
-					window.postMessage({ type: 'VGM_CACHE_BRIDGE_RESPONSE', id: data.id, payload }, '*');
-				});
-			}
-		}
+if (!window.__VGM_CACHE_BRIDGE_LISTENER__) {
+    window.__VGM_CACHE_BRIDGE_LISTENER__ = true;
+    window.addEventListener('message', async (e) => {
+      if (e.source !== window) return;
+      const data = e.data || {};
+      if (data.type !== 'VGM_CACHE_BRIDGE_REQUEST') return;
+      const vgm = window.vgmplay_js || window.vgmPlayInstance;
+      let payload = { error: 'vgmplay_js not found' };
+      try {
+        if (vgm && vgm._cacheBridgeRequest) {
+          payload = await vgm._cacheBridgeRequest(data.action, data.payload || {});
+        }
+      } catch (err) {
+        payload = { error: String(err) };
+      }
+      window.postMessage({ type: 'VGM_CACHE_BRIDGE_RESPONSE', id: data.id, payload }, '*');
+    });
+  }
+  if (!window.__VGM_ARCHIVE_EXTRACT_LISTENER__ && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+    window.__VGM_ARCHIVE_EXTRACT_LISTENER__ = true;
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (!message || message.type !== 'vgm-archive-extract-result') return false;
+      const vgm = window.vgmplay_js || window.vgmPlayInstance;
+      if (vgm && vgm._onBackgroundExtractResult) {
+        vgm._onBackgroundExtractResult(message);
+      }
+      return false;
+    });
+  }
+}
 		if (window.__VGM_DEBUG__) {
 			console.log('[VGM] VGMPlay instance created and assigned to window.vgmPlayInstance');
 		}

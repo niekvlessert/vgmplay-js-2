@@ -1,41 +1,40 @@
 export function installArchives(VGMPlay_js) {
-	VGMPlay_js.prototype._getArchiveWorker = function () {
-		if (this.archiveWorker) return this.archiveWorker;
-		if (typeof Worker === 'undefined') return null;
-		if (this.isExtension && !this.standalone) return null;
-		try {
-			const cacheSuffix = this._cacheBust ? ('v=' + Date.now()) : '';
-			const withCache = (url) => {
-				if (!cacheSuffix) return url;
-				return url + (url.includes('?') ? '&' : '?') + cacheSuffix;
-			};
-		let workerUrl = null;
-		if (this.baseURL) {
-			const candidate = new URL('archive-worker.js', this.baseURL);
-			if (typeof window === 'undefined' || candidate.origin === window.location.origin) {
-				workerUrl = new URL(withCache(candidate.toString()));
-			}
-		}
-		// Only use window.location as fallback if not in an extension context
-		if (!workerUrl && typeof window !== 'undefined') {
-			const isExtension = this.baseURL && (this.baseURL.startsWith('chrome-extension:') || this.baseURL.startsWith('moz-extension:'));
-			if (!isExtension) {
-				workerUrl = new URL(withCache(new URL('archive-worker.js', window.location.href).toString()));
-			}
-		}
-		const fallback = this.baseURL ? this.baseURL + 'archive-worker.js' : 'archive-worker.js';
-			const worker = new Worker(workerUrl ? workerUrl.toString() : withCache(fallback));
-			worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
-			worker.onerror = (e) => {
-				console.error("[VGM] Archive worker error:", e);
-			};
-			this.archiveWorker = worker;
-			return worker;
-		} catch (e) {
-			console.error("[VGM] Failed to start archive worker:", e);
-			return null;
-		}
-	};
+VGMPlay_js.prototype._getArchiveWorker = function () {
+  if (this.archiveWorker) return this.archiveWorker;
+  if (typeof Worker === 'undefined') {
+    console.warn("[VGM] Worker API unavailable");
+    return null;
+  }
+  try {
+    const cacheSuffix = this._cacheBust ? ('v=' + Date.now()) : '';
+    const withCache = (url) => {
+      if (!cacheSuffix) return url;
+      return url + (url.includes('?') ? '&' : '?') + cacheSuffix;
+    };
+    let workerUrl = null;
+    if (this.baseURL) {
+      const candidate = new URL('archive-worker.js', this.baseURL);
+      workerUrl = new URL(withCache(candidate.toString()));
+    }
+    if (!workerUrl && typeof window !== 'undefined') {
+      workerUrl = new URL(withCache(new URL('archive-worker.js', window.location.href).toString()));
+    }
+    const fallback = this.baseURL ? this.baseURL + 'archive-worker.js' : 'archive-worker.js';
+    const finalUrl = workerUrl ? workerUrl.toString() : withCache(fallback);
+    console.log("[VGM] Creating archive worker with URL:", finalUrl);
+    const worker = new Worker(finalUrl);
+    worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
+    worker.onerror = (e) => {
+      console.error("[VGM] Archive worker error:", e);
+    };
+    this.archiveWorker = worker;
+    console.log("[VGM] Archive worker created successfully");
+    return worker;
+  } catch (e) {
+    console.error("[VGM] Failed to start archive worker:", e);
+    return null;
+  }
+};
 
 	VGMPlay_js.prototype._onArchiveWorkerMessage = function (e) {
 		const msg = e.data || {};
@@ -70,32 +69,79 @@ export function installArchives(VGMPlay_js) {
 		}
 	};
 
-	VGMPlay_js.prototype._extractArchiveWithWorker = function (byteArray, kind) {
-		return new Promise((resolve, reject) => {
-			const worker = this._getArchiveWorker();
-			if (!worker) {
-				reject(new Error("Archive worker unavailable"));
-				return;
-			}
-			const id = this._archiveWorkerSeq++;
-			this._archiveWorkerJobs.set(id, {
-				resolve,
-				reject,
-				entries: null,
-				hasKss: false,
-				fileDataByPath: new Map()
-			});
-			try {
-				worker.postMessage(
-					{ type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL, debugMode: this.debugMode },
-					[byteArray.buffer]
-				);
-			} catch (e) {
-				this._archiveWorkerJobs.delete(id);
-				reject(e);
-			}
-		});
-	};
+VGMPlay_js.prototype._extractArchiveViaBackground = function (byteArray, kind) {
+  return new Promise((resolve, reject) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+      reject(new Error("Extension runtime unavailable"));
+      return;
+    }
+    const id = this._backgroundExtractSeq++;
+    const timeout = setTimeout(() => {
+      this._backgroundExtractJobs.delete(id);
+      reject(new Error("Background extraction timeout"));
+    }, 60000);
+    this._backgroundExtractJobs.set(id, { resolve, reject, timeout });
+    const buffer = byteArray.buffer.slice(0);
+    chrome.runtime.sendMessage({ type: 'vgm-cache', action: 'extractArchive', payload: { kind, buffer, id } }, (resp) => {
+      if (chrome.runtime.lastError) {
+        clearTimeout(timeout);
+        this._backgroundExtractJobs.delete(id);
+        reject(new Error(chrome.runtime.lastError.message));
+      }
+    });
+  });
+};
+
+VGMPlay_js.prototype._onBackgroundExtractResult = function (msg) {
+  const job = this._backgroundExtractJobs.get(msg.id);
+  if (!job) return;
+  clearTimeout(job.timeout);
+  this._backgroundExtractJobs.delete(msg.id);
+  if (msg.error) {
+    job.reject(new Error(msg.error));
+    return;
+  }
+  const fileDataByPath = new Map();
+  for (const f of msg.files || []) {
+    if (f.b64) {
+      const binary = atob(f.b64);
+      const arr = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+      fileDataByPath.set(f.path, arr);
+    }
+  }
+  job.resolve({ entries: (msg.entries || []).map(p => ({ filepath: p })), fileDataByPath, hasKss: msg.hasKss });
+};
+
+VGMPlay_js.prototype._extractArchiveWithWorker = function (byteArray, kind) {
+  return new Promise((resolve, reject) => {
+    if (this.isExtension && !this.standalone && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      this._extractArchiveViaBackground(byteArray, kind).then(resolve).catch(reject);
+      return;
+    }
+    const worker = this._getArchiveWorker();
+    if (!worker) {
+      reject(new Error("Archive worker unavailable"));
+      return;
+    }
+    const id = this._archiveWorkerSeq++;
+    this._archiveWorkerJobs.set(id, {
+      resolve, reject,
+      entries: null,
+      hasKss: false,
+      fileDataByPath: new Map()
+    });
+    try {
+      worker.postMessage(
+        { type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL, debugMode: this.debugMode },
+        [byteArray.buffer]
+      );
+    } catch (e) {
+      this._archiveWorkerJobs.delete(id);
+      reject(e);
+    }
+  });
+};
 
 	VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
 		console.log('[VGM-ARCHIVES] processZipBuffer called:', sourceName, 'byteArray size:', byteArray.byteLength);
@@ -112,23 +158,21 @@ export function installArchives(VGMPlay_js) {
 			return;
 		}
 
-		if (!(this.isExtension && !this.standalone)) {
-			try {
-				if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
-				const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
-				if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
-				await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
-				if (this._markCached) this._markCached(fingerprint);
-				if (this._saveCache) this._saveCache();
-				return;
-			} catch (e) {
-				if (byteArray.byteLength === 0) {
-					console.error("[VGM] Zip worker failed after buffer transfer:", e);
-					return;
-				}
-				console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
-			}
-		}
+  try {
+    if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
+    const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip');
+    if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
+    await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+    if (this._markCached) this._markCached(fingerprint);
+    if (this._saveCache) this._saveCache();
+    return;
+  } catch (e) {
+    if (byteArray.byteLength === 0) {
+      console.error("[VGM] Zip worker failed after buffer transfer:", e);
+      return;
+    }
+    console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
+  }
 
 		const yieldEvery = 50;
 		let sinceYield = 0;

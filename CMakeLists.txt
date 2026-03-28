@@ -112,6 +112,26 @@ target_link_libraries(vgmplay-js atrac9 celt0061 celt0110 mpg123 vorbisfile vorb
 # FFmpeg and system dependencies for vgmstream
 target_link_libraries(vgmplay-js avformat avcodec swresample avutil z m)
 
+# Ensure vgmstream external dependencies are built before linking
+if(TARGET ATRAC9_MAKE)
+  add_dependencies(vgmplay-js ATRAC9_MAKE)
+endif()
+if(TARGET CELT_0061_MAKE)
+  add_dependencies(vgmplay-js CELT_0061_MAKE)
+endif()
+if(TARGET CELT_0110_MAKE)
+  add_dependencies(vgmplay-js CELT_0110_MAKE)
+endif()
+if(TARGET MPEG_MAKE)
+  add_dependencies(vgmplay-js MPEG_MAKE)
+endif()
+if(TARGET FFMPEG_MAKE)
+  add_dependencies(vgmplay-js FFMPEG_MAKE)
+endif()
+if(TARGET SPEEX_MAKE)
+  add_dependencies(vgmplay-js SPEEX_MAKE)
+endif()
+
 target_link_libraries(vgmplay-js openmpt)
 target_link_libraries(vgmplay-js ADLMIDI_static)
 target_link_libraries(vgmplay-js mt32emu)

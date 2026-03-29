@@ -112,13 +112,16 @@ class VGMPlay_js {
 		this.autoScanDistBase = options.autoScanDistBase || '/dist/';
 		this._autoScanDistDone = false;
 		this._pendingRomLoads = [];
-		this._pendingRomRetryScheduled = false;
-		this._pendingExternalGameImages = {};
-		this.debugMode = false;
-		this.debugModeHasBeenToggled = false;
-		this.sharedCache = this._normalizeBool(options.sharedCache);
-		this._settingsMenuVisible = false;
-		this._settingsStatusText = '';
+this._pendingRomRetryScheduled = false;
+this._pendingExternalGameImages = {};
+this.debugMode = false;
+this.debugModeHasBeenToggled = false;
+this._debugSettingsWindowVisible = false;
+this._debugPrefixes = {};
+this._loadDebugPrefixSettings();
+this.sharedCache = this._normalizeBool(options.sharedCache);
+this._settingsMenuVisible = false;
+this._settingsStatusText = '';
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -570,9 +573,15 @@ class VGMPlay_js {
 						e.stopPropagation();
 						return;
 					}
-					if (e.key === 'd' || e.key === 'D') {
-						this.toggleDebugMode();
-					}
+if (e.key === 'd' || e.key === 'D') {
+if (this._debugSettingsWindowVisible) {
+this._hideDebugSettingsWindow();
+} else if (this.debugMode) {
+this._showDebugSettingsWindow();
+} else {
+this.toggleDebugMode();
+}
+}
 					if (e.key === 'w' || e.key === 'W') {
 						if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
 					}
@@ -687,10 +696,16 @@ class VGMPlay_js {
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this._setMemoryStatsVisible(!this.showMemoryStats);
 		});
-		Mousetrap.bind('d', (e) => {
-			if (this._eventIsTyping && this._eventIsTyping(e)) return;
-			this.toggleDebugMode();
-		});
+Mousetrap.bind('d', (e) => {
+if (this._eventIsTyping && this._eventIsTyping(e)) return;
+if (this._debugSettingsWindowVisible) {
+this._hideDebugSettingsWindow();
+} else if (this.debugMode) {
+this._showDebugSettingsWindow();
+} else {
+this.toggleDebugMode();
+}
+});
 		Mousetrap.bind('w', (e) => {
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
@@ -3045,18 +3060,175 @@ VGMPlay_js.prototype._changeTrackInGame = async function (action) {
 };
 
 VGMPlay_js.prototype.toggleDebugMode = function () {
-  this.debugMode = !this.debugMode;
-  this.debugModeHasBeenToggled = true;
-  if (typeof window !== 'undefined') {
-    window.__VGM_DEBUG__ = this.debugMode;
-  }
-  console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
-  if (this._showNotification) {
-    this._showNotification("Debug Mode: " + (this.debugMode ? "ON" : "OFF"), 10000);
-  }
-  if (Module._SetDebugMode) {
-    Module._SetDebugMode(this.debugMode ? 1 : 0);
-  }
+if (this._debugSettingsWindowVisible) {
+this._hideDebugSettingsWindow();
+return;
+}
+this.debugMode = !this.debugMode;
+this.debugModeHasBeenToggled = true;
+if (typeof window !== 'undefined') {
+window.__VGM_DEBUG__ = this.debugMode;
+}
+console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
+if (this._showNotification && this._startCountdown) {
+this._showNotification("Debug Mode: " + (this.debugMode ? "ON" : "OFF"), 10000);
+}
+if (Module._SetDebugMode) {
+Module._SetDebugMode(this.debugMode ? 1 : 0);
+}
+};
+
+VGMPlay_js.prototype._loadDebugPrefixSettings = function () {
+try {
+const saved = localStorage.getItem('vgm_debug_prefixes');
+if (saved) {
+this._debugPrefixes = JSON.parse(saved);
+}
+} catch (e) { }
+};
+
+VGMPlay_js.prototype._saveDebugPrefixSettings = function () {
+try {
+localStorage.setItem('vgm_debug_prefixes', JSON.stringify(this._debugPrefixes));
+} catch (e) { }
+};
+
+VGMPlay_js.prototype._getKnownDebugPrefixes = function () {
+return [
+'[VGM]',
+'[VGM-ARCHIVES]',
+'[VGM-CACHE]',
+'[VGM-CACHE-DEBUG]',
+'[VGM-QUEUE]',
+'[VGM-AUDIO]',
+'[VGM-KSS]',
+'[VGM-UI]',
+'[Background]',
+'[Offscreen]',
+'[Worker]'
+];
+};
+
+VGMPlay_js.prototype._showDebugSettingsWindow = function () {
+if (this._debugSettingsWindowVisible) return;
+this._debugSettingsWindowVisible = true;
+const root = this.vgmplayContainer || document.body;
+const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
+let win = uiRoot.getElementById('vgmplay-debug-settings-window');
+if (!win) {
+win = document.createElement('div');
+win.id = 'vgmplay-debug-settings-window';
+win.style.cssText = `
+position: fixed;
+top: 50%;
+left: 50%;
+transform: translate(-50%, -50%);
+background: #1a1a2e;
+border: 2px solid #4a4a6a;
+border-radius: 8px;
+padding: 16px;
+z-index: 2147483647;
+min-width: 300px;
+max-width: 400px;
+font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+color: #e0e0e0;
+box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+`;
+const title = document.createElement('div');
+title.style.cssText = 'font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #fff;';
+title.textContent = 'Debug Settings (press D to close)';
+win.appendChild(title);
+
+const knownPrefixes = this._getKnownDebugPrefixes();
+const container = document.createElement('div');
+container.style.cssText = 'max-height: 300px; overflow-y: auto;';
+knownPrefixes.forEach(prefix => {
+const label = document.createElement('label');
+label.style.cssText = 'display: flex; align-items: center; margin: 6px 0; cursor: pointer;';
+const checkbox = document.createElement('input');
+checkbox.type = 'checkbox';
+checkbox.checked = this._debugPrefixes[prefix] !== false;
+checkbox.style.cssText = 'margin-right: 8px; width: 16px; height: 16px;';
+checkbox.addEventListener('change', () => {
+this._debugPrefixes[prefix] = checkbox.checked;
+this._saveDebugPrefixSettings();
+});
+const text = document.createElement('span');
+text.textContent = prefix;
+text.style.cssText = 'font-size: 13px;';
+label.appendChild(checkbox);
+label.appendChild(text);
+container.appendChild(label);
+});
+win.appendChild(container);
+
+const closeBtn = document.createElement('button');
+closeBtn.textContent = 'Close';
+closeBtn.style.cssText = `
+margin-top: 12px;
+padding: 6px 16px;
+background: #4a4a6a;
+border: none;
+border-radius: 4px;
+color: #fff;
+cursor: pointer;
+font-size: 13px;
+margin-right: 8px;
+`;
+closeBtn.addEventListener('click', () => this._hideDebugSettingsWindow());
+win.appendChild(closeBtn);
+
+const turnOffBtn = document.createElement('button');
+turnOffBtn.textContent = 'Turn Debug OFF';
+turnOffBtn.style.cssText = `
+margin-top: 12px;
+padding: 6px 16px;
+background: #6a4a4a;
+border: none;
+border-radius: 4px;
+color: #fff;
+cursor: pointer;
+font-size: 13px;
+`;
+turnOffBtn.addEventListener('click', () => {
+this._hideDebugSettingsWindow();
+this.debugMode = false;
+this.debugModeHasBeenToggled = true;
+if (typeof window !== 'undefined') {
+window.__VGM_DEBUG__ = false;
+}
+console.log("[VGM] Debug Mode: OFF");
+if (this._showNotification && this._startCountdown) {
+this._showNotification("Debug Mode: OFF", 3000);
+}
+if (Module._SetDebugMode) {
+Module._SetDebugMode(0);
+}
+});
+win.appendChild(turnOffBtn);
+
+root.appendChild(win);
+}
+win.style.display = 'block';
+};
+
+VGMPlay_js.prototype._hideDebugSettingsWindow = function () {
+this._debugSettingsWindowVisible = false;
+const root = this.vgmplayContainer || document.body;
+const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
+const win = uiRoot.getElementById('vgmplay-debug-settings-window');
+if (win) win.style.display = 'none';
+};
+
+VGMPlay_js.prototype._shouldLogPrefix = function (prefix) {
+if (!this.debugMode) return false;
+if (!prefix) return true;
+return this._debugPrefixes[prefix] !== false;
+};
+
+VGMPlay_js.prototype._debugLog = function (prefix, ...args) {
+if (!this._shouldLogPrefix(prefix)) return;
+console.log(prefix, ...args);
 };
 
 VGMPlay_js.prototype.playRandom = function () {

@@ -73,6 +73,18 @@ set(USE_CELT ON CACHE BOOL "Use libcelt for support of FSB CELT" FORCE)
 set(USE_G719 ON CACHE BOOL "Use libg719_decode for support ITU-T G.719" FORCE)
 set(USE_G7221 ON CACHE BOOL "Use G7221 for support of ITU-T" FORCE)
 set(USE_SPEEX ON CACHE BOOL "Use libspeex for support of SPEEX" FORCE)
+
+# The wasm build cannot reliably link optional native deps on CI runners.
+# Disable these unless you explicitly opt-in with local builds/tooling.
+if(EMSCRIPTEN)
+  set(USE_FFMPEG OFF CACHE BOOL "Use FFmpeg for support of many codecs" FORCE)
+  set(USE_MPEG OFF CACHE BOOL "Use libmpg123 for support of MPEG" FORCE)
+  # Keep ATRAC9 enabled for wasm builds when requested.
+  set(USE_ATRAC9 ON CACHE BOOL "Use LibAtrac9 for support of ATRAC9" FORCE)
+  set(USE_CELT OFF CACHE BOOL "Use libcelt for support of FSB CELT" FORCE)
+  set(USE_G719 OFF CACHE BOOL "Use libg719_decode for support ITU-T G.719" FORCE)
+  set(USE_SPEEX OFF CACHE BOOL "Use libspeex for support of SPEEX" FORCE)
+endif()
 set(BUILD_CLI OFF CACHE BOOL "Build vgmstream CLI" FORCE)
 add_subdirectory(modules/vgmstream)
 
@@ -107,10 +119,21 @@ target_link_libraries(vgmplay-js musdoom)
 target_link_libraries(vgmplay-js libvgmstream)
 
 # vgmstream dependencies
-target_link_libraries(vgmplay-js atrac9 celt0061 celt0110 mpg123 vorbisfile vorbis g719_decode speex ogg)
-
-# FFmpeg and system dependencies for vgmstream
-target_link_libraries(vgmplay-js avformat avcodec swresample avutil z m)
+if(EMSCRIPTEN)
+  foreach(lib atrac9 celt0061 celt0110 mpg123 vorbisfile vorbis g719_decode speex ogg)
+    if(TARGET ${lib})
+      target_link_libraries(vgmplay-js ${lib})
+    endif()
+  endforeach()
+  if(TARGET avformat AND TARGET avcodec AND TARGET swresample AND TARGET avutil)
+    target_link_libraries(vgmplay-js avformat avcodec swresample avutil)
+  endif()
+  target_link_libraries(vgmplay-js z m)
+else()
+  target_link_libraries(vgmplay-js atrac9 celt0061 celt0110 mpg123 vorbisfile vorbis g719_decode speex ogg)
+  # FFmpeg and system dependencies for vgmstream
+  target_link_libraries(vgmplay-js avformat avcodec swresample avutil z m)
+endif()
 
 # Ensure vgmstream external dependencies are built before linking
 if(TARGET ATRAC9_MAKE)

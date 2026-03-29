@@ -137,21 +137,29 @@ export function installAudio(VGMPlay_js) {
 
 			this.results = [];
 
-			this.SetSampleRate(this.sampleRate);
+    this.SetSampleRate(this.sampleRate);
 
-			this.functionsWrapped = true;
-		}
+    this.functionsWrapped = true;
+  }
 
-		if (this.isKSSActive) {
-			this._ensureKssBindings();
-		}
+if (this.isKSSActive) {
+    this._ensureKssBindings();
+  }
 
-		if (this._initCache && !this._cacheReady) {
-			await this._initCache();
-		}
+  // Don't await cache init - let it run in background
+  if (this._initCache && !this._cacheReady) {
+    console.log('[VGM Audio] Starting cache init in background');
+    this._initCache().then(() => {
+      console.log('[VGM Audio] Cache init complete');
+    }).catch(e => {
+      console.error('[VGM Audio] Cache init error:', e);
+    });
+  } else {
+    console.log('[VGM Audio] Skipping cache init, _initCache:', !!this._initCache, '_cacheReady:', this._cacheReady);
+  }
 
-		return true;
-	};
+  return true;
+};
 
 	VGMPlay_js.prototype._ensureKssBindings = function () {
 		if (!Module) return;

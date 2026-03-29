@@ -74,13 +74,57 @@ export function installCache(VGMPlay_js) {
 		}
 	};
 
-	VGMPlay_js.prototype._bridgeFetchFiles = async function (paths) {
-  if (!paths || !paths.length) return;
-  const uniq = Array.from(new Set(paths.filter(Boolean)));
-  const chunkSize = 20;
-  for (let i = 0; i < uniq.length; i += chunkSize) {
-    const chunk = uniq.slice(i, i + chunkSize);
+VGMPlay_js.prototype._bridgeFetchFiles = async function (paths) {
+if (!paths || !paths.length) return;
+const uniq = Array.from(new Set(paths.filter(Boolean)));
+console.log('[VGM] _bridgeFetchFiles: Fetching', uniq.length, 'unique files');
+
+// Use smaller chunks to avoid 64MB message limit
+const chunkSize = 10;
+const chunks = [];
+for (let i = 0; i < uniq.length; i += chunkSize) {
+  chunks.push(uniq.slice(i, i + chunkSize));
+}
+
+let filesWritten = 0;
+let errors = 0;
+
+const processChunk = async (chunk, chunkIndex) => {
+  try {
     const resp = await this._cacheBridgeRequest('getFiles', { paths: chunk });
+    if (resp && resp.error) {
+      // If chunk is too large, try fetching files one by one
+      if (resp.error.includes('maximum allowed size') || resp.error.includes('64MiB')) {
+        console.warn('[VGM] Chunk', chunkIndex, 'too large, fetching individually');
+        for (const path of chunk) {
+          try {
+            const singleResp = await this._cacheBridgeRequest('getFiles', { paths: [path] });
+            if (singleResp && singleResp.files && singleResp.files[0]) {
+              const item = singleResp.files[0];
+              if (item && item.path && (item.b64 || item.data)) {
+                let arr = null;
+                if (item.b64) {
+                  const binary = atob(item.b64);
+                  const len = binary.length;
+                  const bytes = new Uint8Array(len);
+                  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+                  arr = bytes;
+                } else if (item.data) {
+                  arr = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
+                }
+                if (arr && arr.byteLength > 0) {
+                  this._ensureDirForFile(item.path);
+                  try { FS.writeFile(item.path, arr); filesWritten++; } catch (e) { }
+                }
+              }
+            }
+          } catch (e) {
+            errors++;
+          }
+        }
+      }
+      return;
+    }
     if (resp && resp.files && Array.isArray(resp.files)) {
       for (const item of resp.files) {
         if (!item || !item.path) continue;
@@ -96,30 +140,29 @@ export function installCache(VGMPlay_js) {
         } else {
           continue;
         }
-        if (arr.byteLength === 0) {
-          if (item.path.includes('cover_')) {
-            // Cover files may be empty on some sites, suppress unless debug
-          } else if (this.debugMode) {
-            console.warn('[VGM] Shared cache returned empty file:', item.path);
-          }
+        if (arr.byteLength > 0) {
+          this._ensureDirForFile(item.path);
+          try { FS.writeFile(item.path, arr); filesWritten++; } catch (e) { }
         }
-        if (item.path.includes('cover_') && this.debugMode) {
-          console.log('[VGM] Writing cover file from bridge:', item.path, 'size:', arr.byteLength);
-        }
-        this._ensureDirForFile(item.path);
-        try { FS.writeFile(item.path, arr); } catch (e) { }
       }
     }
-    if (resp && resp.missing && resp.missing.length) {
-      const missingCovers = resp.missing.filter(p => p.includes('cover_'));
-      if (missingCovers.length && this.debugMode) {
-        console.warn('[VGM] Shared cache missing cover files:', missingCovers);
-      }
-      if (this.debugMode) {
-        console.warn('[VGM] Shared cache missing files:', resp.missing.slice(0, 5), resp.missing.length > 5 ? '...' : '');
-      }
-    }
+  } catch (e) {
+    errors++;
   }
+};
+
+// Process chunks with limited concurrency
+const maxConcurrent = 3;
+for (let i = 0; i < chunks.length; i += maxConcurrent) {
+  const batch = chunks.slice(i, i + maxConcurrent);
+  await Promise.all(batch.map((chunk, idx) => processChunk(chunk, i + idx)));
+  // Log progress every 5 batches
+  if ((i + maxConcurrent) % 15 === 0 || i + maxConcurrent >= chunks.length) {
+    console.log('[VGM] Progress:', Math.min(i + maxConcurrent, chunks.length), '/', chunks.length, 'chunks,', filesWritten, 'files loaded');
+  }
+}
+
+console.log('[VGM] _bridgeFetchFiles complete:', filesWritten, 'files written,', errors, 'errors');
 };
 
 	VGMPlay_js.prototype._collectCacheFilePaths = function () {
@@ -143,13 +186,15 @@ export function installCache(VGMPlay_js) {
 		return out;
 	};
 
-	VGMPlay_js.prototype._restoreCacheFromBridge = async function () {
-  const resp = await this._cacheBridgeRequest('getMeta');
-  if (!resp || !resp.meta) {
-    if (this.debugMode) console.log('[VGM] No shared cache metadata found');
-    return;
-  }
-  const meta = resp.meta;
+VGMPlay_js.prototype._restoreCacheFromBridge = async function () {
+console.log('[VGM] _restoreCacheFromBridge starting');
+const resp = await this._cacheBridgeRequest('getMeta');
+if (!resp || !resp.meta) {
+if (this.debugMode) console.log('[VGM] No shared cache metadata found');
+return;
+}
+console.log('[VGM] Cache metadata loaded, games:', resp.meta.games ? resp.meta.games.length : 0);
+const meta = resp.meta;
   const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
   if (meta.version !== 2) {
     if (this.debugMode) console.warn("[VGM] Shared cache version mismatch, ignoring shared cache");
@@ -229,57 +274,50 @@ export function installCache(VGMPlay_js) {
 			});
 		}
 
-		if (typeof meta.amountOfGamesLoaded !== 'undefined') {
-			this.amountOfGamesLoaded = meta.amountOfGamesLoaded;
-		}
+if (typeof meta.amountOfGamesLoaded !== 'undefined') {
+this.amountOfGamesLoaded = meta.amountOfGamesLoaded;
+}
 
-		const filePaths = [];
-		if (this.games && this.games.length) {
-			for (const g of this.games) {
-				if (!g || !g.files) continue;
-				for (const f of g.files) {
-					if (f && f.filepath) filePaths.push(f.filepath);
-				}
-			}
-		}
-		await this._bridgeFetchFiles(filePaths);
+// PROGRESSIVE LOADING: Render games immediately before fetching file content
+if (this.games.length > 0) {
+  this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  if (!this._cacheRestoreCounted) {
+    this.autoCacheHits = this.games.length;
+    this._cacheRestoredGameCount = this.games.length;
+    this._cacheRestoreCounted = true;
+  }
+  // Schedule immediate render with placeholder state
+  this._scheduleZipRender();
+}
 
-		if (this.games.length > 0) {
-			const missing = this.games.some((g) => {
-				if (!g || !g.files || !g.files.length) return true;
-				const anyExisting = g.files.some((f) => {
-					if (!f || !f.filepath) return false;
-					try {
-						return FS.analyzePath(f.filepath).exists;
-					} catch (e) {
-						return false;
-					}
-				});
-				return !anyExisting;
-			});
-			if (missing) {
-				if (this.debugMode) console.warn("[VGM] Shared cache files missing, ignoring shared cache");
-				this._cacheFingerprints.clear();
-				this.games = [];
-				this.zipURLLoaded = [];
-				this.amountOfGamesLoaded = 0;
-				this._cacheArchiveNames = new Set();
-				this._cacheRestoredByHost = new Map();
-				this.autoCacheHits = 0;
-				this._cacheRestoredGameCount = 0;
-				return;
-			}
-		if (this.debugMode) console.log(`[VGM] Restored ${this.games.length} games from shared cache`);
-		// Sort games alphabetically after restoring from cache
-		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-		if (!this._cacheRestoreCounted) {
-				const restoredCount = this.games.length;
-				this.autoCacheHits = restoredCount;
-				this._cacheRestoredGameCount = restoredCount;
-				this._cacheRestoreCounted = true;
-			}
-			this._scheduleZipRender();
-			if (this._cacheArchiveNames) {
+// Collect file paths for background loading
+const filePaths = [];
+if (this.games && this.games.length) {
+  for (const g of this.games) {
+    if (!g || !g.files) continue;
+    for (const f of g.files) {
+      if (f && f.filepath) filePaths.push(f.filepath);
+    }
+  }
+}
+
+console.log('[VGM] Starting background load of', filePaths.length, 'files');
+
+// Load files in background - don't await, let UI render first
+this._bridgeFetchFiles(filePaths).then(() => {
+  console.log('[VGM] Background file load complete');
+  // After files are loaded, re-render to update track counts
+  for (const g of this.games) {
+    if (g) g.uiElement = null;
+  }
+  if (this._scheduleZipRender) {
+    this._scheduleZipRender();
+  }
+}).catch((e) => {
+  if (this.debugMode) console.error('[VGM] Background file load failed:', e);
+});
+
+if (this._cacheArchiveNames) {
 				const wasOverflow = (this.autoOverflowURLs || []).length;
 				if (wasOverflow) {
 					this.autoOverflowURLs = this.autoOverflowURLs.filter((u) => {
@@ -313,10 +351,14 @@ export function installCache(VGMPlay_js) {
         this.autoDownloadBytes = 0;
       }
     }
-    if (this._renderSkippedDownloads) {
-      this._renderSkippedDownloads();
-    }
-  }
+if (this._renderSkippedDownloads) {
+this._renderSkippedDownloads();
+}
+
+// Remove verification that would block - files are loaded in background now
+if (this.games.length > 0 && this.debugMode) {
+console.log(`[VGM] Restored ${this.games.length} games from shared cache (files loading in background)`);
+}
 };
 	VGMPlay_js.prototype._initCache = function () {
 		return new Promise((resolve) => {

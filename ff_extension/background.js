@@ -113,12 +113,13 @@ if (typeof window.__VGM_DEBUG__ === 'undefined') {
     `;
     shadow.appendChild(container);
 
-    // Set options for the auto-init BEFORE loading the glue script
-    window.VGMPLAY_EXTENSION_OPTIONS = {
-        container: container,
-        shadowRoot: shadow,
-        baseURL: extensionUrl
-    };
+// Set options for the auto-init BEFORE loading the glue script
+window.VGMPLAY_EXTENSION_OPTIONS = {
+  container: container,
+  shadowRoot: shadow,
+  baseURL: extensionUrl,
+  autoScanDist: true
+};
   if (window.__VGM_DEBUG__) console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set, loading glue script');
   // Load the glue script
   const script = document.createElement('script');

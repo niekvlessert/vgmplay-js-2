@@ -485,14 +485,15 @@ function togglePlayer(extensionUrl) {
     `;
     shadow.appendChild(container);
 
-    // Set options for the auto-init BEFORE loading the glue script
-    window.VGMPLAY_EXTENSION_OPTIONS = {
-        container: container,
-        shadowRoot: shadow,
-        baseURL: extensionUrl,
-        extensionContentScript: true,
-        sharedCache: true
-    };
+// Set options for the auto-init BEFORE loading the glue script
+window.VGMPLAY_EXTENSION_OPTIONS = {
+  container: container,
+  shadowRoot: shadow,
+  baseURL: extensionUrl,
+  extensionContentScript: true,
+  sharedCache: true,
+  autoScanDist: true
+};
     if (window.__VGM_DEBUG__) {
         console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set for content script mode');
     }

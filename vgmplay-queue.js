@@ -192,10 +192,10 @@ classContext.processRarBuffer(byteArray, job.data).then(next);
 } else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 classContext.processPSFBuffer(byteArray, job.data).then(next);
 } else if (lower.endsWith('.zip')) {
-classContext.processZipBuffer(byteArray, job.data).then(next);
-} else {
-classContext.processSingleBuffer(byteArray, job.data).then(next);
-}
+    classContext.processZipBuffer(byteArray, job.data).then(next);
+  } else {
+    classContext.processSingleBuffer(byteArray, job.name || job.data).then(next);
+  }
 								classContext.zipURLLoaded.push(job.data);
 							} else {
     if (this.debugMode) console.error("Failed to load archive from URL:", job.data);

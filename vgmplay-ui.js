@@ -553,7 +553,7 @@ VGMPlay_js.prototype.toggleSettingsMenu = function () {
 				gamesLoaded: this.games ? this.games.length : 0
 			};
 		}
-		console.log('[VGM] Debug snapshot:', snapshot);
+		this._log && this._log('UI', 'Debug snapshot:', snapshot);
 		this._settingsStatusText = 'Debug snapshot dumped to console.';
 		this._renderSkippedDownloads();
 	};
@@ -603,11 +603,11 @@ VGMPlay_js.prototype._runCacheIntegrityCheck = async function () {
     zeroLocal: zeroLocal.length,
     missingShared: missingShared.length
   };
-  console.log('[VGM] Cache integrity check:', summary, {
-    sampleMissingLocal: missingLocal.slice(0, 10),
-    sampleZeroLocal: zeroLocal.slice(0, 10),
-    sampleMissingShared: missingShared.slice(0, 10)
-  });
+	this._log && this._log('CACHE', 'Cache integrity check:', summary, {
+		sampleMissingLocal: missingLocal.slice(0, 10),
+		sampleZeroLocal: zeroLocal.slice(0, 10),
+		sampleMissingShared: missingShared.slice(0, 10)
+	});
   this._settingsStatusText = `Integrity: ${summary.files + summary.covers} items, local missing ${summary.missingLocal}, shared missing ${summary.missingShared}.`;
   if (this.settingsWindow && this.settingsWindow.style.display !== 'none') {
     this._showSettingsWindow();
@@ -1216,9 +1216,9 @@ VGMPlay_js.prototype._performExport = async function () {
 
     this._exportStatusText = `Exported ${selectedGames.length} game(s)`;
     this._renderExportModal();
-  } catch (err) {
-    console.error('[VGM] Export failed:', err);
-    this._exportStatusText = 'Export failed: ' + err.message;
+	} catch (err) {
+		this._logError && this._logError('UI', 'Export failed:', err);
+		this._exportStatusText = 'Export failed: ' + err.message;
     this._renderExportModal();
   }
 };

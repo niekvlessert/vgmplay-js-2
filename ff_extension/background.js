@@ -8,11 +8,18 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 function togglePlayer(extensionUrl) {
-// Guard for service worker context where window doesn't exist
-if (typeof window === 'undefined') return;
-// Auto-enable debug mode
-window.__VGM_DEBUG__ = true;
-if (window.__VGM_DEBUG__) console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
+	// Guard for service worker context where window doesn't exist
+	if (typeof window === 'undefined') return;
+	// Load debug mode from localStorage
+	if (typeof window.__VGM_DEBUG__ === 'undefined') {
+		try {
+			const savedDebug = localStorage.getItem('vgm_debug_mode');
+			window.__VGM_DEBUG__ = savedDebug === 'true';
+		} catch (e) {
+			window.__VGM_DEBUG__ = false;
+		}
+	}
+	if (window.__VGM_DEBUG__) console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
   if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
@@ -46,13 +53,19 @@ if (window.__VGM_DEBUG__) console.log('[VGM Extension] togglePlayer called, exte
 
 const shadow = root.attachShadow({ mode: 'open' });
 
-// Initialize Module directly in the Main World
-window.Module = window.Module || {};
-if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
-if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
-if (typeof window.__VGM_DEBUG__ === 'undefined') {
-	window.__VGM_DEBUG__ = true;
-}
+	// Initialize Module directly in the Main World
+	window.Module = window.Module || {};
+	if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
+	if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
+	// Load debug mode from localStorage (already set above, but ensure it's set)
+	if (typeof window.__VGM_DEBUG__ === 'undefined') {
+		try {
+			const savedDebug = localStorage.getItem('vgm_debug_mode');
+			window.__VGM_DEBUG__ = savedDebug === 'true';
+		} catch (e) {
+			window.__VGM_DEBUG__ = false;
+		}
+	}
 
     // Add styles - inject directly into Shadow DOM for proper scoping
     const styleLink = document.createElement('link');

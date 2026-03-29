@@ -5,8 +5,14 @@ class VGMPlay_js {
 	constructor(options = {}) {
 		window.vgmplay_js = this; // Ensure global access for UI handlers
 		window.vgmPlayInstance = this;
-		if (typeof window !== 'undefined' && typeof window.__VGM_DEBUG__ === 'undefined') {
-			window.__VGM_DEBUG__ = false;
+		// Load debug mode from localStorage first, before any other code runs
+		if (typeof window !== 'undefined') {
+			try {
+				const savedDebug = localStorage.getItem('vgm_debug_mode');
+				window.__VGM_DEBUG__ = savedDebug === 'true';
+			} catch (e) {
+				window.__VGM_DEBUG__ = false;
+			}
 		}
 
 		// --- Android Auto Integration Bridge ---
@@ -114,11 +120,14 @@ class VGMPlay_js {
 		this._pendingRomLoads = [];
 this._pendingRomRetryScheduled = false;
 this._pendingExternalGameImages = {};
-this.debugMode = false;
+this.debugMode = this._loadDebugModeSetting();
 this.debugModeHasBeenToggled = false;
 this._debugSettingsWindowVisible = false;
 this._debugPrefixes = {};
 this._loadDebugPrefixSettings();
+if (this.debugMode && typeof window !== 'undefined') {
+  window.__VGM_DEBUG__ = true;
+}
 this.sharedCache = this._normalizeBool(options.sharedCache);
 this._settingsMenuVisible = false;
 this._settingsStatusText = '';
@@ -573,15 +582,13 @@ this._settingsStatusText = '';
 						e.stopPropagation();
 						return;
 					}
-if (e.key === 'd' || e.key === 'D') {
-if (this._debugSettingsWindowVisible) {
-this._hideDebugSettingsWindow();
-} else if (this.debugMode) {
-this._showDebugSettingsWindow();
-} else {
-this.toggleDebugMode();
-}
-}
+		if (e.key === 'd' || e.key === 'D') {
+			if (this._debugSettingsWindowVisible) {
+				this._hideDebugSettingsWindow();
+			} else {
+				this.toggleDebugMode();
+			}
+		}
 					if (e.key === 'w' || e.key === 'W') {
 						if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
 					}
@@ -696,16 +703,14 @@ this.toggleDebugMode();
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this._setMemoryStatsVisible(!this.showMemoryStats);
 		});
-Mousetrap.bind('d', (e) => {
-if (this._eventIsTyping && this._eventIsTyping(e)) return;
-if (this._debugSettingsWindowVisible) {
-this._hideDebugSettingsWindow();
-} else if (this.debugMode) {
-this._showDebugSettingsWindow();
-} else {
-this.toggleDebugMode();
-}
-});
+	Mousetrap.bind('d', (e) => {
+		if (this._eventIsTyping && this._eventIsTyping(e)) return;
+		if (this._debugSettingsWindowVisible) {
+			this._hideDebugSettingsWindow();
+		} else {
+			this.toggleDebugMode();
+		}
+	});
 		Mousetrap.bind('w', (e) => {
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
@@ -743,19 +748,26 @@ this.toggleDebugMode();
 			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
 				const url = this.elms[ii].href;
 				this._queueURL(url, false, true);
-				// Try to fetch matching image for archives
-				if (this._isArchiveUrl(lower)) {
-					if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Calling _tryFetchMatchingImageForArchive for:', url);
-					this._tryFetchMatchingImageForArchive(url);
-				}
+// Try to fetch matching image for archives
+  if (this._isArchiveUrl(lower)) {
+    this._log && this._log('ARCHIVES', 'Calling _tryFetchMatchingImageForArchive for:', url);
+    this._tryFetchMatchingImageForArchive(url);
+  }
 			}
 		}
-		this._currentScanNames = scanNames;
-		if (this._renderZipGamesNow && this.games && this.games.length) {
-			this._renderZipGamesNow();
-		}
-		this.setKeyBindings();
-	}
+this._currentScanNames = scanNames;
+if (this._renderZipGamesNow && this.games && this.games.length) {
+  this._renderZipGamesNow();
+}
+this.setKeyBindings();
+
+// Show notification if debug mode was restored from settings
+if (this.debugMode && this._showNotification) {
+  setTimeout(() => {
+    this._showNotification("Debug is enabled, press D to toggle", 5000);
+  }, 1000);
+}
+}
 
 	_yieldToUI() {
 		return new Promise((resolve) => {
@@ -821,8 +833,8 @@ this.toggleDebugMode();
 		}
 	}
 
-	async _processArchiveEntries(entries, fileDataByPath, sourceName = '', hasKss = false) {
-		console.log('[VGM] _processArchiveEntries called:', sourceName, 'entries:', entries.length, 'hasKss:', hasKss, 'fileDataByPath size:', fileDataByPath.size);
+async _processArchiveEntries(entries, fileDataByPath, sourceName = '', hasKss = false) {
+this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName, 'entries:', entries.length, 'hasKss:', hasKss, 'fileDataByPath size:', fileDataByPath.size);
 		const yieldEvery = 50;
 		let sinceYield = 0;
 		const maybeYield = async () => {
@@ -902,14 +914,14 @@ this.toggleDebugMode();
 				});
 			}
 
-	const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
-	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
-	const key = this._baseNameNoExt(sourceName).toLowerCase();
-	console.log('[VGM] ZIP Game loaded:', derivedName, 'archiveName:', sourceName, 'key:', key, 'pendingImages:', this._pendingExternalGameImages ? Object.keys(this._pendingExternalGameImages).filter(k => k.includes('antarctic') || k.includes('athletic') || k.includes('aleste')) : []);
-	if (this._applyExternalGameImage && sourceName) {
-		this._applyExternalGameImage(game, sourceName, false);
-		console.log('[VGM] After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
-	}
+const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
+const key = this._baseNameNoExt(sourceName).toLowerCase();
+this._log && this._log('ARCHIVES', 'ZIP Game loaded:', derivedName, 'archiveName:', sourceName, 'key:', key);
+if (this._applyExternalGameImage && sourceName) {
+  this._applyExternalGameImage(game, sourceName, false);
+  this._log && this._log('ARCHIVES', 'After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
+}
 			this.tempGameInfo = null;
 			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -1757,187 +1769,155 @@ _baseNameNoExt(p) {
 	const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
 	let foundImageExt = null;
 	for (const ext of imageExts) {
-		const imageName = (baseName + ext).toLowerCase();
-		if (scanNames && scanNames.has(imageName)) {
-			foundImageExt = ext;
-			break;
-		}
-	}
+const imageName = (baseName + ext).toLowerCase();
+  if (scanNames && scanNames.has(imageName)) {
+    foundImageExt = ext;
+    break;
+  }
+}
 
-	const debugLog = (msg, ...args) => {
-		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-			console.log(msg, ...args);
-		}
-	};
+this._log && this._log('ARCHIVES', '_tryFetchMatchingImageForArchive:', 'baseName:', baseName, 'scanNames size:', scanNames ? scanNames.size : 0, 'foundImageExt:', foundImageExt);
 
-	debugLog('[VGM] _tryFetchMatchingImageForArchive:', 'baseName:', baseName, 'scanNames size:', scanNames ? scanNames.size : 0, 'foundImageExt:', foundImageExt);
+// If a matching image is listed on the page, fetch it directly
+if (foundImageExt) {
+  const imageUrl = directory + baseName + foundImageExt;
+  this._log && this._log('ARCHIVES', 'Image found in scan names, fetching:', imageUrl);
+  this._fetchUrlAsUint8(imageUrl).then(bytes => {
+    this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 callback for', imageUrl, 'bytes:', bytes ? bytes.length : 'null');
+    if (bytes && bytes.length > 0) {
+      this._log && this._log('ARCHIVES', 'Found matching image for archive:', imageUrl, 'size:', bytes.length);
+      this._registerExternalGameImage(baseName + foundImageExt, bytes);
+      this._applyExternalGameImageToExistingGames(baseName + foundImageExt);
+    }
+  }).catch((err) => {
+    this._log && this._log('ARCHIVES', 'Image fetch failed:', imageUrl, err);
+  });
+  return;
+}
 
-	// If a matching image is listed on the page, fetch it directly
-	if (foundImageExt) {
-		const imageUrl = directory + baseName + foundImageExt;
-		debugLog('[VGM] Image found in scan names, fetching:', imageUrl);
-		this._fetchUrlAsUint8(imageUrl).then(bytes => {
-			debugLog('[VGM] _fetchUrlAsUint8 callback for', imageUrl, 'bytes:', bytes ? bytes.length : 'null');
-			if (bytes && bytes.length > 0) {
-				debugLog('[VGM] Found matching image for archive:', imageUrl, 'size:', bytes.length);
-				this._registerExternalGameImage(baseName + foundImageExt, bytes);
-				this._applyExternalGameImageToExistingGames(baseName + foundImageExt);
-			}
-		}).catch((err) => {
-			debugLog('[VGM] Image fetch failed:', imageUrl, err);
-		});
-		return;
-	}
-
-	// If no matching image is listed on the page, try all image extensions as fallback
-	// This handles cases where the image exists on the server but isn't linked on the page
-	debugLog('[VGM] Trying to find image for archive:', baseName, 'in directory:', directory);
-	this._tryFetchImageWithFallbacks(directory, baseName, imageExts, 0);
+// If no matching image is listed on the page, try all image extensions as fallback
+// This handles cases where the image exists on the server but isn't linked on the page
+this._log && this._log('ARCHIVES', 'Trying to find image for archive:', baseName, 'in directory:', directory);
+this._tryFetchImageWithFallbacks(directory, baseName, imageExts, 0);
 }
 
 async _tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex) {
-	const debugLog = (msg, ...args) => {
-		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-			console.log(msg, ...args);
-		}
-	};
-
-	if (startIndex >= extensions.length) {
-		// All extensions tried, no image found
-		debugLog('[VGM] No image found for archive:', baseName, 'tried extensions:', extensions.join(', '));
-		return;
-	}
-	const ext = extensions[startIndex];
-	const imageUrl = directory + baseName + ext;
-	debugLog('[VGM] Trying image URL:', imageUrl);
-	try {
-		const bytes = await this._fetchUrlAsUint8(imageUrl);
-		debugLog('[VGM] _fetchUrlAsUint8 result for', imageUrl, ':', bytes ? bytes.length : 'null');
-		if (bytes && bytes.length > 0) {
-			debugLog('[VGM] Found matching image for archive:', imageUrl, 'size:', bytes.length);
-			this._registerExternalGameImage(baseName + ext, bytes);
-			this._applyExternalGameImageToExistingGames(baseName + ext);
-		} else {
-			// Try next extension
-			this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
-		}
-	} catch (e) {
-		debugLog('[VGM] _tryFetchImageWithFallbacks error:', imageUrl, e);
-		// Image not found with this extension, try next
-		this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
-	}
+if (startIndex >= extensions.length) {
+  // All extensions tried, no image found
+  this._log && this._log('ARCHIVES', 'No image found for archive:', baseName, 'tried extensions:', extensions.join(', '));
+  return;
+}
+const ext = extensions[startIndex];
+const imageUrl = directory + baseName + ext;
+this._log && this._log('ARCHIVES', 'Trying image URL:', imageUrl);
+try {
+  const bytes = await this._fetchUrlAsUint8(imageUrl);
+  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 result for', imageUrl, ':', bytes ? bytes.length : 'null');
+  if (bytes && bytes.length > 0) {
+    this._log && this._log('ARCHIVES', 'Found matching image for archive:', imageUrl, 'size:', bytes.length);
+    this._registerExternalGameImage(baseName + ext, bytes);
+    this._applyExternalGameImageToExistingGames(baseName + ext);
+  } else {
+    // Try next extension
+    this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+  }
+} catch (e) {
+  this._log && this._log('ARCHIVES', '_tryFetchImageWithFallbacks error:', imageUrl, e);
+  // Image not found with this extension, try next
+  this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+}
 }
 
 _registerExternalGameImage(name, byteArray) {
-	if (!name || !byteArray) {
-		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-			console.log('[VGM] _registerExternalGameImage: invalid params', 'name:', name, 'byteArray:', byteArray ? byteArray.length : 'null');
-		}
-		return;
-	}
+if (!name || !byteArray) {
+  this._log && this._log('ARCHIVES', '_registerExternalGameImage: invalid params', 'name:', name, 'byteArray:', byteArray ? byteArray.length : 'null');
+  return;
+}
 
-	const debugLog = (msg, ...args) => {
-		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-			console.log(msg, ...args);
-		}
-	};
+this._log && this._log('ARCHIVES', '_registerExternalGameImage:', name, 'size:', byteArray.length);
 
-	debugLog('[VGM] _registerExternalGameImage:', name, 'size:', byteArray.length);
-
-	const key = this._baseNameNoExt(name).toLowerCase();
-	if (!key) {
-		debugLog('[VGM] _registerExternalGameImage: no key for', name);
-		return;
-	}
-	if (!this._pendingExternalGameImages) this._pendingExternalGameImages = {};
-	try {
-		const lower = name.toLowerCase();
-		let mime = 'image/jpeg';
-		if (lower.endsWith('.png')) mime = 'image/png';
-		else if (lower.endsWith('.webp')) mime = 'image/webp';
-		else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
-		this._pendingExternalGameImages[key] = new Blob([byteArray], { type: mime });
-		debugLog('[VGM] Registered external game image:', key, 'mime:', mime, 'blob size:', this._pendingExternalGameImages[key].size);
-	} catch (e) {
+const key = this._baseNameNoExt(name).toLowerCase();
+if (!key) {
+  this._log && this._log('ARCHIVES', '_registerExternalGameImage: no key for', name);
+  return;
+}
+if (!this._pendingExternalGameImages) this._pendingExternalGameImages = {};
+try {
+  const lower = name.toLowerCase();
+  let mime = 'image/jpeg';
+  if (lower.endsWith('.png')) mime = 'image/png';
+  else if (lower.endsWith('.webp')) mime = 'image/webp';
+  else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+  this._pendingExternalGameImages[key] = new Blob([byteArray], { type: mime });
+  this._log && this._log('ARCHIVES', 'Registered external game image:', key, 'mime:', mime, 'blob size:', this._pendingExternalGameImages[key].size);
+} catch (e) {
 		if (this.debugMode) console.error('[VGM] Failed to cache external game image', name, e);
 	}
 }
 
-	_applyExternalGameImage(game, archiveName, overrideOnly) {
-		const debugLog = (msg, ...args) => {
-			if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-				console.log(msg, ...args);
-			}
-		};
+_applyExternalGameImage(game, archiveName, overrideOnly) {
+if (!game || !archiveName || !this._pendingExternalGameImages) {
+  this._log && this._log('ARCHIVES', '_applyExternalGameImage: early return', 'game:', !!game, 'archiveName:', archiveName, 'pending:', !!this._pendingExternalGameImages);
+  return;
+}
+const key = this._baseNameNoExt(archiveName).toLowerCase();
+this._log && this._log('ARCHIVES', '_applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key], 'availableKeys:', Object.keys(this._pendingExternalGameImages));
+const blob = this._pendingExternalGameImages[key];
+if (!blob) {
+  this._log && this._log('ARCHIVES', '_applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
+  return;
+}
+if (!game.png) {
+  game.png = blob;
+  this._log && this._log('ARCHIVES', '_applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size, 'game.png:', game.png ? game.png.size : 'null');
+} else {
+  this._log && this._log('ARCHIVES', '_applyExternalGameImage: skipped (game already has PNG:', game.png.size, 'bytes)');
+}
+}
 
-		if (!game || !archiveName || !this._pendingExternalGameImages) {
-			debugLog('[VGM] _applyExternalGameImage: early return', 'game:', !!game, 'archiveName:', archiveName, 'pending:', !!this._pendingExternalGameImages);
-			return;
-		}
-		const key = this._baseNameNoExt(archiveName).toLowerCase();
-		debugLog('[VGM] _applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key], 'availableKeys:', Object.keys(this._pendingExternalGameImages));
-		const blob = this._pendingExternalGameImages[key];
-	if (!blob) {
-		debugLog('[VGM] _applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
-		return;
-	}
-	if (!game.png) {
-		game.png = blob;
-		debugLog('[VGM] _applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size, 'game.png:', game.png ? game.png.size : 'null');
-	} else {
-		debugLog('[VGM] _applyExternalGameImage: skipped (game already has PNG:', game.png.size, 'bytes)');
-		}
-	}
-
-	_applyExternalGameImageToExistingGames(imageName) {
-		const debugLog = (msg, ...args) => {
-			if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-				console.log(msg, ...args);
-			}
-		};
-
-		const key = this._baseNameNoExt(imageName).toLowerCase();
-		debugLog("[VGM] _applyExternalGameImageToExistingGames called, imageName:", imageName, "key:", key, "games.length:", this.games ? this.games.length : 0);
-		if (!this.games || !this.games.length) {
-			debugLog('[VGM] No games to apply image to:', imageName);
-			return;
-		}
-		if (!key) return;
-		debugLog('[VGM] Applying image to existing games, key:', key, 'games count:', this.games.length);
-		let anyUpdated = false;
-		for (const game of this.games) {
-			if (!game) continue;
-			const archiveName = game.archiveName || game.name || '';
-			const base = this._baseNameNoExt(archiveName).toLowerCase();
-			debugLog('[VGM] Checking game:', game.name, 'archiveName:', archiveName, 'base:', base, 'key:', key, 'match:', base === key);
-			if (base === key) {
-				this._applyExternalGameImage(game, archiveName, false);
-				anyUpdated = true;
-				if (game.uiElement) {
-					const img = game.uiElement.querySelector('img.vgmplayGameToggle');
-					if (img && game.png) {
-						try {
-							img.src = URL.createObjectURL(game.png);
-						} catch (e) { }
-						continue;
-					}
-					if (game.uiElement.parentNode) {
-						game.uiElement.parentNode.removeChild(game.uiElement);
-					}
-					game.uiElement = null;
-				}
-				if (this.showVGMFromZip) {
-					this.showVGMFromZip(game);
-				}
-			}
-		}
-		if (anyUpdated && this._renderZipGamesNow) {
-			this._renderZipGamesNow();
-		}
-		if (anyUpdated && this._saveCache) {
-			this._saveCache();
-		}
-	}
+_applyExternalGameImageToExistingGames(imageName) {
+const key = this._baseNameNoExt(imageName).toLowerCase();
+this._log && this._log('ARCHIVES', "_applyExternalGameImageToExistingGames called, imageName:", imageName, "key:", key, "games.length:", this.games ? this.games.length : 0);
+if (!this.games || !this.games.length) {
+  this._log && this._log('ARCHIVES', 'No games to apply image to:', imageName);
+  return;
+}
+if (!key) return;
+this._log && this._log('ARCHIVES', 'Applying image to existing games, key:', key, 'games count:', this.games.length);
+let anyUpdated = false;
+for (const game of this.games) {
+  if (!game) continue;
+  const archiveName = game.archiveName || game.name || '';
+  const base = this._baseNameNoExt(archiveName).toLowerCase();
+  this._log && this._log('ARCHIVES', 'Checking game:', game.name, 'archiveName:', archiveName, 'base:', base, 'key:', key, 'match:', base === key);
+  if (base === key) {
+    this._applyExternalGameImage(game, archiveName, false);
+    anyUpdated = true;
+    if (game.uiElement) {
+      const img = game.uiElement.querySelector('img.vgmplayGameToggle');
+      if (img && game.png) {
+        try {
+          img.src = URL.createObjectURL(game.png);
+        } catch (e) { }
+        continue;
+      }
+      if (game.uiElement.parentNode) {
+        game.uiElement.parentNode.removeChild(game.uiElement);
+      }
+      game.uiElement = null;
+    }
+    if (this.showVGMFromZip) {
+      this.showVGMFromZip(game);
+    }
+  }
+}
+if (anyUpdated && this._renderZipGamesNow) {
+  this._renderZipGamesNow();
+}
+if (anyUpdated && this._saveCache) {
+  this._saveCache();
+}
+}
 
 	_tryLoadMiscImageFromFS() {
 		if (typeof FS === 'undefined' || !FS.analyzePath || !FS.readFile) return;
@@ -1992,23 +1972,18 @@ _registerExternalGameImage(name, byteArray) {
 	}
 
 async _fetchUrlAsUint8(url) {
-	const debugLog = (msg, ...args) => {
-		if (typeof window !== 'undefined' && (window.__VGM_DEBUG__ || this.debugMode)) {
-			console.log(msg, ...args);
-		}
-	};
-	debugLog('[VGM] _fetchUrlAsUint8 called for:', url);
-	try {
-		const resp = await fetch(url, { cache: 'no-store' });
-		debugLog('[VGM] _fetchUrlAsUint8 response:', url, 'status:', resp.status, 'ok:', resp.ok);
-		if (!resp.ok) return null;
-		const buf = await resp.arrayBuffer();
-		debugLog('[VGM] _fetchUrlAsUint8 buffer size:', url, buf.byteLength);
-		return new Uint8Array(buf);
-	} catch (e) {
-		debugLog('[VGM] _fetchUrlAsUint8 error:', url, e);
-		return null;
-	}
+this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 called for:', url);
+try {
+  const resp = await fetch(url, { cache: 'no-store' });
+  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 response:', url, 'status:', resp.status, 'ok:', resp.ok);
+  if (!resp.ok) return null;
+  const buf = await resp.arrayBuffer();
+  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 buffer size:', url, buf.byteLength);
+  return new Uint8Array(buf);
+} catch (e) {
+  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 error:', url, e);
+  return null;
+}
 }
 
 	async _autoScanDist() {
@@ -2783,65 +2758,65 @@ b64 = bytes; // already base64
 }
 if (b64) {
 this._cacheBridgeRequest('putFiles', { files: [{ path, b64 }] }).then((resp) => {
-if (resp && resp.error) {
-    if (this.debugMode) console.warn('[VGM] Failed to cache ROM file:', name, resp.error);
-  } else if (this.debugMode) {
-console.log('[VGM] ROM file cached:', name, 'size:', bytes.length || bytes.byteLength);
-}
+  if (resp && resp.error) {
+    this._logWarn && this._logWarn('CACHE', 'Failed to cache ROM file:', name, resp.error);
+  } else {
+    this._log && this._log('CACHE', 'ROM file cached:', name, 'size:', bytes.length || bytes.byteLength);
+  }
 });
 } else {
-    if (this.debugMode) console.warn('[VGM] Could not convert ROM to base64 for caching:', name);
-  }
+this._logWarn && this._logWarn('CACHE', 'Could not convert ROM to base64 for caching:', name);
+}
 }
 
 // Restore ROM files from cache on startup
 async _restoreRomsFromCache() {
 if (!this._cacheBridgeAvailable()) return;
 const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM'];
-if (this.debugMode) console.log('[VGM] Requesting ROM files from cache:', romPaths);
+this._log && this._log('CACHE', 'Requesting ROM files from cache:', romPaths);
 const resp = await this._cacheBridgeRequest('getFiles', { paths: romPaths });
-if (this.debugMode) console.log('[VGM] ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
+this._log && this._log('CACHE', 'ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
 if (resp && resp.files && resp.files.length) {
 for (const item of resp.files) {
 if (!item || !item.path) continue;
 const name = item.path.split('/').pop();
 const romType = this._getRomType(name);
 if (romType) {
-// Handle both base64 and binary data formats (same as _bridgeFetchFiles)
-let bytes = null;
-if (item.b64) {
-const binary = atob(item.b64);
-const len = binary.length;
-bytes = new Uint8Array(len);
-for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-if (this.debugMode) console.log('[VGM] Decoded b64, size:', bytes.byteLength);
-} else if (item.data) {
-bytes = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
-if (this.debugMode) console.log('[VGM] Using data, size:', bytes.byteLength);
-} else {
-if (this.debugMode) console.log('[VGM] ROM item has no data:', name);
-continue;
-}
-if (this.debugMode) console.log('[VGM] Restoring ROM:', name, 'type:', romType, 'size:', bytes.byteLength);
-// Write directly to FS - we're called after FS is ready in _doInit
-if (typeof FS !== 'undefined' && FS.writeFile) {
-const path = '/' + name;
-try {
-if (FS.analyzePath(path).exists) {
-FS.unlink(path);
-}
-FS.writeFile(path, bytes);
-this._romLoaded = this._romLoaded || {};
-let key = romType === 'munt' ? ('munt:' + name.toUpperCase()) : ('opl4:yrw801.rom');
-// Show notice that ROM was loaded from cache
-if (!this._romLoaded[key]) {
-const label = romType === 'munt' ? 'Munt ROM' : 'OPL4 ROM (YRW801)';
-const opts = { typeLabel: label, isRom: true, fromCache: true };
-if (romType === 'munt') opts.isMuntRom = true;
-this._addNoPlayableNotice(name, opts);
-}
-this._romLoaded[key] = true;
-if (this.debugMode) console.log('[VGM] ROM restored successfully:', path, 'key:', key);
+  // Handle both base64 and binary data formats (same as _bridgeFetchFiles)
+  let bytes = null;
+  if (item.b64) {
+    const binary = atob(item.b64);
+    const len = binary.length;
+    bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+    this._log && this._log('CACHE', 'Decoded b64, size:', bytes.byteLength);
+  } else if (item.data) {
+    bytes = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
+    this._log && this._log('CACHE', 'Using data, size:', bytes.byteLength);
+  } else {
+    this._log && this._log('CACHE', 'ROM item has no data:', name);
+    continue;
+  }
+  this._log && this._log('CACHE', 'Restoring ROM:', name, 'type:', romType, 'size:', bytes.byteLength);
+  // Write directly to FS - we're called after FS is ready in _doInit
+  if (typeof FS !== 'undefined' && FS.writeFile) {
+    const path = '/' + name;
+    try {
+      if (FS.analyzePath(path).exists) {
+        FS.unlink(path);
+      }
+      FS.writeFile(path, bytes);
+      this._romLoaded = this._romLoaded || {};
+      let key = romType === 'munt' ? ('munt:' + name.toUpperCase()) : ('opl4:yrw801.rom');
+      // Show notice that ROM was loaded from cache
+      if (!this._romLoaded[key]) {
+        const label = romType === 'munt' ? 'Munt ROM' : 'OPL4 ROM (YRW801)';
+        const opts = { typeLabel: label, isRom: true, fromCache: true };
+        if (romType === 'munt') opts.isMuntRom = true;
+        this._addNoPlayableNotice(name, opts);
+      }
+      this._romLoaded[key] = true;
+      this._log && this._log('CACHE', 'ROM restored successfully:', path, 'key:', key);
 // Verify the file was written
 const stat = FS.stat(path);
 if (this.debugMode) console.log('[VGM] ROM file size in FS:', stat.size);
@@ -3085,52 +3060,91 @@ VGMPlay_js.prototype._changeTrackInGame = async function (action) {
 };
 
 VGMPlay_js.prototype.toggleDebugMode = function () {
-if (this._debugSettingsWindowVisible) {
-this._hideDebugSettingsWindow();
-return;
-}
-this.debugMode = !this.debugMode;
-this.debugModeHasBeenToggled = true;
-if (typeof window !== 'undefined') {
-window.__VGM_DEBUG__ = this.debugMode;
-}
-console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
-if (this._showNotification && this._startCountdown) {
-this._showNotification("Debug Mode: " + (this.debugMode ? "ON" : "OFF"), 10000);
-}
-if (Module._SetDebugMode) {
-Module._SetDebugMode(this.debugMode ? 1 : 0);
-}
+	this.debugMode = !this.debugMode;
+	this.debugModeHasBeenToggled = true;
+	this._saveDebugModeSetting();
+	if (typeof window !== 'undefined') {
+		window.__VGM_DEBUG__ = this.debugMode;
+	}
+	this._log && this._log('UI', "Debug Mode:", this.debugMode ? "ON" : "OFF");
+	if (this._showNotification && this._startCountdown) {
+		this._showNotification("Debug Mode: " + (this.debugMode ? "ON" : "OFF"), 10000);
+	}
+	if (Module._SetDebugMode) {
+		Module._SetDebugMode(this.debugMode ? 1 : 0);
+	}
+	// Show debug settings window when turning debug ON
+	if (this.debugMode && this._showDebugSettingsWindow) {
+		setTimeout(() => this._showDebugSettingsWindow(), 100);
+	}
 };
 
 VGMPlay_js.prototype._loadDebugPrefixSettings = function () {
 try {
-const saved = localStorage.getItem('vgm_debug_prefixes');
-if (saved) {
-this._debugPrefixes = JSON.parse(saved);
+  const saved = localStorage.getItem('vgm_debug_prefixes');
+  if (saved) {
+    this._debugPrefixes = JSON.parse(saved);
+  }
+} catch (e) { }
+};
+
+VGMPlay_js.prototype._loadDebugModeSetting = function () {
+try {
+  const saved = localStorage.getItem('vgm_debug_mode');
+  return saved === 'true';
+} catch (e) {
+  return false;
 }
+};
+
+VGMPlay_js.prototype._saveDebugModeSetting = function () {
+try {
+  localStorage.setItem('vgm_debug_mode', String(this.debugMode));
 } catch (e) { }
 };
 
 VGMPlay_js.prototype._saveDebugPrefixSettings = function () {
 try {
-localStorage.setItem('vgm_debug_prefixes', JSON.stringify(this._debugPrefixes));
+  localStorage.setItem('vgm_debug_prefixes', JSON.stringify(this._debugPrefixes));
 } catch (e) { }
+};
+
+VGMPlay_js.prototype._log = function (prefix, ...args) {
+if (!this.debugMode) return;
+const prefixEnabled = this._debugPrefixes[prefix] !== false;
+if (!prefixEnabled) return;
+console.log(`[VGM ${prefix}]`, ...args);
+};
+
+VGMPlay_js.prototype._logWarn = function (prefix, ...args) {
+if (!this.debugMode) return;
+const prefixEnabled = this._debugPrefixes[prefix] !== false;
+if (!prefixEnabled) return;
+console.warn(`[VGM ${prefix}]`, ...args);
+};
+
+VGMPlay_js.prototype._logError = function (prefix, ...args) {
+if (!this.debugMode) return;
+const prefixEnabled = this._debugPrefixes[prefix] !== false;
+if (!prefixEnabled) return;
+console.error(`[VGM ${prefix}]`, ...args);
 };
 
 VGMPlay_js.prototype._getKnownDebugPrefixes = function () {
 return [
-'[VGM]',
-'[VGM-ARCHIVES]',
-'[VGM-CACHE]',
-'[VGM-CACHE-DEBUG]',
-'[VGM-QUEUE]',
-'[VGM-AUDIO]',
-'[VGM-KSS]',
-'[VGM-UI]',
-'[Background]',
-'[Offscreen]',
-'[Worker]'
+  'ARCHIVES',
+  'CACHE',
+  'QUEUE',
+  'AUDIO',
+  'KSS',
+  'UI',
+  'MIDI',
+  'METADATA',
+  'SPECTRUM',
+  'LIBRARY',
+  'Background',
+  'Offscreen',
+  'Worker'
 ];
 };
 
@@ -3215,21 +3229,22 @@ color: #fff;
 cursor: pointer;
 font-size: 13px;
 `;
-turnOffBtn.addEventListener('click', () => {
-this._hideDebugSettingsWindow();
-this.debugMode = false;
-this.debugModeHasBeenToggled = true;
-if (typeof window !== 'undefined') {
-window.__VGM_DEBUG__ = false;
-}
-console.log("[VGM] Debug Mode: OFF");
-if (this._showNotification && this._startCountdown) {
-this._showNotification("Debug Mode: OFF", 3000);
-}
-if (Module._SetDebugMode) {
-Module._SetDebugMode(0);
-}
-});
+	turnOffBtn.addEventListener('click', () => {
+		this._hideDebugSettingsWindow();
+		this.debugMode = false;
+		this.debugModeHasBeenToggled = true;
+		this._saveDebugModeSetting();
+		if (typeof window !== 'undefined') {
+			window.__VGM_DEBUG__ = false;
+		}
+		console.log("[VGM] Debug Mode: OFF");
+		if (this._showNotification && this._startCountdown) {
+			this._showNotification("Debug Mode: OFF", 3000);
+		}
+		if (Module._SetDebugMode) {
+			Module._SetDebugMode(0);
+		}
+	});
 win.appendChild(turnOffBtn);
 
 root.appendChild(win);

@@ -146,17 +146,17 @@ if (this.isKSSActive) {
     this._ensureKssBindings();
   }
 
-  // Don't await cache init - let it run in background
-  if (this._initCache && !this._cacheReady) {
-    console.log('[VGM Audio] Starting cache init in background');
-    this._initCache().then(() => {
-      console.log('[VGM Audio] Cache init complete');
-    }).catch(e => {
-      console.error('[VGM Audio] Cache init error:', e);
-    });
-  } else {
-    console.log('[VGM Audio] Skipping cache init, _initCache:', !!this._initCache, '_cacheReady:', this._cacheReady);
-  }
+// Don't await cache init - let it run in background
+if (this._initCache && !this._cacheReady) {
+  this._log && this._log('AUDIO', 'Starting cache init in background');
+  this._initCache().then(() => {
+    this._log && this._log('AUDIO', 'Cache init complete');
+  }).catch(e => {
+    this._logError && this._logError('AUDIO', 'Cache init error:', e);
+  });
+} else {
+  this._log && this._log('AUDIO', 'Skipping cache init, _initCache:', !!this._initCache, '_cacheReady:', this._cacheReady);
+}
 
   return true;
 };
@@ -602,9 +602,9 @@ if (this.isKSSActive) {
 			return isKss() || isPsfUsf();
 		})();
 
-		if (this.debugMode) {
-			console.log(`[VGM] _trackSupportsLoop: ${result ? 'YES' : 'NO'}`);
-		}
+	if (this.debugMode) {
+		this._log && this._log('AUDIO', `_trackSupportsLoop: ${result ? 'YES' : 'NO'}`);
+	}
 		return result;
 	};
 

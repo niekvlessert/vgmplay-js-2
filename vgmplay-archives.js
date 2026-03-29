@@ -1,39 +1,38 @@
 export function installArchives(VGMPlay_js) {
 VGMPlay_js.prototype._getArchiveWorker = function () {
-  if (this.archiveWorker) return this.archiveWorker;
-  if (typeof Worker === 'undefined') {
-    console.warn("[VGM] Worker API unavailable");
-    return null;
+if (this.archiveWorker) return this.archiveWorker;
+if (typeof Worker === 'undefined') {
+  return null;
+}
+try {
+  const cacheSuffix = this._cacheBust ? ('v=' + Date.now()) : '';
+  const withCache = (url) => {
+    if (!cacheSuffix) return url;
+    return url + (url.includes('?') ? '&' : '?') + cacheSuffix;
+  };
+  let workerUrl = null;
+  if (this.baseURL) {
+    const candidate = new URL('archive-worker.js', this.baseURL);
+    workerUrl = new URL(withCache(candidate.toString()));
   }
-  try {
-    const cacheSuffix = this._cacheBust ? ('v=' + Date.now()) : '';
-    const withCache = (url) => {
-      if (!cacheSuffix) return url;
-      return url + (url.includes('?') ? '&' : '?') + cacheSuffix;
-    };
-    let workerUrl = null;
-    if (this.baseURL) {
-      const candidate = new URL('archive-worker.js', this.baseURL);
-      workerUrl = new URL(withCache(candidate.toString()));
-    }
-    if (!workerUrl && typeof window !== 'undefined') {
-      workerUrl = new URL(withCache(new URL('archive-worker.js', window.location.href).toString()));
-    }
-    const fallback = this.baseURL ? this.baseURL + 'archive-worker.js' : 'archive-worker.js';
-    const finalUrl = workerUrl ? workerUrl.toString() : withCache(fallback);
-    console.log("[VGM] Creating archive worker with URL:", finalUrl);
-    const worker = new Worker(finalUrl);
-    worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
-    worker.onerror = (e) => {
-      console.error("[VGM] Archive worker error:", e);
-    };
-    this.archiveWorker = worker;
-    console.log("[VGM] Archive worker created successfully");
-    return worker;
-  } catch (e) {
-    console.error("[VGM] Failed to start archive worker:", e);
-    return null;
+  if (!workerUrl && typeof window !== 'undefined') {
+    workerUrl = new URL(withCache(new URL('archive-worker.js', window.location.href).toString()));
   }
+  const fallback = this.baseURL ? this.baseURL + 'archive-worker.js' : 'archive-worker.js';
+  const finalUrl = workerUrl ? workerUrl.toString() : withCache(fallback);
+  if (this.debugMode) console.log("[VGM] Creating archive worker with URL:", finalUrl);
+  const worker = new Worker(finalUrl);
+  worker.onmessage = (e) => this._onArchiveWorkerMessage(e);
+  worker.onerror = (e) => {
+    if (this.debugMode) console.error("[VGM] Archive worker error:", e);
+  };
+  this.archiveWorker = worker;
+  if (this.debugMode) console.log("[VGM] Archive worker created successfully");
+  return worker;
+} catch (e) {
+  if (this.debugMode) console.error("[VGM] Failed to start archive worker:", e);
+  return null;
+}
 };
 
 	VGMPlay_js.prototype._onArchiveWorkerMessage = function (e) {
@@ -49,9 +48,9 @@ VGMPlay_js.prototype._getArchiveWorker = function () {
 			const buf = msg.data;
 			const arr = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
 			job.fileDataByPath.set(msg.path, arr);
-			if (this.debugMode && job.fileDataByPath.size % 20 === 0) {
-				console.log(`[VGM] ArchiveJob ${msg.id}: Received ${job.fileDataByPath.size} files...`);
-			}
+	if (this.debugMode && job.fileDataByPath.size % 20 === 0) {
+		this._log && this._log('Worker', `ArchiveJob ${msg.id}: Received ${job.fileDataByPath.size} files...`);
+	}
 			return;
 		}
 		if (msg.type === 'error') {
@@ -76,11 +75,11 @@ reject(new Error("Extension runtime unavailable"));
 return;
 }
 const id = this._backgroundExtractSeq++;
-const timeout = setTimeout(() => {
-this._backgroundExtractJobs.delete(id);
-console.log('[VGM] Background extraction timeout for', kind, '- falling back to main thread');
-reject(new Error("Background extraction timeout"));
-}, 120000);
+	const timeout = setTimeout(() => {
+		this._backgroundExtractJobs.delete(id);
+		this._logWarn && this._logWarn('Background', 'Extraction timeout for', kind, '- falling back to main thread');
+		reject(new Error("Background extraction timeout"));
+	}, 120000);
 this._backgroundExtractJobs.set(id, { resolve, reject, timeout });
 chrome.runtime.sendMessage({ type: 'vgm-cache', action: 'extractArchive', kind, url, id }, (resp) => {
 if (chrome.runtime.lastError) {
@@ -219,35 +218,30 @@ worker.postMessage(
 };
 
 VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
-  console.log('[VGM-ARCHIVES] processZipBuffer called:', sourceName, 'byteArray size:', byteArray.byteLength);
-  const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.zip';
-  const fingerprint = cleanName + ':' + byteArray.byteLength;
+if (this.debugMode) console.log('[VGM-ARCHIVES] processZipBuffer called:', sourceName, 'byteArray size:', byteArray.byteLength);
+const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.zip';
+const fingerprint = cleanName + ':' + byteArray.byteLength;
 
-  if (this.debugMode) {
-    console.log(`[VGM-CACHE-DEBUG] Checking ZIP fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
-    if (this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
-  }
+if (this._isCached && this._isCached(fingerprint)) {
+  if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
+  return;
+}
 
-  if (this._isCached && this._isCached(fingerprint)) {
-    if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
+try {
+  if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
+  const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip', sourceName);
+  if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
+  await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+  if (this._markCached) this._markCached(fingerprint);
+  if (this._saveCache) this._saveCache();
+  return;
+} catch (e) {
+  if (byteArray.byteLength === 0) {
+    if (this.debugMode) console.error("[VGM] Zip worker failed after buffer transfer:", e);
     return;
   }
-
-  try {
-    if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
-    const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip', sourceName);
-    if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
-    await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
-    if (this._markCached) this._markCached(fingerprint);
-    if (this._saveCache) this._saveCache();
-    return;
-  } catch (e) {
-    if (byteArray.byteLength === 0) {
-      console.error("[VGM] Zip worker failed after buffer transfer:", e);
-      return;
-    }
-    console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
-  }
+  if (this.debugMode) console.warn("[VGM] Zip worker failed, falling back to main thread:", e);
+}
 
 		const yieldEvery = 50;
 		let sinceYield = 0;
@@ -302,9 +296,9 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 					const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 					const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
 					FS.createDataFile(parent, name, fileArray, true, true);
-				} catch (e) {
-					console.error("Error creating file in FS:", e);
-				}
+		} catch (e) {
+			if (this.debugMode) console.error("Error creating file in FS:", e);
+		}
 		const lower = relPath.toLowerCase();
 			if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
 			if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
@@ -313,37 +307,44 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 					this.tempGameInfo = txt;
 				} else {
 					txtFile = txt;
-				}
-			}
-			if (lower.endsWith(".png")) {
-				pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-				console.log('[VGM-ARCHIVES] Found PNG in archive:', relPath, 'size:', pngFile.size);
-			}
-			await maybeYield();
-			}
+}
+}
+if (lower.endsWith(".png")) {
+  pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+  if (this.debugMode) console.log('[VGM-ARCHIVES] Found PNG in archive:', relPath, 'size:', pngFile.size);
+}
+await maybeYield();
+}
 
-			const filteredFiles = entries.filter(e => e && e.filepath);
-			const hasMusLmp = filteredFiles.some(f => {
-				const l = (f.filepath || "").toLowerCase();
-				return l.endsWith('.mus') || l.endsWith('.lmp');
-			});
-			if (hasMusLmp) {
-				filteredFiles.sort((a, b) => {
-					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
-					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
-					return nameA.localeCompare(nameB);
-				});
-			}
+const filteredFiles = entries.filter(e => e && e.filepath);
+const hasMusLmp = filteredFiles.some(f => {
+const l = (f.filepath || "").toLowerCase();
+return l.endsWith('.mus') || l.endsWith('.lmp');
+});
+if (hasMusLmp) {
+filteredFiles.sort((a, b) => {
+  const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+  const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+  return nameA.localeCompare(nameB);
+});
+}
 
-		const derivedName = this._deriveVgmGameName(filteredFiles, cleanName || "Archive");
-		var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName, _fromCache: false };
-		console.log('[VGM-ARCHIVES] Game created:', derivedName, 'hasPNG:', !!game.png, 'pngSize:', game.png ? game.png.size : 0);
-		if (this._applyExternalGameImage && sourceName) {
-			this._applyExternalGameImage(game, cleanName, false);
-		}
-		console.log('[VGM-ARCHIVES] After external image apply:', derivedName, 'hasPNG:', !!game.png, 'pngSize:', game.png ? game.png.size : 0);
-			this.tempGameInfo = null;
-			this.games.push(game);
+	const derivedName = this._deriveVgmGameName(filteredFiles, cleanName || "Archive");
+	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName, _fromCache: false };
+	if (this.debugMode) console.log('[VGM-ARCHIVES] Game created:', derivedName, 'hasPNG:', !!game.png, 'pngSize:', game.png ? game.png.size : 0);
+	if (this._applyExternalGameImage && sourceName) {
+		this._applyExternalGameImage(game, cleanName, false);
+	}
+	if (this.debugMode) console.log('[VGM-ARCHIVES] After external image apply:', derivedName, 'hasPNG:', !!game.png, 'pngSize:', game.png ? game.png.size : 0);
+	this.tempGameInfo = null;
+	// Check for duplicate by archiveName
+	const archiveNameLower = (cleanName || '').toLowerCase();
+	const existingGame = this.games.find(g => g && g.archiveName && g.archiveName.toLowerCase() === archiveNameLower);
+	if (existingGame) {
+		this._log && this._log('ARCHIVES', 'Skipping duplicate game:', cleanName, '(already loaded as:', existingGame.name + ')');
+		return;
+	}
+	this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 			const hasMidi = game.files.some((f) => {
@@ -413,9 +414,9 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
 				FS.createDataFile(parent, name, fileArray, true, true);
-			} catch (e) {
-				console.error("Error creating file in FS:", e);
-			}
+	} catch (e) {
+		this._logError && this._logError('ARCHIVES', "Error creating file in FS:", e);
+	}
 
 			game.files.push({ filepath: fullPath });
 
@@ -433,9 +434,9 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 						game.kssTxtByBase[base] = txt;
 						game.kssTxtOrder.push(base);
 					}
-				} catch (e) {
-					console.error("Failed to read info file:", fullPath, e);
-				}
+			} catch (e) {
+				if (this.debugMode) console.error("Failed to read info file:", fullPath, e);
+			}
 			}
 			if (lower.endsWith('.png') && !game.png) {
 				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
@@ -446,30 +447,44 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 		let anyPlayable = false;
 		for (const game of gamesInOrder) {
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
-			if (hasPlayable) {
-				// Alphabetical sorting for DOOM MUS/LMP archives
-				const hasMusLmp = game.files.some(f => {
-					const l = (f.filepath || "").toLowerCase();
-					return l.endsWith('.mus') || l.endsWith('.lmp');
-				});
-				if (hasMusLmp) {
-					game.files.sort((a, b) => {
-						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
-						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
-						return nameA.localeCompare(nameB);
-					});
-				}
+	if (hasPlayable) {
+		// Alphabetical sorting for DOOM MUS/LMP archives
+		const hasMusLmp = game.files.some(f => {
+			const l = (f.filepath || "").toLowerCase();
+			return l.endsWith('.mus') || l.endsWith('.lmp');
+		});
+		if (hasMusLmp) {
+			game.files.sort((a, b) => {
+				const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+				const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+				return nameA.localeCompare(nameB);
+			});
+		}
 
-				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-				game.name = name;
-				this.games.push(game);
-				anyPlayable = true;
-			} else if (game.png && game.png.size > 0) {
-				// Add game even without playable files if it has a PNG cover
-				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-				game.name = name;
-				this.games.push(game);
-			}
+		const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+		game.name = name;
+		// Check for duplicate by archiveName
+		const archiveNameLower = (game.archiveName || '').toLowerCase();
+		const existingGame = this.games.find(g => g && g.archiveName && g.archiveName.toLowerCase() === archiveNameLower);
+		if (!existingGame) {
+			this.games.push(game);
+			anyPlayable = true;
+		} else {
+			this._log && this._log('ARCHIVES', 'Skipping duplicate game:', game.archiveName, '(already loaded as:', existingGame.name + ')');
+		}
+	} else if (game.png && game.png.size > 0) {
+		// Add game even without playable files if it has a PNG cover
+		const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+		game.name = name;
+		// Check for duplicate by archiveName
+		const archiveNameLower = (game.archiveName || '').toLowerCase();
+		const existingGame = this.games.find(g => g && g.archiveName && g.archiveName.toLowerCase() === archiveNameLower);
+		if (!existingGame) {
+			this.games.push(game);
+		} else {
+			this._log && this._log('ARCHIVES', 'Skipping duplicate game:', game.archiveName, '(already loaded as:', existingGame.name + ')');
+		}
+	}
 			await maybeYield();
 		}
 
@@ -491,31 +506,26 @@ VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '
   const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.7z';
   const fingerprint = cleanName + ':' + byteArray.byteLength;
 
-  if (this.debugMode) {
-    console.log(`[VGM-CACHE-DEBUG] Checking 7Z fingerprint: "${fingerprint}" against ${this._cacheFingerprints ? this._cacheFingerprints.size : 0} entries.`);
-    if (this._cacheFingerprints) console.log('[VGM-CACHE-DEBUG] Current fingerprints:', Array.from(this._cacheFingerprints));
-  }
+if (this._isCached && this._isCached(fingerprint)) {
+if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
+return;
+}
 
-  if (this._isCached && this._isCached(fingerprint)) {
-    if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
-    return;
-  }
-
-  try {
-    if (this.debugMode) console.log(`[VGM] Starting 7z extraction with worker for ${cleanName}`);
-    const workerResult = await this._extractArchiveWithWorker(byteArray, '7z', sourceName);
-    if (this.debugMode) console.log(`[VGM] 7z Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
-    await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
-    if (this._markCached) this._markCached(fingerprint);
-    if (this._saveCache) this._saveCache();
-    return;
-  } catch (e) {
-    if (byteArray.byteLength === 0) {
-      console.error("[VGM] 7z worker failed after buffer transfer:", e);
-      return;
-    }
-    console.warn("[VGM] 7z worker failed, falling back to main thread:", e);
-  }
+try {
+if (this.debugMode) console.log(`[VGM] Starting 7z extraction with worker for ${cleanName}`);
+const workerResult = await this._extractArchiveWithWorker(byteArray, '7z', sourceName);
+if (this.debugMode) console.log(`[VGM] 7z Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
+await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+if (this._markCached) this._markCached(fingerprint);
+if (this._saveCache) this._saveCache();
+return;
+} catch (e) {
+if (byteArray.byteLength === 0) {
+  if (this.debugMode) console.error("[VGM] 7z worker failed after buffer transfer:", e);
+  return;
+}
+if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main thread:", e);
+}
 
 		const sz = await SevenZip({
 			locateFile: (path) => this.baseURL + path,
@@ -720,17 +730,17 @@ VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '
 		try {
 			const workerResult = await this._extractArchiveWithWorker(byteArray, 'rar');
 			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
-			if (this._markCached) this._markCached(fingerprint);
-			if (this._saveCache) this._saveCache();
-			return;
-		} catch (e) {
-			if (byteArray.byteLength === 0) {
-				console.error("[VGM] RAR worker failed after buffer transfer:", e);
-				return;
-			}
-			console.warn("[VGM] RAR worker failed:", e);
-		}
+if (this._markCached) this._markCached(fingerprint);
+if (this._saveCache) this._saveCache();
+return;
+} catch (e) {
+if (byteArray.byteLength === 0) {
+  if (this.debugMode) console.error("[VGM] RAR worker failed after buffer transfer:", e);
+  return;
+}
+if (this.debugMode) console.warn("[VGM] RAR worker failed:", e);
+}
 
-		console.error("[VGM] RAR extraction requires the archive worker.");
-	};
+if (this.debugMode) console.error("[VGM] RAR extraction requires the archive worker.");
+};
 }

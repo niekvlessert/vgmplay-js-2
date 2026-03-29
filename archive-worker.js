@@ -159,26 +159,27 @@ async function _handleRar(id, buffer) {
 }
 
 self.onmessage = async (e) => {
-  const msg = e.data || {};
-  console.log('[Worker] Received message:', msg.type, 'kind:', msg.kind, 'id:', msg.id);
-  if (msg.type !== 'extract') return;
-  try {
-    _ensureLoaded(msg.baseURL || '');
-    console.log('[Worker] Handling', msg.kind, 'archive');
-    if (msg.kind === 'zip') {
-      _ensureLoadedForZip();
-      await _handleZip(msg.id, msg.buffer, msg.debugMode);
-    } else if (msg.kind === '7z') {
-      _ensureLoadedFor7z();
-      await _handle7z(msg.id, msg.buffer, msg.debugMode);
-    } else if (msg.kind === 'rar') {
-      _ensureLoadedForRar();
-      await _handleRar(msg.id, msg.buffer, msg.debugMode);
-    } else {
-      throw new Error('Unknown archive kind: ' + msg.kind);
-    }
-  } catch (err) {
-    console.error('[Worker] Error:', err);
-    self.postMessage({ type: 'error', id: msg.id, message: err && err.message ? err.message : String(err) });
-  }
+	const msg = e.data || {};
+	const debugMode = msg.debugMode;
+	if (debugMode) console.log('[Worker] Received message:', msg.type, 'kind:', msg.kind, 'id:', msg.id);
+	if (msg.type !== 'extract') return;
+	try {
+		_ensureLoaded(msg.baseURL || '');
+		if (debugMode) console.log('[Worker] Handling', msg.kind, 'archive');
+		if (msg.kind === 'zip') {
+			_ensureLoadedForZip();
+			await _handleZip(msg.id, msg.buffer, debugMode);
+		} else if (msg.kind === '7z') {
+			_ensureLoadedFor7z();
+			await _handle7z(msg.id, msg.buffer, debugMode);
+		} else if (msg.kind === 'rar') {
+			_ensureLoadedForRar();
+			await _handleRar(msg.id, msg.buffer, debugMode);
+		} else {
+			throw new Error('Unknown archive kind: ' + msg.kind);
+		}
+	} catch (err) {
+		if (debugMode) console.error('[Worker] Error:', err);
+		self.postMessage({ type: 'error', id: msg.id, message: err && err.message ? err.message : String(err) });
+	}
 };

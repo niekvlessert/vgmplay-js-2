@@ -29,11 +29,17 @@ jobs:
       - name: Pre-build Cleanup
         run: rm -f vgmplay-js.js vgmplay-js.wasm vgmplay-js.data
 
+      - name: Fetch LibAtrac9
+        run: |
+          if [ ! -d modules/vgmstream/dependencies/LibAtrac9 ]; then
+            git clone --depth 1 https://github.com/Thealexbarney/LibAtrac9 modules/vgmstream/dependencies/LibAtrac9
+          fi
+
       - name: Build WASM
         run: |
           mkdir -p build
           cd build
-          emcmake cmake ..
+          emcmake cmake .. -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9"
           emmake make -j4
 
       - name: Verify Build Output

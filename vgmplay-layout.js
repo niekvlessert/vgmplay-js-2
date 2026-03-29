@@ -122,16 +122,16 @@ list.scrollTop += e.deltaY;
 		const maxStates = 3;
 		this.libraryState = (this.libraryState + 1) % maxStates;
 
-		if (this.vgmplayContainer) {
-			if (this.libraryState === 2) {
-				this.vgmplayContainer.classList.add('vgmplayExtensionGrid');
-				console.log('[VGMPlay] Added vgmplayExtensionGrid class. Container classes:', this.vgmplayContainer.className);
-			} else {
-				this.vgmplayContainer.classList.remove('vgmplayExtensionGrid');
-				console.log('[VGMPlay] Removed vgmplayExtensionGrid class. Container classes:', this.vgmplayContainer.className);
-			}
+	if (this.vgmplayContainer) {
+		if (this.libraryState === 2) {
+			this.vgmplayContainer.classList.add('vgmplayExtensionGrid');
+			this._log && this._log('UI', 'Added vgmplayExtensionGrid class. Container classes:', this.vgmplayContainer.className);
+		} else {
+			this.vgmplayContainer.classList.remove('vgmplayExtensionGrid');
+			this._log && this._log('UI', 'Removed vgmplayExtensionGrid class. Container classes:', this.vgmplayContainer.className);
 		}
-		console.log('[VGMPlay] Library state changed to:', this.libraryState, '(0=Attached, 1=Floating, 2=Grid)');
+	}
+	this._log && this._log('UI', 'Library state changed to:', this.libraryState, '(0=Attached, 1=Floating, 2=Grid)');
 
 	if (this.libraryState === 0) {
 			// Attached (non-grid mode for extension)

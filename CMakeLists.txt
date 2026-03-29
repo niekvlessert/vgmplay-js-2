@@ -88,6 +88,11 @@ endif()
 set(BUILD_CLI OFF CACHE BOOL "Build vgmstream CLI" FORCE)
 add_subdirectory(modules/vgmstream)
 
+# Fail fast if ATRAC9 was requested but the dependency didn't materialize.
+if(USE_ATRAC9 AND NOT TARGET atrac9)
+  message(FATAL_ERROR "USE_ATRAC9 is ON but LibAtrac9 target was not created. Set ATRAC9_PATH to a valid LibAtrac9 checkout or disable USE_ATRAC9.")
+endif()
+
 # Build libopenmpt with its own Makefile (Emscripten)
 set(OPENMPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/openmpt)
 set(OPENMPT_LIB ${OPENMPT_DIR}/bin/libopenmpt.a)

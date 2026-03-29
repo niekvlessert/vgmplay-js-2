@@ -54,16 +54,16 @@ function harvestVGM() {
   // Unique list
   const uniqueLinks = [...new Set(vgmLinks)];
 
-  if (uniqueLinks.length > 0) {
-    console.log(`[VGM Harvester] Found ${uniqueLinks.length} tracks.`);
-    if (window.__VGM_DEBUG__) {
-      console.log('[VGM MISC] Harvested links:', uniqueLinks);
-    }
-    // Send to the player if it exists
-    if (window.vgmPlayInstance) {
-      window.vgmPlayInstance.addHarvestedTracks(uniqueLinks);
-    }
-  }
+if (uniqueLinks.length > 0) {
+if (window.__VGM_DEBUG__) {
+  console.log(`[VGM Harvester] Found ${uniqueLinks.length} tracks.`);
+  console.log('[VGM MISC] Harvested links:', uniqueLinks);
+}
+// Send to the player if it exists
+if (window.vgmPlayInstance) {
+  window.vgmPlayInstance.addHarvestedTracks(uniqueLinks);
+}
+}
 }
 
 // Watch for the player to be ready

@@ -385,8 +385,15 @@ function installDebugBridge() {
 function togglePlayer(extensionUrl) {
 	// Guard for service worker context where window doesn't exist
 	if (typeof window === 'undefined') return { injected: false };
-	// Auto-enable debug mode
-	window.__VGM_DEBUG__ = true;
+	// Load debug mode from localStorage
+	if (typeof window.__VGM_DEBUG__ === 'undefined') {
+		try {
+			const savedDebug = localStorage.getItem('vgm_debug_mode');
+			window.__VGM_DEBUG__ = savedDebug === 'true';
+		} catch (e) {
+			window.__VGM_DEBUG__ = false;
+		}
+	}
 	if (window.__VGM_DEBUG__) {
 		console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
 	}
@@ -426,8 +433,14 @@ function togglePlayer(extensionUrl) {
 	// Initialize Module in the isolated world before loading core scripts
 	window.__VGM_RUNTIME_READY__ = false;
 	window.Module = window.Module || {};
+	// Load debug mode from localStorage (already set above, but ensure it's set)
 	if (typeof window.__VGM_DEBUG__ === 'undefined') {
-		window.__VGM_DEBUG__ = true;
+		try {
+			const savedDebug = localStorage.getItem('vgm_debug_mode');
+			window.__VGM_DEBUG__ = savedDebug === 'true';
+		} catch (e) {
+			window.__VGM_DEBUG__ = false;
+		}
 	}
     if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
     if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;

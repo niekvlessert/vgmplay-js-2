@@ -185,17 +185,17 @@ export function installQueue(VGMPlay_js) {
 								var arrayBuffer = xhr.response;
 								var byteArray = new Uint8Array(arrayBuffer);
 								const lower = job.data.toLowerCase();
-								if (lower.endsWith('.7z')) {
-									classContext.process7zBuffer(byteArray, job.name).then(next);
-								} else if (lower.endsWith('.rar')) {
-									classContext.processRarBuffer(byteArray, job.name).then(next);
-								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-									classContext.processPSFBuffer(byteArray, job.data).then(next);
-								} else if (lower.endsWith('.zip')) {
-									classContext.processZipBuffer(byteArray, job.name).then(next);
-								} else {
-									classContext.processSingleBuffer(byteArray, job.name).then(next);
-								}
+if (lower.endsWith('.7z')) {
+classContext.process7zBuffer(byteArray, job.data).then(next);
+} else if (lower.endsWith('.rar')) {
+classContext.processRarBuffer(byteArray, job.data).then(next);
+} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
+classContext.processPSFBuffer(byteArray, job.data).then(next);
+} else if (lower.endsWith('.zip')) {
+classContext.processZipBuffer(byteArray, job.data).then(next);
+} else {
+classContext.processSingleBuffer(byteArray, job.data).then(next);
+}
 								classContext.zipURLLoaded.push(job.data);
 							} else {
     if (this.debugMode) console.error("Failed to load archive from URL:", job.data);

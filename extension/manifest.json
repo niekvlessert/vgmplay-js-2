@@ -1,57 +1,65 @@
 {
-    "manifest_version": 3,
-    "name": "VGM Player Harvester",
-    "version": "1.0",
-    "description": "Scans pages for VGM music and plays it in an injected retro player.",
-    "permissions": [
-        "activeTab",
-        "scripting"
-    ],
-    "action": {
-        "default_title": "Inject VGM Player"
-    },
-    "background": {
-        "service_worker": "background.js"
-    },
-    "content_scripts": [
-        {
-            "matches": [
-                "<all_urls>"
-            ],
-            "js": [
-                "content_harvester.js"
-            ],
-            "run_at": "document_idle"
-        }
-    ],
-    "web_accessible_resources": [
-        {
-            "resources": [
-                "vgmplay-js-glue.js",
-                "vgmplay-audio-processor.js",
-                "vgmplay-js.js",
-                "vgmplay-js.wasm",
-                "minizip-asm.min.js",
-                "7zz.umd.js",
-                "7zz.wasm",
-                "unrar.min.js",
-                "css/style.css",
-                "vgmplay-archives.js",
-                "vgmplay-audio.js",
-                "vgmplay-cache.js",
-                "vgmplay-kss.js",
-                "vgmplay-layout.js",
-                "vgmplay-library.js",
-                "vgmplay-metadata.js",
-                "vgmplay-midi.js",
-                "vgmplay-queue.js",
-                "vgmplay-spectrum.js",
-                "vgmplay-ui.js",
-                "archive-worker.js"
-            ],
-            "matches": [
-                "<all_urls>"
-            ]
-        }
-    ]
+"manifest_version": 3,
+"name": "VGM Player Harvester",
+"version": "1.0",
+"description": "Scans pages for VGM music and plays it in an injected retro player.",
+"permissions": [
+"activeTab",
+"scripting",
+"offscreen"
+],
+"host_permissions": [
+"<all_urls>"
+],
+"action": {
+"default_title": "Inject VGM Player"
+},
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content_harvester.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vgmplay-js-glue.js",
+        "vgmplay-audio-processor.js",
+        "vgmplay-js.js",
+        "vgmplay-js.wasm",
+        "minizip-asm.min.js",
+        "7zz.umd.js",
+        "7zz.wasm",
+        "unrar.min.js",
+        "css/style.css",
+        "vgmplay-archives.js",
+        "vgmplay-audio.js",
+        "vgmplay-cache.js",
+        "vgmplay-kss.js",
+        "vgmplay-layout.js",
+        "vgmplay-library.js",
+        "vgmplay-metadata.js",
+        "vgmplay-midi.js",
+        "vgmplay-queue.js",
+        "vgmplay-spectrum.js",
+        "vgmplay-ui.js",
+        "archive-worker.js",
+        "offscreen.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
 }

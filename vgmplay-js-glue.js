@@ -3045,19 +3045,18 @@ VGMPlay_js.prototype._changeTrackInGame = async function (action) {
 };
 
 VGMPlay_js.prototype.toggleDebugMode = function () {
-	this.debugMode = !this.debugMode;
-	this.debugModeHasBeenToggled = true;
-	if (typeof window !== 'undefined') {
-		window.__VGM_DEBUG__ = this.debugMode;
-	}
-	console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
-	if (this._renderSkippedDownloads && this._showSkippedWindow) {
-		this._renderSkippedDownloads();
-		this._showSkippedWindow();
-	}
-	if (Module._SetDebugMode) {
-		Module._SetDebugMode(this.debugMode ? 1 : 0);
-	}
+  this.debugMode = !this.debugMode;
+  this.debugModeHasBeenToggled = true;
+  if (typeof window !== 'undefined') {
+    window.__VGM_DEBUG__ = this.debugMode;
+  }
+  console.log("[VGM] Debug Mode: " + (this.debugMode ? "ON" : "OFF"));
+  if (this._showNotification) {
+    this._showNotification("Debug Mode: " + (this.debugMode ? "ON" : "OFF"), 10000);
+  }
+  if (Module._SetDebugMode) {
+    Module._SetDebugMode(this.debugMode ? 1 : 0);
+  }
 };
 
 VGMPlay_js.prototype.playRandom = function () {

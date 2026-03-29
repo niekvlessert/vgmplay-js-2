@@ -1,49 +1,37 @@
-let archiveWorker = null;
-let archiveWorkerJobs = new Map();
-let archiveWorkerSeq = 1;
+let creatingOffscreen = null;
+let offscreenReady = false;
+let pendingExtractJobs = new Map();
 
-function getArchiveWorker() {
-  if (archiveWorker) return archiveWorker;
-  try {
-    const workerUrl = chrome.runtime.getURL('archive-worker.js');
-    archiveWorker = new Worker(workerUrl);
-    archiveWorker.onmessage = (e) => {
-      const msg = e.data || {};
-      const job = archiveWorkerJobs.get(msg.id);
-      if (!job) return;
-      if (msg.type === 'meta') {
-        job.hasKss = !!msg.hasKss;
-        job.entries = msg.entries || [];
-        return;
-      }
-      if (msg.type === 'file') {
-        const buf = msg.data;
-        const arr = (buf instanceof Uint8Array) ? buf : new Uint8Array(buf);
-        job.fileDataByPath.set(msg.path, arr);
-        return;
-      }
-      if (msg.type === 'error') {
-        archiveWorkerJobs.delete(msg.id);
-        job.reject(new Error(msg.message || "Archive worker error"));
-        return;
-      }
-      if (msg.type === 'done') {
-        archiveWorkerJobs.delete(msg.id);
-        job.resolve({
-          entries: job.entries.map((p) => ({ filepath: p })),
-          fileDataByPath: job.fileDataByPath,
-          hasKss: job.hasKss
-        });
-      }
-    };
-    archiveWorker.onerror = (e) => {
-      console.error("[VGM Background] Archive worker error:", e);
-    };
-    return archiveWorker;
-  } catch (e) {
-    console.error("[VGM Background] Failed to start archive worker:", e);
-    return null;
+async function ensureOffscreenDocument() {
+  if (offscreenReady) return true;
+  if (creatingOffscreen) {
+    await creatingOffscreen;
+    return offscreenReady;
   }
+  creatingOffscreen = (async () => {
+    try {
+      console.log('[Background] Checking for existing offscreen document...');
+      // Try to create the offscreen document directly - if it exists, this will fail
+      await chrome.offscreen.createDocument({
+        url: 'offscreen.html',
+        reasons: ['WORKERS'],
+        justification: 'Archive extraction worker needs to run off-main-thread'
+      });
+      console.log('[Background] Offscreen document created');
+      offscreenReady = true;
+    } catch (e) {
+      // If it already exists, that's fine
+      if (e.message && e.message.includes('already exists')) {
+        console.log('[Background] Offscreen document already exists');
+        offscreenReady = true;
+      } else {
+        console.error('[Background] Failed to create offscreen document:', e);
+      }
+    }
+  })();
+  await creatingOffscreen;
+  creatingOffscreen = null;
+  return offscreenReady;
 }
 
 chrome.action.onClicked.addListener((tab) => {
@@ -257,7 +245,11 @@ async function cacheClearAll() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (!message || message.type !== 'vgm-cache') return;
+  console.log('[Background] Message received:', message.type, message.action);
+  if (!message || message.type !== 'vgm-cache') {
+    console.log('[Background] Not vgm-cache message, returning false');
+    return false;
+  }
     (async () => {
         try {
             if (message.action === 'getMeta') {
@@ -293,59 +285,63 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
     return;
   }
-  if (message.action === 'extractArchive') {
-    const { kind, buffer, id } = message.payload || {};
-    const worker = getArchiveWorker();
-    if (!worker) {
-      sendResponse({ error: 'Archive worker unavailable' });
-      return;
-    }
-    const jobId = archiveWorkerSeq++;
-    const job = {
-      resolve: (result) => {
-        const entries = result.entries || [];
-        const files = [];
-        for (const [path, data] of result.fileDataByPath || []) {
-          const arr = data instanceof Uint8Array ? data : new Uint8Array(data);
-          let binary = '';
-          const chunkSize = 0x8000;
-          for (let i = 0; i < arr.length; i += chunkSize) {
-            const sub = arr.subarray(i, i + chunkSize);
-            binary += String.fromCharCode.apply(null, sub);
-          }
-          files.push({ path, b64: btoa(binary) });
-        }
-        chrome.tabs.sendMessage(sender.tab.id, { 
-          type: 'vgm-archive-extract-result', 
-          id, 
-          entries: entries.map(e => e.filepath),
-          files,
-          hasKss: result.hasKss 
-        });
-      },
-      reject: (err) => {
-        chrome.tabs.sendMessage(sender.tab.id, { 
-          type: 'vgm-archive-extract-result', 
-          id, 
-          error: err.message || String(err) 
-        });
-      },
-      entries: [],
-      hasKss: false,
-      fileDataByPath: new Map()
-    };
-    archiveWorkerJobs.set(jobId, job);
-    const baseUrl = chrome.runtime.getURL('');
-    worker.postMessage({ type: 'extract', id: jobId, kind, buffer, baseURL: baseUrl }, [buffer]);
-    sendResponse({ ok: true, jobId });
-    return;
-  }
-            sendResponse({ error: 'unknown action' });
+if (message.action === 'extractArchive') {
+const { kind, url, id } = message;
+const tabId = sender.tab?.id;
+console.log('[Background] extractArchive request:', kind, 'id:', id, 'url:', url, 'tabId:', tabId);
+pendingExtractJobs.set(id, { tabId });
+(async () => {
+try {
+await ensureOffscreenDocument();
+console.log('[Background] Offscreen document ready, sending extraction request');
+chrome.runtime.sendMessage({ type: 'extract-archive', kind, url, id }, () => {
+// Ignore response - we'll get results via archive-extract-result message
+});
+} catch (e) {
+console.error('[Background] Offscreen extraction failed:', e);
+pendingExtractJobs.delete(id);
+chrome.tabs.sendMessage(tabId, {
+type: 'vgm-archive-extract-result',
+id,
+error: e.message || String(e)
+});
+}
+})();
+sendResponse({ ok: true });
+return true;
+}
+sendResponse({ error: 'unknown action' });
         } catch (e) {
             sendResponse({ error: String(e) });
         }
     })();
     return true;
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+console.log('[Background] Message received (handler 2):', message.type, message.id);
+if (message.type === 'archive-extract-result') {
+console.log('[Background] Archive extract result received:', message.id, 'done:', message.done);
+const pending = pendingExtractJobs.get(message.id);
+if (pending) {
+chrome.tabs.sendMessage(pending.tabId, {
+type: 'vgm-archive-extract-result',
+id: message.id,
+entries: message.entries || [],
+files: message.files || [],
+hasKss: message.hasKss || false,
+error: message.error,
+done: message.done !== false
+});
+if (message.done !== false) {
+pendingExtractJobs.delete(message.id);
+}
+} else {
+console.log('[Background] No pending job for id:', message.id);
+}
+return false;
+}
+return false;
 });
 
 function installDebugBridge() {

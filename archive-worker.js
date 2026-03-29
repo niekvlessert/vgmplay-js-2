@@ -1,15 +1,38 @@
 'use strict';
 
-let _loaded = false;
+// Try to get baseURL from location if available
+const _defaultBaseURL = (typeof location !== 'undefined' && location.href)
+  ? location.href.substring(0, location.href.lastIndexOf('/') + 1)
+  : '';
+
+let _loadedZip = false;
+let _loaded7z = false;
+let _loadedRar = false;
 let _baseURL = '';
 
+function _ensureLoadedForZip() {
+  if (_loadedZip) return;
+  _baseURL = _baseURL || _defaultBaseURL;
+  importScripts(_baseURL + 'minizip-asm.min.js');
+  _loadedZip = true;
+}
+
+function _ensureLoadedFor7z() {
+  if (_loaded7z) return;
+  _baseURL = _baseURL || _defaultBaseURL;
+  importScripts(_baseURL + '7zz.umd.js');
+  _loaded7z = true;
+}
+
+function _ensureLoadedForRar() {
+  if (_loadedRar) return;
+  _baseURL = _baseURL || _defaultBaseURL;
+  importScripts(_baseURL + 'unrar.min.js');
+  _loadedRar = true;
+}
+
 function _ensureLoaded(baseURL) {
-	if (_loaded) return;
-	_baseURL = baseURL || _baseURL || '';
-	importScripts(_baseURL + 'minizip-asm.min.js');
-	importScripts(_baseURL + '7zz.umd.js');
-	importScripts(_baseURL + 'unrar.min.js');
-	_loaded = true;
+  _baseURL = baseURL || _baseURL || _defaultBaseURL;
 }
 
 function _collectZipEntries(fileList) {
@@ -136,20 +159,26 @@ async function _handleRar(id, buffer) {
 }
 
 self.onmessage = async (e) => {
-	const msg = e.data || {};
-	if (msg.type !== 'extract') return;
-	try {
-		_ensureLoaded(msg.baseURL || '');
-		if (msg.kind === 'zip') {
-			await _handleZip(msg.id, msg.buffer, msg.debugMode);
-		} else if (msg.kind === '7z') {
-			await _handle7z(msg.id, msg.buffer, msg.debugMode);
-		} else if (msg.kind === 'rar') {
-			await _handleRar(msg.id, msg.buffer, msg.debugMode);
-		} else {
-			throw new Error('Unknown archive kind: ' + msg.kind);
-		}
-	} catch (err) {
-		self.postMessage({ type: 'error', id: msg.id, message: err && err.message ? err.message : String(err) });
-	}
+  const msg = e.data || {};
+  console.log('[Worker] Received message:', msg.type, 'kind:', msg.kind, 'id:', msg.id);
+  if (msg.type !== 'extract') return;
+  try {
+    _ensureLoaded(msg.baseURL || '');
+    console.log('[Worker] Handling', msg.kind, 'archive');
+    if (msg.kind === 'zip') {
+      _ensureLoadedForZip();
+      await _handleZip(msg.id, msg.buffer, msg.debugMode);
+    } else if (msg.kind === '7z') {
+      _ensureLoadedFor7z();
+      await _handle7z(msg.id, msg.buffer, msg.debugMode);
+    } else if (msg.kind === 'rar') {
+      _ensureLoadedForRar();
+      await _handleRar(msg.id, msg.buffer, msg.debugMode);
+    } else {
+      throw new Error('Unknown archive kind: ' + msg.kind);
+    }
+  } catch (err) {
+    console.error('[Worker] Error:', err);
+    self.postMessage({ type: 'error', id: msg.id, message: err && err.message ? err.message : String(err) });
+  }
 };

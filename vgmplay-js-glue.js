@@ -1309,20 +1309,45 @@ this.toggleDebugMode();
         this.activeGame.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }
-    if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
-    // Reset KSS channel mute/solo states when switching tracks
-    if (this._resetKssChannelStates) {
-      this._resetKssChannelStates();
+  if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
+  // Reset KSS channel mute/solo states when switching tracks
+  if (this._resetKssChannelStates) {
+    this._resetKssChannelStates();
+  }
+  await this.checkEverythingReady();
+
+  // On-demand file loading for progressive cache restore
+  // Check if file exists first, then load on-demand if needed
+  const lowerFile = file.toLowerCase().split('|track=')[0];
+  const isLargeFile = lowerFile.endsWith('.at9') || lowerFile.endsWith('.at3') || 
+                       lowerFile.endsWith('.atrac') || lowerFile.endsWith('.aa3') ||
+                       lowerFile.endsWith('.brstm') || lowerFile.endsWith('.bfstm') ||
+                       lowerFile.endsWith('.bcstm') || lowerFile.endsWith('.dsp') ||
+                       lowerFile.endsWith('.idsp') || lowerFile.endsWith('.hca') ||
+                       lowerFile.endsWith('.adx') || lowerFile.endsWith('.vag') ||
+                       lowerFile.endsWith('.fsb');
+  
+  if (this._ensureFileLoaded) {
+    let fileExists = false;
+    try {
+      fileExists = FS.analyzePath(file).exists;
+    } catch (e) {}
+    
+    if (!fileExists) {
+      // Only show loading spinner for large files
+      const loaded = await this._ensureFileLoaded(file, isLargeFile);
+      if (!loaded && this.debugMode) {
+        console.warn('[VGM] File not available:', file);
+      }
     }
-    await this.checkEverythingReady();
+  }
 
-			if (!this.isPlayable(file)) {
-				return;
-			}
+  if (!this.isPlayable(file)) {
+    return;
+  }
 
-			// On-demand GENMIDI loading for DOOM MUS files
-			const lowerFile = file.toLowerCase().split('|track=')[0];
-			const isMusFile = lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp');
+  // On-demand GENMIDI loading for DOOM MUS files
+  const isMusFile = lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp');
 			const isMidiPath = (this._isMidiFile && this._isMidiFile(lowerFile)) || (this._isMidiExt && this._isMidiExt(lowerFile));
 			if (isMusFile) {
 				if (game) {

@@ -53,10 +53,56 @@ export function installCache(VGMPlay_js) {
 				missing.push(...resp.missing);
 			}
 		}
-		return missing;
-	};
+return missing;
+};
 
-	VGMPlay_js.prototype._ensureCacheDirs = function () {
+VGMPlay_js.prototype._ensureFileLoaded = async function (filepath, showLoading = true) {
+  if (!filepath) return false;
+  try {
+    if (FS.analyzePath(filepath).exists) return true;
+  } catch (e) {
+    return false;
+  }
+  
+  if (!this._cacheBridgeAvailable()) return false;
+  
+  if (showLoading) {
+    console.log('[VGM] On-demand loading:', filepath);
+    this._setInfoLoading(true);
+  }
+  
+  try {
+const resp = await this._cacheBridgeRequest('getFiles', { paths: [filepath] });
+  if (resp && resp.files && resp.files[0]) {
+    const item = resp.files[0];
+    if (item && item.path && (item.b64 || item.data)) {
+      let arr = null;
+      if (item.b64) {
+        const binary = atob(item.b64);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+        arr = bytes;
+      } else if (item.data) {
+        arr = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
+      }
+      if (arr && arr.byteLength > 0) {
+        this._ensureDirForFile(item.path);
+        try { FS.writeFile(item.path, arr); } catch (e) { }
+        if (showLoading) this._setInfoLoading(false);
+        return true;
+      }
+    }
+  }
+  } catch (e) {
+    console.error('[VGM] On-demand load failed:', filepath, e);
+  }
+
+  if (showLoading) this._setInfoLoading(false);
+  return false;
+};
+
+VGMPlay_js.prototype._ensureCacheDirs = function () {
 		if (!FS.analyzePath('/cache').exists) FS.mkdir('/cache');
 		if (!FS.analyzePath('/cache/files').exists) FS.mkdir('/cache/files');
 		if (!FS.analyzePath('/cache/meta').exists) FS.mkdir('/cache/meta');
@@ -248,8 +294,21 @@ const meta = resp.meta;
 		await this._bridgeFetchFiles(coverPaths);
 
 // Restore games
-	if (meta.games && Array.isArray(meta.games)) {
-		this.games = meta.games.map(g => {
+if (meta.games && Array.isArray(meta.games)) {
+  // Deduplicate games by archiveName before restoring
+  const seenArchiveNames = new Set();
+  const dedupedGames = [];
+  for (const g of meta.games) {
+    const archiveName = g.archiveName ? normalizeArchiveName(g.archiveName) : null;
+    if (archiveName && seenArchiveNames.has(archiveName)) {
+      if (this.debugMode) console.log('[VGM] Skipping duplicate game in cache:', g.archiveName);
+      continue;
+    }
+    if (archiveName) seenArchiveNames.add(archiveName);
+    dedupedGames.push(g);
+  }
+  
+  this.games = dedupedGames.map(g => {
 			const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
 			if (rebuilt && !rebuilt.cacheHost && metaHost) {
 				rebuilt.cacheHost = metaHost;

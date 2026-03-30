@@ -39,7 +39,7 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          emcmake cmake .. -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9"
+          emcmake cmake ..
           emmake make -j4
 
       - name: Verify Build Output

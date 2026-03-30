@@ -299,6 +299,10 @@ export function installLibrary(VGMPlay_js) {
 
 			game._deferTracksByHost = !!(game._fromCache && game.cacheHost && currentHost && game.cacheHost !== currentHost && !allPlayableFilesPresent);
 			
+			// Clear any existing deferred notices before deciding whether to show a new one or render tracks
+			const existingNotices = trackContainer.querySelectorAll('.vgmplayDeferredNotice');
+			existingNotices.forEach(n => n.remove());
+
 			if (game._deferTracksByHost) {
 				game._needsOnDemandFiles = true;
 				this._renderCachedFromOtherHostNotice(game, trackContainer);

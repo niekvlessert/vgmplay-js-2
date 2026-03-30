@@ -170,12 +170,31 @@ export function installMetadata(VGMPlay_js) {
 		}
 	};
 
-	VGMPlay_js.prototype._setInfoLoading = function (isLoading) {
+	VGMPlay_js.prototype._setInfoLoading = function (isLoading, message = null) {
 		if (!this.titleWindow) return;
+		if (message != null) this._infoLoadingMessage = message;
 		if (isLoading) {
 			this.titleWindow.classList.add('vgmplayInfoLoading');
+			if (this.infoOverlay) {
+				let textEl = this.infoOverlay.querySelector('.vgmplayInfoText');
+				if (!textEl) {
+					textEl = document.createElement('div');
+					textEl.className = 'vgmplayInfoText';
+					textEl.style.cssText = 'margin-top:6px;font-size:12px;opacity:0.9;text-align:center;';
+					this.infoOverlay.appendChild(textEl);
+				}
+				textEl.textContent = this._infoLoadingMessage || '';
+				textEl.style.display = (this._infoLoadingMessage ? 'block' : 'none');
+			}
 		} else {
 			this.titleWindow.classList.remove('vgmplayInfoLoading');
+			if (this.infoOverlay) {
+				const textEl = this.infoOverlay.querySelector('.vgmplayInfoText');
+				if (textEl) {
+					textEl.textContent = '';
+					textEl.style.display = 'none';
+				}
+			}
 		}
 	};
 

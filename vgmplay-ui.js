@@ -832,7 +832,7 @@ VGMPlay_js.prototype._renderSkippedDownloads = function () {
 		this._updateSkippedAutoHide();
 	};
 
-	VGMPlay_js.prototype._addSkippedDownload = function (url, size) {
+VGMPlay_js.prototype._addSkippedDownload = function (url, size) {
 		const existing = this.skippedDownloads.find((x) => x.url === url);
 		if (existing) return;
 		const name = this._getFileNameFromUrl(url);
@@ -840,9 +840,17 @@ VGMPlay_js.prototype._renderSkippedDownloads = function () {
 		this.skippedDownloads.push({ url, name, sizeMB });
 		this._showSkippedWindow();
 		this._renderSkippedDownloads();
-	};
+};
 
-	VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {
+VGMPlay_js.prototype._addInfoNotice = function (msg) {
+  if (!msg) return;
+  if (this.noPlayableNotices.includes(msg)) return;
+  this.noPlayableNotices.push(msg);
+  this._showSkippedWindow();
+  this._renderSkippedDownloads();
+};
+
+VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {
 	const safeName = name || 'File';
 	let msg = `${safeName} did not contain playable music for VGMPlay!`;
 	if (opts && opts.isMuntRom) {

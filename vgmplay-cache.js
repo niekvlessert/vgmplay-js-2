@@ -1,4 +1,8 @@
 export function installCache(VGMPlay_js) {
+	VGMPlay_js.prototype._now = function () {
+		if (typeof performance !== 'undefined' && performance.now) return performance.now();
+		return Date.now();
+	};
 	VGMPlay_js.prototype._cacheBridgeAvailable = function () {
 		return !!(this.sharedCache && this.isExtension && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage);
 	};
@@ -59,7 +63,12 @@ VGMPlay_js.prototype._ensureFileLoaded = async function (filepath, showLoading =
   
 if (showLoading) {
   this._log && this._log('CACHE', 'On-demand loading:', filepath);
-  this._setInfoLoading(true);
+  const size = this._cacheFileSizes ? this._cacheFileSizes[filepath] : null;
+  const threshold = this.largeCachePrefetchBytes || (10 * 1024 * 1024);
+  const msg = (size && size > threshold)
+    ? 'Fetching large cached file on demand...'
+    : null;
+  this._setInfoLoading(true, msg);
 }
   
   try {
@@ -111,13 +120,13 @@ VGMPlay_js.prototype._ensureCacheDirs = function () {
 		}
 	};
 
-VGMPlay_js.prototype._bridgeFetchFiles = async function (paths) {
+VGMPlay_js.prototype._bridgeFetchFiles = async function (paths, opts = {}) {
 if (!paths || !paths.length) return;
 const uniq = Array.from(new Set(paths.filter(Boolean)));
 this._log && this._log('CACHE', '_bridgeFetchFiles: Fetching', uniq.length, 'unique files');
 
 // Use smaller chunks to avoid 64MB message limit
-const chunkSize = 10;
+const chunkSize = opts.chunkSize || 10;
 const chunks = [];
 for (let i = 0; i < uniq.length; i += chunkSize) {
   chunks.push(uniq.slice(i, i + chunkSize));
@@ -189,13 +198,18 @@ const processChunk = async (chunk, chunkIndex) => {
 };
 
 // Process chunks with limited concurrency
-const maxConcurrent = 3;
-for (let i = 0; i < chunks.length; i += maxConcurrent) {
+const maxConcurrent = opts.maxConcurrent || 3;
+const yieldEveryBatches = opts.yieldEveryBatches || 0;
+const yieldToUI = async () => new Promise((r) => setTimeout(r, 0));
+for (let i = 0, batchIndex = 0; i < chunks.length; i += maxConcurrent, batchIndex++) {
   const batch = chunks.slice(i, i + maxConcurrent);
   await Promise.all(batch.map((chunk, idx) => processChunk(chunk, i + idx)));
   // Log progress every 5 batches
-  if ((i + maxConcurrent) % 15 === 0 || i + maxConcurrent >= chunks.length) {
+  if ((i + maxConcurrent) % 50 === 0 || i + maxConcurrent >= chunks.length) {
     this._log && this._log('CACHE', 'Progress:', Math.min(i + maxConcurrent, chunks.length), '/', chunks.length, 'chunks,', filesWritten, 'files loaded');
+  }
+  if (yieldEveryBatches > 0 && (batchIndex + 1) % yieldEveryBatches === 0) {
+    await yieldToUI();
   }
 }
 
@@ -224,15 +238,19 @@ this._log && this._log('CACHE', '_bridgeFetchFiles complete:', filesWritten, 'fi
 	};
 
 VGMPlay_js.prototype._restoreCacheFromBridge = async function () {
+	const tStart = this._now();
 	this._log && this._log('CACHE', '_restoreCacheFromBridge starting');
 	const resp = await this._cacheBridgeRequest('getMeta');
+	const tMeta = this._now();
 	if (!resp || !resp.meta) {
 		this._log && this._log('CACHE', 'No shared cache metadata found');
 		return;
 	}
 	this._log && this._log('CACHE', 'Cache metadata loaded, games:', resp.meta.games ? resp.meta.games.length : 0);
+	this._log && this._log('CACHE', 'Cache meta fetch ms:', Math.round(tMeta - tStart));
 const meta = resp.meta;
   const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
+  this._cacheFileSizes = meta.fileSizes || {};
 if (meta.version !== 2) {
   this._logWarn && this._logWarn('CACHE', "Shared cache version mismatch, ignoring shared cache");
     this._cacheFingerprints.clear();
@@ -251,6 +269,7 @@ if (meta.version !== 2) {
   if (this._restoreRomsFromCache) {
     await this._restoreRomsFromCache();
   }
+	const tRoms = this._now();
 
   const normalizeArchiveName = (value) => {
 			if (!value) return '';
@@ -283,6 +302,7 @@ if (meta.version !== 2) {
 			}
 		}
 		await this._bridgeFetchFiles(coverPaths);
+		const tCovers = this._now();
 
 	// Restore games
 	if (meta.games && Array.isArray(meta.games)) {
@@ -364,6 +384,7 @@ if (meta.version !== 2) {
 				this._cacheRestoredByHost.set(hostKey, (this._cacheRestoredByHost.get(hostKey) || 0) + 1);
 			});
 		}
+	const tGames = this._now();
 
 if (typeof meta.amountOfGamesLoaded !== 'undefined') {
 this.amountOfGamesLoaded = meta.amountOfGamesLoaded;
@@ -383,19 +404,38 @@ if (this.games.length > 0) {
 
 // Collect file paths for background loading
 const filePaths = [];
+const largeFilePaths = [];
+const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
 if (this.games && this.games.length) {
   for (const g of this.games) {
     if (!g || !g.files) continue;
+    const sameHost = !g.cacheHost || !currentHost || g.cacheHost === currentHost;
     for (const f of g.files) {
-      if (f && f.filepath) filePaths.push(f.filepath);
+      if (f && f.filepath) {
+        const size = this._cacheFileSizes ? this._cacheFileSizes[f.filepath] : null;
+        const threshold = this.largeCachePrefetchBytes || (10 * 1024 * 1024);
+        if (!sameHost) {
+          largeFilePaths.push(f.filepath);
+          continue;
+        }
+        // For current host, prefetch unknown sizes to restore track lists quickly.
+        if (size != null && size > threshold) {
+          largeFilePaths.push(f.filepath);
+        } else {
+          filePaths.push(f.filepath);
+        }
+      }
     }
   }
 }
 
 this._log && this._log('CACHE', 'Starting background load of', filePaths.length, 'files');
+if (largeFilePaths.length) {
+  this._log && this._log('CACHE', 'Deferring large files (on-demand):', largeFilePaths.length);
+}
 
 // Load files in background - don't await, let UI render first
-this._bridgeFetchFiles(filePaths).then(() => {
+this._bridgeFetchFiles(filePaths, { chunkSize: 3, maxConcurrent: 1, yieldEveryBatches: 1 }).then(() => {
   this._log && this._log('CACHE', 'Background file load complete');
   // After files are loaded, re-render to update track counts
   for (const g of this.games) {
@@ -406,6 +446,12 @@ this._bridgeFetchFiles(filePaths).then(() => {
   }
 }).catch((e) => {
   this._logError && this._logError('CACHE', 'Background file load failed:', e);
+});
+this._log && this._log('CACHE', 'Restore timing ms:', {
+	meta: Math.round(tMeta - tStart),
+	roms: Math.round(tRoms - tMeta),
+	covers: Math.round(tCovers - tRoms),
+	games: Math.round(tGames - tCovers)
 });
 
 if (this._cacheArchiveNames) {
@@ -658,7 +704,7 @@ if (this.games.length > 0) {
   }
 	};
 
-	VGMPlay_js.prototype._saveCache = async function () {
+VGMPlay_js.prototype._saveCache = async function () {
 		if (!this._cacheReady) return;
 		if (this._cacheSaveInFlight) {
 			this._cacheSaveQueued = true;
@@ -725,18 +771,28 @@ if (this.games.length > 0) {
 				await Promise.all(conversionPromises);
 			}
 
+			const cacheFiles = this._collectCacheFilePaths().filter((p) => !p.endsWith('/metadata.json'));
+			const fileSizes = {};
+			for (const path of cacheFiles) {
+				try {
+					const stat = FS.stat(path);
+					if (stat && typeof stat.size === 'number') fileSizes[path] = stat.size;
+				} catch (e) { }
+			}
+
 			const meta = {
 				version: 2,
 				cacheHost: currentHost || '',
 				amountOfGamesLoaded: this.amountOfGamesLoaded,
 				fingerprints: Array.from(this._cacheFingerprints),
-				games: gamesToSave
+				games: gamesToSave,
+				fileSizes
 			};
 
 			FS.writeFile('/cache/meta/metadata.json', JSON.stringify(meta));
 
 			if (this._cacheBridgeAvailable()) {
-				const files = this._collectCacheFilePaths().filter((p) => !p.endsWith('/metadata.json'));
+				const files = cacheFiles;
 				const chunk = [];
 				let chunkBytes = 0;
 				const maxChunkBytes = 700 * 1024;

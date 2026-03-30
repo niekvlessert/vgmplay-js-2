@@ -1,4 +1,59 @@
 export function installLibrary(VGMPlay_js) {
+	VGMPlay_js.prototype._fileExists = function (path) {
+		if (!path || typeof FS === 'undefined' || !FS.analyzePath) return false;
+		try { return FS.analyzePath(path).exists; } catch (e) { return false; }
+	};
+
+	VGMPlay_js.prototype._ensureGameFilesLoaded = async function (game) {
+		if (!game || !game.files || !game.files.length || !this._ensureFileLoaded) return;
+		const paths = game.files.map(f => f && f.filepath).filter(Boolean);
+		if (!paths.length) return;
+		const threshold = this.largeCachePrefetchBytes || (10 * 1024 * 1024);
+		let needsLoad = false;
+		let hasLarge = false;
+		for (const p of paths) {
+			if (!this._fileExists(p)) {
+				needsLoad = true;
+				const size = this._cacheFileSizes ? this._cacheFileSizes[p] : null;
+				if (!size || size > threshold) hasLarge = true;
+			}
+		}
+		if (!needsLoad) return;
+		const msg = hasLarge ? 'Fetching large cached file on demand...' : 'Fetching cached game files...';
+		if (this._setInfoLoading) this._setInfoLoading(true, msg);
+		for (const p of paths) {
+			if (!this._fileExists(p)) {
+				try { await this._ensureFileLoaded(p, false); } catch (e) { }
+			}
+		}
+		if (this._setInfoLoading) this._setInfoLoading(false);
+		game._needsOnDemandFiles = false;
+
+		// Targeted re-render for this specific game instead of full library rebuild.
+		if (this.showVGMFromZip) this.showVGMFromZip(game);
+		if (this._renderOverviewGrid) this._renderOverviewGrid();
+	};
+
+	VGMPlay_js.prototype._renderDeferredTracksNotice = function (game, container) {
+		if (!game || !container || !game._needsOnDemandFiles) return;
+		const row = document.createElement('div');
+		row.className = 'vgmplayDeferredNotice';
+		row.style.cssText = 'padding:6px 8px;margin:6px 0;border:1px dashed #777;border-radius:6px;font-size:12px;opacity:0.85;cursor:pointer;';
+		row.textContent = 'Tracks are cached but not loaded. Click to load.';
+		row.onclick = () => this._ensureGameFilesLoaded(game);
+		container.appendChild(row);
+	};
+
+	VGMPlay_js.prototype._renderCachedFromOtherHostNotice = function (game, container) {
+		if (!game || !container) return;
+		const host = game.cacheHost || 'another site';
+		const row = document.createElement('div');
+		row.className = 'vgmplayDeferredNotice';
+		row.style.cssText = 'padding:6px 8px;margin:6px 0;border:1px dashed #777;border-radius:6px;font-size:12px;opacity:0.85;cursor:pointer;';
+		row.textContent = `Music cached from ${host}. Click to load tracks.`;
+		row.onclick = () => this._ensureGameFilesLoaded(game);
+		container.appendChild(row);
+	};
 	VGMPlay_js.prototype._renderZipGamesNow = function () {
 		if (!this.zipFileListWindow) return;
 		this.zipFileListWindow.innerHTML = "";
@@ -29,10 +84,12 @@ export function installLibrary(VGMPlay_js) {
 		}
 		for (const game of currentGames) {
 			game.uiElement = null;
+			game.lastRenderedCount = 0;
 			this.showVGMFromZip(game);
 		}
 		for (const game of newGames) {
 			game.uiElement = null;
+			game.lastRenderedCount = 0;
 			this.showVGMFromZip(game);
 		}
 		if (cachedByHost.size > 0) {
@@ -41,6 +98,7 @@ export function installLibrary(VGMPlay_js) {
 		// Don't add header in tracklist - it's now shown in the grid
 		for (const game of list) {
 		game.uiElement = null;
+		game.lastRenderedCount = 0;
 		this.showVGMFromZip(game);
 		}
 		}
@@ -141,18 +199,21 @@ export function installLibrary(VGMPlay_js) {
 
 				for (const f of files) {
 					const l = f.filepath.toLowerCase();
+					if (!this._fileExists(f.filepath)) continue;
 					if (this.isPlayable(l)) {
-						tagGameName = this.GetVGMTagDirect(f.filepath, 2); // Game tag
-						if (tagGameName) break;
+						try {
+							tagGameName = this.GetVGMTagDirect(f.filepath, 2); // Game tag
+							if (tagGameName) break;
+						} catch (e) {
+							if (this.debugMode) console.error('[VGM] Error getting game tag for:', f.filepath, e);
+						}
 					}
 				}
 
 				if (game.png && game.png.size > 0) {
-    if (this.debugMode) console.log('[VGM] Game PNG exists, size:', game.png.size, 'type:', game.png.type);
     const url = URL.createObjectURL(game.png);
     const img = new Image();
     img.onload = () => {
-      if (this.debugMode) console.log('[VGM] Image loaded successfully for game:', game.name);
       URL.revokeObjectURL(url);
     };
     img.onerror = (e) => {
@@ -213,6 +274,9 @@ export function installLibrary(VGMPlay_js) {
 					gameWrap.dataset.expanded = expanded ? 'false' : 'true';
 					gameWrap.classList.toggle('vgmplayGameExpanded', !expanded);
 					gameWrap.classList.toggle('vgmplayGameCollapsed', expanded);
+					if (!expanded && game._needsOnDemandFiles && !game._deferTracksByHost) {
+						this._ensureGameFilesLoaded(game);
+					}
 				});
 
 				this.zipFileListWindow.appendChild(gameWrap);
@@ -226,10 +290,29 @@ export function installLibrary(VGMPlay_js) {
 			}
 
 			const startIndex = game.lastRenderedCount || 0;
+			game._needsOnDemandFiles = false;
+			const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+			
+			// Only defer if files aren't actually present in the local filesystem
+			const allPlayableFilesPresent = files.filter(f => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()))
+												 .every(f => this._fileExists(f.filepath));
+
+			game._deferTracksByHost = !!(game._fromCache && game.cacheHost && currentHost && game.cacheHost !== currentHost && !allPlayableFilesPresent);
+			
+			if (game._deferTracksByHost) {
+				game._needsOnDemandFiles = true;
+				this._renderCachedFromOtherHostNotice(game, trackContainer);
+				return;
+			}
+			this._renderDeferredTracksNotice(game, trackContainer);
 			for (let key = startIndex; key < files.length; key++) {
 				const fullPath = files[key].filepath;
 				const fileName = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 				const lower = fileName.toLowerCase();
+				if (!this._fileExists(fullPath)) {
+					game._needsOnDemandFiles = true;
+					continue;
+				}
 				if (this.isPlayable(lower)) {
 					try {
 						const currentSampleRate = this.sampleRate || 44100;
@@ -238,7 +321,8 @@ export function installLibrary(VGMPlay_js) {
 							if (count > 1) {
 								for (let t = 0; t < count; t++) {
 									const trackPath = `${fullPath}|track=${t}`;
-									const trackLength = this.GetTrackLengthDirect(trackPath);
+									let trackLength = 0;
+									try { trackLength = this.GetTrackLengthDirect(trackPath); } catch (e) { }
 									const totalSampleCount = trackLength * currentSampleRate / 44100;
 									const trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
 									const trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
@@ -285,7 +369,8 @@ export function installLibrary(VGMPlay_js) {
 									const trackPath = `${fullPath}|track=${trackIndex}`;
 									let trackLengthSeconds = entry.lengthSec || 0;
 									if (!trackLengthSeconds) {
-										const trackLength = this.GetTrackLengthDirect(trackPath);
+										let trackLength = 0;
+										try { trackLength = this.GetTrackLengthDirect(trackPath); } catch (e) { }
 										const totalSampleCount = trackLength * currentSampleRate / 44100;
 										trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
 									}
@@ -318,7 +403,8 @@ export function installLibrary(VGMPlay_js) {
 								if (count > 1) {
 									for (let t = 0; t < count; t++) {
 										const trackPath = `${fullPath}|track=${t}`;
-										const trackLength = this.GetTrackLengthDirect(trackPath);
+										let trackLength = 0;
+										try { trackLength = this.GetTrackLengthDirect(trackPath); } catch (e) { }
 										const totalSampleCount = trackLength * currentSampleRate / 44100;
 										const trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
 										const trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";
@@ -352,7 +438,8 @@ export function installLibrary(VGMPlay_js) {
 						let trackLengthHumanReadeable = files[key].lengthHumanReadable;
 
 						if (trackLengthSeconds === undefined) {
-							const trackLength = this.GetTrackLengthDirect(fullPath);
+							let trackLength = 0;
+							try { trackLength = this.GetTrackLengthDirect(fullPath); } catch (e) { }
 							const totalSampleCount = trackLength * currentSampleRate / 44100;
 							trackLengthSeconds = totalSampleCount > 0 ? Math.round(totalSampleCount / currentSampleRate) : 0;
 							trackLengthHumanReadeable = trackLengthSeconds > 0 ? new Date((trackLengthSeconds) * 1000).toISOString().substr(14, 5) : "";

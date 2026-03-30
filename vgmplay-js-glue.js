@@ -573,16 +573,22 @@ this._settingsStatusText = '';
 		if (typeof Mousetrap === 'undefined') {
 			if (this.isExtension && !this._extensionKeyFallback) {
 				this._extensionKeyFallback = true;
-				window.addEventListener('keydown', (e) => {
-					const tgt = e.target;
-					const tag = tgt && tgt.tagName ? tgt.tagName.toLowerCase() : '';
-					const isTyping = this._eventIsTyping && this._eventIsTyping(e);
-					if (tag === 'input' || tag === 'textarea' || (tgt && tgt.isContentEditable) || isTyping) {
-						e.__vgmplayHandled = true;
-						e.stopPropagation();
+window.addEventListener('keydown', (e) => {
+				const tgt = e.target;
+				const tag = tgt && tgt.tagName ? tgt.tagName.toLowerCase() : '';
+				const isTyping = this._eventIsTyping && this._eventIsTyping(e);
+				if (tag === 'input' || tag === 'textarea' || (tgt && tgt.isContentEditable) || isTyping) {
+					e.__vgmplayHandled = true;
+					e.stopPropagation();
+					return;
+				}
+				if (e.key === 'Escape') {
+					if (this._handleEscapeKey && this._handleEscapeKey()) {
+						e.preventDefault();
 						return;
 					}
-		if (e.key === 'd' || e.key === 'D') {
+				}
+				if (e.key === 'd' || e.key === 'D') {
 			if (this._debugSettingsWindowVisible) {
 				this._hideDebugSettingsWindow();
 			} else {
@@ -761,10 +767,10 @@ if (this._renderZipGamesNow && this.games && this.games.length) {
 }
 this.setKeyBindings();
 
-// Show notification if debug mode was restored from settings
-if (this.debugMode && this._showNotification) {
+// Show debug notice in the additional information window
+if (this.debugMode && this._addInfoNotice) {
   setTimeout(() => {
-    this._showNotification("Debug is enabled, press D to toggle", 5000);
+    this._addInfoNotice("Debug is enabled, press D to toggle");
   }, 1000);
 }
 }
@@ -1357,6 +1363,35 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
     }
   }
 
+  if (game && this._ensureGameFilesLoaded) {
+    const activeGame = this.games[game - 1];
+    if (activeGame && activeGame._needsOnDemandFiles && !activeGame._deferTracksByHost) {
+      await this._ensureGameFilesLoaded(activeGame);
+    }
+  }
+
+  // Ensure PSF/USF library files are present (cache-restore may defer them).
+  const lowerBase = lowerFile.split('|track=')[0];
+  const isPsfFamily = lowerBase.endsWith('.psf') || lowerBase.endsWith('.minipsf') || lowerBase.endsWith('.psflib') ||
+                      lowerBase.endsWith('.usf') || lowerBase.endsWith('.miniusf') || lowerBase.endsWith('.usflib');
+  if (isPsfFamily && this._ensureFileLoaded && game) {
+    const activeGame = this.games[game - 1];
+    if (activeGame && activeGame.files) {
+      const libs = activeGame.files.filter(f => f && f.filepath && (f.filepath.toLowerCase().endsWith('.psflib') || f.filepath.toLowerCase().endsWith('.usflib')));
+      if (libs.length) {
+        if (this._setInfoLoading) this._setInfoLoading(true, 'Fetching PSF libraries...');
+        for (const lib of libs) {
+          try {
+            if (!FS.analyzePath(lib.filepath).exists) {
+              await this._ensureFileLoaded(lib.filepath, false);
+            }
+          } catch (e) { }
+        }
+        if (this._setInfoLoading) this._setInfoLoading(false);
+      }
+    }
+  }
+
   if (!this.isPlayable(file)) {
     return;
   }
@@ -1859,40 +1894,26 @@ try {
 }
 
 _applyExternalGameImage(game, archiveName, overrideOnly) {
-if (!game || !archiveName || !this._pendingExternalGameImages) {
-  this._log && this._log('ARCHIVES', '_applyExternalGameImage: early return', 'game:', !!game, 'archiveName:', archiveName, 'pending:', !!this._pendingExternalGameImages);
-  return;
-}
+if (!game || !archiveName || !this._pendingExternalGameImages) return;
 const key = this._baseNameNoExt(archiveName).toLowerCase();
-this._log && this._log('ARCHIVES', '_applyExternalGameImage: key:', key, 'hasPending:', !!this._pendingExternalGameImages[key], 'availableKeys:', Object.keys(this._pendingExternalGameImages));
 const blob = this._pendingExternalGameImages[key];
-if (!blob) {
-  this._log && this._log('ARCHIVES', '_applyExternalGameImage: no blob for key:', key, 'available keys:', Object.keys(this._pendingExternalGameImages));
-  return;
-}
+if (!blob) return;
 if (!game.png) {
   game.png = blob;
-  this._log && this._log('ARCHIVES', '_applyExternalGameImage: applied image to game:', game.name, 'blob size:', blob.size, 'game.png:', game.png ? game.png.size : 'null');
-} else {
-  this._log && this._log('ARCHIVES', '_applyExternalGameImage: skipped (game already has PNG:', game.png.size, 'bytes)');
 }
 }
 
 _applyExternalGameImageToExistingGames(imageName) {
 const key = this._baseNameNoExt(imageName).toLowerCase();
-this._log && this._log('ARCHIVES', "_applyExternalGameImageToExistingGames called, imageName:", imageName, "key:", key, "games.length:", this.games ? this.games.length : 0);
 if (!this.games || !this.games.length) {
-  this._log && this._log('ARCHIVES', 'No games to apply image to:', imageName);
   return;
 }
 if (!key) return;
-this._log && this._log('ARCHIVES', 'Applying image to existing games, key:', key, 'games count:', this.games.length);
 let anyUpdated = false;
 for (const game of this.games) {
   if (!game) continue;
   const archiveName = game.archiveName || game.name || '';
   const base = this._baseNameNoExt(archiveName).toLowerCase();
-  this._log && this._log('ARCHIVES', 'Checking game:', game.name, 'archiveName:', archiveName, 'base:', base, 'key:', key, 'match:', base === key);
   if (base === key) {
     this._applyExternalGameImage(game, archiveName, false);
     anyUpdated = true;
@@ -3281,11 +3302,31 @@ win.style.display = 'block';
 };
 
 VGMPlay_js.prototype._hideDebugSettingsWindow = function () {
-this._debugSettingsWindowVisible = false;
-const root = this.vgmplayContainer || document.body;
-const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
-const win = uiRoot.getElementById('vgmplay-debug-settings-window');
-if (win) win.style.display = 'none';
+	this._debugSettingsWindowVisible = false;
+	const root = this.vgmplayContainer || document.body;
+	const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
+	const win = uiRoot.getElementById('vgmplay-debug-settings-window');
+	if (win) win.style.display = 'none';
+};
+
+VGMPlay_js.prototype._handleEscapeKey = function () {
+	if (this._exportModalVisible) {
+		this._hideExportModal();
+		return true;
+	}
+	if (this.settingsWindow && this.settingsWindow.style.display !== 'none') {
+		this._hideSettingsWindow();
+		return true;
+	}
+	if (this.skippedWindowVisible && this.skippedWindow && this.skippedWindow.style.display !== 'none') {
+		this._hideSkippedWindow();
+		return true;
+	}
+	if (this._debugSettingsWindowVisible) {
+		this._hideDebugSettingsWindow();
+		return true;
+	}
+	return false;
 };
 
 VGMPlay_js.prototype._shouldLogPrefix = function (prefix) {

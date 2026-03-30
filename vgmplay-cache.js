@@ -288,18 +288,19 @@ if (meta.version !== 2) {
 	if (meta.games && Array.isArray(meta.games)) {
 		this._log && this._log('CACHE', 'meta.games.length:', meta.games.length);
 		
-		// Deduplicate by sourceUrl if available, otherwise by archiveName + name
-		const seenUrls = new Set();
+		// Deduplicate by sourceUrl + name (not just URL) and by archiveName + name
+		const seenUrlKeys = new Set();
 		const seenGameKeys = new Set();
 		const dedupedGames = [];
 		for (const g of meta.games) {
-			// If sourceUrl exists, use it for deduplication
+			// If sourceUrl exists, include name so multi-game archives aren't collapsed
 			if (g.sourceUrl) {
-				if (seenUrls.has(g.sourceUrl)) {
-					this._log && this._log('CACHE', 'Skipping duplicate game by URL:', g.sourceUrl, g.name);
+				const urlKey = `${g.sourceUrl}::${g.name || ''}`;
+				if (seenUrlKeys.has(urlKey)) {
+					this._log && this._log('CACHE', 'Skipping duplicate game by URL+name:', g.sourceUrl, g.name);
 					continue;
 				}
-				seenUrls.add(g.sourceUrl);
+				seenUrlKeys.add(urlKey);
 			}
 			// Also dedupe by archiveName + name combination
 			const archiveName = g.archiveName ? normalizeArchiveName(g.archiveName) : '';

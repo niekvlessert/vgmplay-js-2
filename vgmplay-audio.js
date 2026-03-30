@@ -146,14 +146,16 @@ if (this.isKSSActive) {
     this._ensureKssBindings();
   }
 
-// Don't await cache init - let it run in background
+// Don't await cache init - let it run in background, but keep a promise for coordination.
 if (this._initCache && !this._cacheReady) {
-  this._log && this._log('AUDIO', 'Starting cache init in background');
-  this._initCache().then(() => {
-    this._log && this._log('AUDIO', 'Cache init complete');
-  }).catch(e => {
-    this._logError && this._logError('AUDIO', 'Cache init error:', e);
-  });
+  if (!this._cacheInitPromise) {
+    this._log && this._log('AUDIO', 'Starting cache init in background');
+    this._cacheInitPromise = this._initCache().then(() => {
+      this._log && this._log('AUDIO', 'Cache init complete');
+    }).catch(e => {
+      this._logError && this._logError('AUDIO', 'Cache init error:', e);
+    });
+  }
 } else {
   this._log && this._log('AUDIO', 'Skipping cache init, _initCache:', !!this._initCache, '_cacheReady:', this._cacheReady);
 }

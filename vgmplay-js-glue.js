@@ -914,16 +914,16 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 				});
 			}
 
-const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
-var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName };
-const key = this._baseNameNoExt(sourceName).toLowerCase();
-this._log && this._log('ARCHIVES', 'ZIP Game loaded:', derivedName, 'archiveName:', sourceName, 'key:', key);
-if (this._applyExternalGameImage && sourceName) {
-  this._applyExternalGameImage(game, sourceName, false);
-  this._log && this._log('ARCHIVES', 'After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
-}
-			this.tempGameInfo = null;
-			this.games.push(game);
+	const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName, sourceUrl: sourceName };
+	const key = this._baseNameNoExt(sourceName).toLowerCase();
+	this._log && this._log('ARCHIVES', 'PUSHING game:', derivedName, 'archiveName:', sourceName, 'key:', key, 'games.length:', this.games.length);
+	if (this._applyExternalGameImage && sourceName) {
+		this._applyExternalGameImage(game, sourceName, false);
+		this._log && this._log('ARCHIVES', 'After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
+	}
+	this.tempGameInfo = null;
+	this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 			const hasMidi = game.files.some((f) => {
@@ -961,16 +961,16 @@ if (this._applyExternalGameImage && sourceName) {
 			return relPath;
 		};
 
-		const getGame = (gameKey) => {
-			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
-			this.amountOfGamesLoaded++;
-			const gamePath = this._getGamePath(this.amountOfGamesLoaded);
-			this._makedirs(gamePath);
-			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName };
-			gamesByKey[gameKey] = game;
-			gamesInOrder.push(game);
-			return game;
-		};
+	const getGame = (gameKey) => {
+		if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+		this.amountOfGamesLoaded++;
+		const gamePath = this._getGamePath(this.amountOfGamesLoaded);
+		this._makedirs(gamePath);
+		const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, sourceUrl: sourceName };
+		gamesByKey[gameKey] = game;
+		gamesInOrder.push(game);
+		return game;
+	};
 
 		for (const entry of entries) {
 			if (!entry || !entry.filepath) continue;
@@ -1032,40 +1032,42 @@ if (this._applyExternalGameImage && sourceName) {
 			await maybeYield();
 		}
 
-		let anyPlayable = false;
-		for (const game of gamesInOrder) {
-			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
-			if (hasPlayable) {
-				const hasMusLmp = game.files.some(f => {
-					const l = (f.filepath || "").toLowerCase();
-					return l.endsWith('.mus') || l.endsWith('.lmp');
+	let anyPlayable = false;
+	for (const game of gamesInOrder) {
+		const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+		if (hasPlayable) {
+			const hasMusLmp = game.files.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mus') || l.endsWith('.lmp');
+			});
+			if (hasMusLmp) {
+				game.files.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					return nameA.localeCompare(nameB);
 				});
-				if (hasMusLmp) {
-					game.files.sort((a, b) => {
-						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
-						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
-						return nameA.localeCompare(nameB);
-					});
-				}
-
-				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-				game.name = name;
-				if (this._applyExternalGameImage) {
-					this._applyExternalGameImage(game, name, true);
-				}
-				this.games.push(game);
-				anyPlayable = true;
-			} else if (game.png && game.png.size > 0) {
-				// Add game even without playable files if it has a PNG cover
-				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-				game.name = name;
-				if (this._applyExternalGameImage) {
-					this._applyExternalGameImage(game, name, true);
-				}
-				this.games.push(game);
 			}
-			await maybeYield();
-		}
+
+	const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+	game.name = name;
+	if (this._applyExternalGameImage) {
+		this._applyExternalGameImage(game, name, true);
+	}
+	this._log && this._log('ARCHIVES', 'MULTI-GAME PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
+	this.games.push(game);
+	anyPlayable = true;
+	} else if (game.png && game.png.size > 0) {
+	// Add game even without playable files if it has a PNG cover
+	const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+	game.name = name;
+	if (this._applyExternalGameImage) {
+		this._applyExternalGameImage(game, name, true);
+	}
+	this._log && this._log('ARCHIVES', 'MULTI-GAME PNG-ONLY PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
+	this.games.push(game);
+	}
+		await maybeYield();
+	}
 
 		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
@@ -1080,13 +1082,14 @@ if (this._applyExternalGameImage && sourceName) {
 			}
 		}
 
-		await this.checkEverythingReady();
-		if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
-		for (const game of this.games) {
-			game.uiElement = null;
-			this.showVGMFromZip(game);
-			await maybeYield();
-		}
+	await this.checkEverythingReady();
+	if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+	this._log && this._log('ARCHIVES', '_processArchiveEntries COMPLETE: games.length:', this.games.length, 'archiveName:', sourceName);
+	for (const game of this.games) {
+		game.uiElement = null;
+		this.showVGMFromZip(game);
+		await maybeYield();
+	}
 	}
 
 	_makedirs(path) {
@@ -1990,6 +1993,18 @@ try {
 		if (!this.autoScanDist || this._autoScanDistDone) return;
 		this._autoScanDistDone = true;
 		if (typeof window === 'undefined' || typeof fetch === 'undefined') return;
+		// Ensure cache metadata is restored before scanning to avoid duplicate downloads.
+		if (this._cacheInitPromise) {
+			try {
+				this._log && this._log('ARCHIVES', 'Auto-scan waiting for cache init');
+				await this._cacheInitPromise;
+			} catch (e) { }
+		} else if (this._initCache && !this._cacheReady) {
+			try {
+				this._log && this._log('ARCHIVES', 'Auto-scan initializing cache');
+				await this._initCache();
+			} catch (e) { }
+		}
 		let distBase = this.autoScanDistBase || '/dist/';
 		try {
 			distBase = new URL(distBase, window.location.href).toString();
@@ -2009,17 +2024,30 @@ try {
 			const lower = url.toLowerCase().split('?')[0].split('#')[0];
 			const rawName = url.split('/').pop().split('?')[0].split('#')[0];
 			
-			let decodedName = rawName;
-			try { decodedName = decodeURIComponent(rawName); } catch (e) { }
-			const decodedKey = decodedName.toLowerCase();
-			if (decodedKey) scanNames.add(decodedKey);
+	let decodedName = rawName;
+	try { decodedName = decodeURIComponent(rawName); } catch (e) { }
+	const decodedKey = decodedName.toLowerCase();
+	if (decodedKey) scanNames.add(decodedKey);
 
-			if (this._cacheArchiveNames && this._cacheArchiveNames.has(decodedKey)) {
-				continue;
-			}
+	// Check if this URL was already processed (from cache or previous run)
+	let normalizedUrl;
+	try {
+		const urlObj = new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+		normalizedUrl = urlObj.host + '/' + rawName;
+	} catch (e) {
+		normalizedUrl = (typeof window !== 'undefined' ? window.location.host : 'localhost') + '/' + rawName;
+	}
+	if (this._processedURLs && this._processedURLs.has(normalizedUrl)) {
+		this._log && this._log('ARCHIVES', 'Auto-scan skipping already processed URL:', normalizedUrl);
+		continue;
+	}
 
-			if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
-			if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
+	if (this._cacheArchiveNames && this._cacheArchiveNames.has(decodedKey)) {
+		continue;
+	}
+
+	if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
+	if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
 
 			if (this._isArchiveUrl(lower)) {
 				if (this._queueAutoURL) {

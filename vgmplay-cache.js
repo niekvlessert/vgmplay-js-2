@@ -224,13 +224,13 @@ this._log && this._log('CACHE', '_bridgeFetchFiles complete:', filesWritten, 'fi
 	};
 
 VGMPlay_js.prototype._restoreCacheFromBridge = async function () {
-this._log && this._log('CACHE', '_restoreCacheFromBridge starting');
-const resp = await this._cacheBridgeRequest('getMeta');
-if (!resp || !resp.meta) {
-  this._log && this._log('CACHE', 'No shared cache metadata found');
-  return;
-}
-this._log && this._log('CACHE', 'Cache metadata loaded, games:', resp.meta.games ? resp.meta.games.length : 0);
+	this._log && this._log('CACHE', '_restoreCacheFromBridge starting');
+	const resp = await this._cacheBridgeRequest('getMeta');
+	if (!resp || !resp.meta) {
+		this._log && this._log('CACHE', 'No shared cache metadata found');
+		return;
+	}
+	this._log && this._log('CACHE', 'Cache metadata loaded, games:', resp.meta.games ? resp.meta.games.length : 0);
 const meta = resp.meta;
   const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
 if (meta.version !== 2) {
@@ -284,22 +284,62 @@ if (meta.version !== 2) {
 		}
 		await this._bridgeFetchFiles(coverPaths);
 
-// Restore games
-if (meta.games && Array.isArray(meta.games)) {
-  // Deduplicate games by archiveName before restoring
-  const seenArchiveNames = new Set();
-  const dedupedGames = [];
-  for (const g of meta.games) {
-    const archiveName = g.archiveName ? normalizeArchiveName(g.archiveName) : null;
-if (archiveName && seenArchiveNames.has(archiveName)) {
-    if (this._log) this._log('CACHE', 'Skipping duplicate game in cache:', g.archiveName);
-    continue;
-  }
-    if (archiveName) seenArchiveNames.add(archiveName);
-    dedupedGames.push(g);
-  }
-  
-  this.games = dedupedGames.map(g => {
+	// Restore games
+	if (meta.games && Array.isArray(meta.games)) {
+		this._log && this._log('CACHE', 'meta.games.length:', meta.games.length);
+		
+		// Deduplicate by sourceUrl if available, otherwise by archiveName + name
+		const seenUrls = new Set();
+		const seenGameKeys = new Set();
+		const dedupedGames = [];
+		for (const g of meta.games) {
+			// If sourceUrl exists, use it for deduplication
+			if (g.sourceUrl) {
+				if (seenUrls.has(g.sourceUrl)) {
+					this._log && this._log('CACHE', 'Skipping duplicate game by URL:', g.sourceUrl, g.name);
+					continue;
+				}
+				seenUrls.add(g.sourceUrl);
+			}
+			// Also dedupe by archiveName + name combination
+			const archiveName = g.archiveName ? normalizeArchiveName(g.archiveName) : '';
+			const gameName = g.name || '';
+			const gameKey = `${archiveName}:${gameName}`;
+			if (seenGameKeys.has(gameKey)) {
+				this._log && this._log('CACHE', 'Skipping duplicate game in cache:', g.archiveName, g.name);
+				continue;
+			}
+			seenGameKeys.add(gameKey);
+			dedupedGames.push(g);
+		}
+	this._log && this._log('CACHE', 'dedupedGames.length:', dedupedGames.length);
+
+	// Track restored URLs - normalize to host + filename for deduplication
+	this._processedURLs = this._processedURLs || new Set();
+	const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : 'localhost';
+	for (const g of dedupedGames) {
+		const rawUrl = g.sourceUrl || g.archiveName;
+		if (rawUrl) {
+			let normalizedUrl;
+			// Check if it's already a full URL
+			if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+				try {
+					const url = new URL(rawUrl);
+					normalizedUrl = url.host + '/' + rawUrl.split('/').pop().split('?')[0].split('#')[0];
+				} catch (e) {
+					normalizedUrl = rawUrl;
+				}
+			} else {
+				// It's just a filename - combine with current host
+				normalizedUrl = currentHost + '/' + rawUrl.split('/').pop().split('?')[0].split('#')[0];
+			}
+			this._processedURLs.add(normalizedUrl);
+			this._log && this._log('CACHE', 'Added to _processedURLs:', normalizedUrl);
+		}
+	}
+	this._log && this._log('CACHE', '_processedURLs size after restore:', this._processedURLs.size);
+
+		this.games = dedupedGames.map(g => {
 			const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
 			if (rebuilt && !rebuilt.cacheHost && metaHost) {
 				rebuilt.cacheHost = metaHost;
@@ -422,18 +462,31 @@ if (this.games.length > 0) {
 					this._restoreCacheFromBridge().then(() => resolve());
 					return;
 				}
-				FS.mount(FS.filesystems.IDBFS, {}, '/cache');
-				FS.syncfs(true, (err) => {
-    if (err) {
-      if (this.debugMode) console.error("[VGM] Failed to sync IDBFS (read):", err);
-      resolve();
-      return;
-    }
+	FS.mount(FS.filesystems.IDBFS, {}, '/cache');
+	FS.syncfs(true, (err) => {
+		if (err) {
+			if (this.debugMode) console.error("[VGM] Failed to sync IDBFS (read):", err);
+			resolve();
+			return;
+		}
 
-    this._cacheReady = true;
-    this._restoreCache();
-    resolve();
-  });
+		this._cacheReady = true;
+		this._log && this._log('CACHE', 'IDBFS syncfs complete, checking for metadata...');
+		const metaPath = '/cache/meta/metadata.json';
+		const metaExists = FS.analyzePath(metaPath).exists;
+		this._log && this._log('CACHE', 'metadata.json exists:', metaExists);
+		if (metaExists) {
+			try {
+				const metaText = FS.readFile(metaPath, { encoding: 'utf8' });
+				const meta = JSON.parse(metaText);
+				this._log && this._log('CACHE', 'metadata loaded, games:', meta.games ? meta.games.length : 0, 'sourceUrls:', meta.games ? meta.games.map(g => g.sourceUrl) : []);
+			} catch (e) {
+				this._log && this._log('CACHE', 'Failed to read metadata:', e);
+			}
+		}
+		this._restoreCache();
+		resolve();
+	});
   } catch (e) {
     if (this.debugMode) console.error("[VGM] Failed to init IDBFS:", e);
     resolve();
@@ -483,28 +536,52 @@ if (this.games.length > 0) {
 				});
 			}
 
-			// Restore games
-			if (meta.games && Array.isArray(meta.games)) {
-				this.games = meta.games.map(g => {
-					const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
-					if (rebuilt && !rebuilt.cacheHost && metaHost) {
-						rebuilt.cacheHost = metaHost;
-					}
-					return rebuilt;
-				});
-				if (!this._cacheArchiveNames) this._cacheArchiveNames = new Set();
-				this._cacheRestoredByHost = new Map();
-				this.games.forEach((g) => {
-					const name = (g && g.archiveName) ? String(g.archiveName) : '';
-					if (name) {
-						this._cacheArchiveNames.add(name.toLowerCase());
-						const norm = normalizeArchiveName(name);
-						if (norm) this._cacheArchiveNames.add(norm);
-					}
-					const hostKey = (g && g.cacheHost) ? String(g.cacheHost) : 'unknown';
-					this._cacheRestoredByHost.set(hostKey, (this._cacheRestoredByHost.get(hostKey) || 0) + 1);
-				});
+	// Restore games
+	if (meta.games && Array.isArray(meta.games)) {
+		this.games = meta.games.map(g => {
+			const rebuilt = this._rebuildGameFromMeta(g, this.debugMode);
+			if (rebuilt && !rebuilt.cacheHost && metaHost) {
+				rebuilt.cacheHost = metaHost;
 			}
+			return rebuilt;
+		});
+		if (!this._cacheArchiveNames) this._cacheArchiveNames = new Set();
+		this._cacheRestoredByHost = new Map();
+		this.games.forEach((g) => {
+			const name = (g && g.archiveName) ? String(g.archiveName) : '';
+			if (name) {
+				this._cacheArchiveNames.add(name.toLowerCase());
+				const norm = normalizeArchiveName(name);
+				if (norm) this._cacheArchiveNames.add(norm);
+			}
+			const hostKey = (g && g.cacheHost) ? String(g.cacheHost) : 'unknown';
+			this._cacheRestoredByHost.set(hostKey, (this._cacheRestoredByHost.get(hostKey) || 0) + 1);
+		});
+		
+		// Populate _processedURLs from restored games
+		this._processedURLs = this._processedURLs || new Set();
+		const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : 'localhost';
+		this._log && this._log('CACHE', 'Populating _processedURLs from', this.games.length, 'restored games');
+		for (const g of this.games) {
+			const rawUrl = g.sourceUrl || g.archiveName;
+			if (rawUrl) {
+				let normalizedUrl;
+				if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+					try {
+						const url = new URL(rawUrl);
+						normalizedUrl = url.host + '/' + rawUrl.split('/').pop().split('?')[0].split('#')[0];
+					} catch (e) {
+						normalizedUrl = rawUrl;
+					}
+				} else {
+					normalizedUrl = currentHost + '/' + rawUrl.split('/').pop().split('?')[0].split('#')[0];
+				}
+				this._processedURLs.add(normalizedUrl);
+				this._log && this._log('CACHE', 'Restored URL to _processedURLs:', normalizedUrl);
+			}
+		}
+		this._log && this._log('CACHE', '_processedURLs size after restore:', this._processedURLs.size);
+	}
 
 			if (typeof meta.amountOfGamesLoaded !== 'undefined') {
 				this.amountOfGamesLoaded = meta.amountOfGamesLoaded;
@@ -867,10 +944,24 @@ if (this.games.length > 0) {
     if (typeof window !== 'undefined' && window.location) {
       setTimeout(() => window.location.reload(), 100);
     }
-  });
+	});
 
-  } catch (e) {
-    if (this.debugMode) console.error("[VGM] Error clearing cache:", e);
-  }
-	};
+	} catch (e) {
+		if (this.debugMode) console.error("[VGM] Error clearing cache:", e);
+	}
+};
+
+VGMPlay_js.prototype._reconstructUrlFromArchiveName = function (archiveName) {
+	if (!archiveName) return null;
+	// If archiveName is already a full URL, return it
+	if (archiveName.startsWith('http://') || archiveName.startsWith('https://')) {
+		return archiveName;
+	}
+	// Try to reconstruct from autoScanDistBase
+	if (this.autoScanDistBase && typeof window !== 'undefined') {
+		const base = this.autoScanDistBase.startsWith('http') ? this.autoScanDistBase : window.location.origin + this.autoScanDistBase;
+		return base + (base.endsWith('/') ? '' : '/') + archiveName;
+	}
+	return null;
+};
 }

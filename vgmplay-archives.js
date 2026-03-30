@@ -218,24 +218,63 @@ worker.postMessage(
 };
 
 VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
-if (this.debugMode) console.log('[VGM-ARCHIVES] processZipBuffer called:', sourceName, 'byteArray size:', byteArray.byteLength);
-const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.zip';
-const fingerprint = cleanName + ':' + byteArray.byteLength;
+	// Normalize URL for deduplication - include host + filename
+	// e.g., "localhost:8003/03.zip" or "example.com/music.zip"
+	let normalizedUrl = sourceName;
+	if (sourceName) {
+		try {
+			const url = new URL(sourceName, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+			normalizedUrl = url.host + '/' + sourceName.split('/').pop().split('?')[0].split('#')[0];
+		} catch (e) {
+			normalizedUrl = sourceName.split('/').pop().split('?')[0].split('#')[0];
+		}
+	} else {
+		normalizedUrl = 'archive.zip';
+	}
+	
+	// Track processed URLs to prevent duplicates
+	this._processedURLs = this._processedURLs || new Set();
+	const alreadyProcessed = this._processedURLs.has(normalizedUrl);
+	this._log && this._log('ARCHIVES', 'processZipBuffer:', normalizedUrl, '_processedURLs size:', this._processedURLs.size, 'already processed:', alreadyProcessed, 'games.length:', this.games.length);
+	if (alreadyProcessed) {
+		this._log && this._log('ARCHIVES', 'SKIPPING duplicate URL:', normalizedUrl);
+		return;
+	}
+	this._processedURLs.add(normalizedUrl);
+	this._log && this._log('ARCHIVES', 'Added to _processedURLs:', normalizedUrl, 'new size:', this._processedURLs.size);
+	
+	this._log && this._log('ARCHIVES', 'Processing:', sourceName, 'byteArray size:', byteArray.byteLength);
+	// Extract just the filename from the URL
+	const rawName = sourceName ? sourceName.split('/').pop().split('?')[0].split('#')[0] : 'archive.zip';
+	const cleanName = rawName;
+	const cleanNameLower = cleanName.toLowerCase();
 
-if (this._isCached && this._isCached(fingerprint)) {
-  if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
-  return;
-}
+	// Check if this archive was already loaded (by name)
+	const existingGames = this.games.filter(g => g && g.archiveName && g.archiveName.toLowerCase() === cleanNameLower);
+	this._log && this._log('ARCHIVES', 'Existing games with same archiveName:', existingGames.length, existingGames.map(g => g.name));
+	if (existingGames.length > 0) {
+		this._log && this._log('ARCHIVES', 'SKIPPING duplicate archive:', cleanName);
+		this._log && this._log('ARCHIVES', `Archive ${cleanName} already in games list, skipping.`);
+		return;
+	}
 
-try {
-  if (this.debugMode) console.log(`[VGM] Starting zip extraction with worker for ${cleanName}`);
-  const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip', sourceName);
-  if (this.debugMode) console.log(`[VGM] Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
-  await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
-  if (this._markCached) this._markCached(fingerprint);
-  if (this._saveCache) this._saveCache();
-  return;
-} catch (e) {
+	const fingerprint = cleanName + ':' + byteArray.byteLength;
+
+	if (this._isCached && this._isCached(fingerprint)) {
+		this._log && this._log('ARCHIVES', `Archive ${cleanName} already cached (fingerprint), skipping extraction.`);
+		return;
+	}
+
+	try {
+		this._log && this._log('ARCHIVES', 'Worker path for:', cleanName, 'byteArray.size:', byteArray.byteLength);
+		const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip', sourceName);
+		this._log && this._log('ARCHIVES', 'Worker result for:', cleanName, 'entries:', workerResult.entries.length, 'hasKss:', workerResult.hasKss);
+		await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+		if (this._markCached) this._markCached(fingerprint);
+		if (this._saveCache) this._saveCache();
+		this._log && this._log('ARCHIVES', 'Worker path COMPLETE for:', cleanName, 'games.length:', this.games.length);
+		return;
+	} catch (e) {
   if (byteArray.byteLength === 0) {
     if (this.debugMode) console.error("[VGM] Zip worker failed after buffer transfer:", e);
     return;
@@ -341,9 +380,11 @@ filteredFiles.sort((a, b) => {
 	const archiveNameLower = (cleanName || '').toLowerCase();
 	const existingGame = this.games.find(g => g && g.archiveName && g.archiveName.toLowerCase() === archiveNameLower);
 	if (existingGame) {
+		console.log('[DEBUG] SKIPPING duplicate in single-game path:', cleanName, 'existing:', existingGame.name);
 		this._log && this._log('ARCHIVES', 'Skipping duplicate game:', cleanName, '(already loaded as:', existingGame.name + ')');
 		return;
 	}
+	console.log('[DEBUG] PUSHING game:', derivedName, 'archiveName:', cleanName);
 	this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
@@ -384,16 +425,16 @@ filteredFiles.sort((a, b) => {
 			return relPath;
 		};
 
-		const getGame = (gameKey) => {
-			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
-			this.amountOfGamesLoaded++;
-			const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
-			this._makedirs(gamePath);
-			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, _fromCache: false };
-			gamesByKey[gameKey] = game;
-			gamesInOrder.push(game);
-			return game;
-		};
+	const getGame = (gameKey) => {
+		if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+		this.amountOfGamesLoaded++;
+		const gamePath = "/cache/files/game_" + this.amountOfGamesLoaded;
+		this._makedirs(gamePath);
+		const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: cleanName, _fromCache: false };
+		gamesByKey[gameKey] = game;
+		gamesInOrder.push(game);
+		return game;
+	};
 
 		for (const entry of entries) {
 			if (!entry || !entry.filepath) continue;
@@ -444,49 +485,37 @@ filteredFiles.sort((a, b) => {
 			await maybeYield();
 		}
 
-		let anyPlayable = false;
-		for (const game of gamesInOrder) {
-			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
-	if (hasPlayable) {
-		// Alphabetical sorting for DOOM MUS/LMP archives
-		const hasMusLmp = game.files.some(f => {
-			const l = (f.filepath || "").toLowerCase();
-			return l.endsWith('.mus') || l.endsWith('.lmp');
-		});
-		if (hasMusLmp) {
-			game.files.sort((a, b) => {
-				const nameA = (a.filepath || "").split('/').pop().toLowerCase();
-				const nameB = (b.filepath || "").split('/').pop().toLowerCase();
-				return nameA.localeCompare(nameB);
+	let anyPlayable = false;
+	for (const game of gamesInOrder) {
+		const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+		if (hasPlayable) {
+			// Alphabetical sorting for DOOM MUS/LMP archives
+			const hasMusLmp = game.files.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mus') || l.endsWith('.lmp');
 			});
-		}
+			if (hasMusLmp) {
+				game.files.sort((a, b) => {
+					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+					return nameA.localeCompare(nameB);
+				});
+			}
 
-		const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-		game.name = name;
-		// Check for duplicate by archiveName
-		const archiveNameLower = (game.archiveName || '').toLowerCase();
-		const existingGame = this.games.find(g => g && g.archiveName && g.archiveName.toLowerCase() === archiveNameLower);
-		if (!existingGame) {
+			const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+			game.name = name;
+			console.log('[DEBUG] PUSHING game (multi-game path):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
 			this.games.push(game);
 			anyPlayable = true;
-		} else {
-			this._log && this._log('ARCHIVES', 'Skipping duplicate game:', game.archiveName, '(already loaded as:', existingGame.name + ')');
-		}
-	} else if (game.png && game.png.size > 0) {
-		// Add game even without playable files if it has a PNG cover
-		const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-		game.name = name;
-		// Check for duplicate by archiveName
-		const archiveNameLower = (game.archiveName || '').toLowerCase();
-		const existingGame = this.games.find(g => g && g.archiveName && g.archiveName.toLowerCase() === archiveNameLower);
-		if (!existingGame) {
+		} else if (game.png && game.png.size > 0) {
+			// Add game even without playable files if it has a PNG cover
+			const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+			game.name = name;
+			console.log('[DEBUG] PUSHING game (png-only):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
 			this.games.push(game);
-		} else {
-			this._log && this._log('ARCHIVES', 'Skipping duplicate game:', game.archiveName, '(already loaded as:', existingGame.name + ')');
 		}
+		await maybeYield();
 	}
-			await maybeYield();
-		}
 
 		// Sort games alphabetically
 		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -503,13 +532,21 @@ filteredFiles.sort((a, b) => {
 	};
 
 VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '') {
-  const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.7z';
-  const fingerprint = cleanName + ':' + byteArray.byteLength;
+	const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.7z';
+	const cleanNameLower = cleanName.toLowerCase();
 
-if (this._isCached && this._isCached(fingerprint)) {
-if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
-return;
-}
+	// Check if this archive was already loaded (by name)
+	if (this.games.some(g => g && g.archiveName && g.archiveName.toLowerCase() === cleanNameLower)) {
+		this._log && this._log('ARCHIVES', `Archive ${cleanName} already in games list, skipping.`);
+		return;
+	}
+
+	const fingerprint = cleanName + ':' + byteArray.byteLength;
+
+	if (this._isCached && this._isCached(fingerprint)) {
+		this._log && this._log('ARCHIVES', `Archive ${cleanName} already cached (fingerprint), skipping extraction.`);
+		return;
+	}
 
 try {
 if (this.debugMode) console.log(`[VGM] Starting 7z extraction with worker for ${cleanName}`);

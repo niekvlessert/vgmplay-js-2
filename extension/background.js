@@ -3,35 +3,35 @@ let offscreenReady = false;
 let pendingExtractJobs = new Map();
 
 async function ensureOffscreenDocument() {
-  if (offscreenReady) return true;
-  if (creatingOffscreen) {
-    await creatingOffscreen;
-    return offscreenReady;
-  }
-  creatingOffscreen = (async () => {
-    try {
-      console.log('[Background] Checking for existing offscreen document...');
-      // Try to create the offscreen document directly - if it exists, this will fail
-      await chrome.offscreen.createDocument({
-        url: 'offscreen.html',
-        reasons: ['WORKERS'],
-        justification: 'Archive extraction worker needs to run off-main-thread'
-      });
-      console.log('[Background] Offscreen document created');
-      offscreenReady = true;
-    } catch (e) {
-      // If it already exists, that's fine
-      if (e.message && e.message.includes('already exists')) {
-        console.log('[Background] Offscreen document already exists');
-        offscreenReady = true;
-      } else {
-        console.error('[Background] Failed to create offscreen document:', e);
-      }
+    if (offscreenReady) return true;
+    if (creatingOffscreen) {
+        await creatingOffscreen;
+        return offscreenReady;
     }
-  })();
-  await creatingOffscreen;
-  creatingOffscreen = null;
-  return offscreenReady;
+    creatingOffscreen = (async () => {
+        try {
+            console.log('[Background] Checking for existing offscreen document...');
+            // Try to create the offscreen document directly - if it exists, this will fail
+            await chrome.offscreen.createDocument({
+                url: 'offscreen.html',
+                reasons: ['WORKERS'],
+                justification: 'Archive extraction worker needs to run off-main-thread'
+            });
+            console.log('[Background] Offscreen document created');
+            offscreenReady = true;
+        } catch (e) {
+            // If it already exists, that's fine
+            if (e.message && e.message.includes('already exists')) {
+                console.log('[Background] Offscreen document already exists');
+                offscreenReady = true;
+            } else {
+                console.error('[Background] Failed to create offscreen document:', e);
+            }
+        }
+    })();
+    await creatingOffscreen;
+    creatingOffscreen = null;
+    return offscreenReady;
 }
 
 chrome.action.onClicked.addListener((tab) => {
@@ -131,25 +131,25 @@ async function cachePutMeta(meta) {
 }
 
 async function cacheGetFiles(paths) {
-	const db = await openCacheDb();
-	const tx = db.transaction(CACHE_FILES_STORE, 'readonly');
-	const store = tx.objectStore(CACHE_FILES_STORE);
-	const files = [];
-	const missing = [];
-	const reqs = paths.map((path) => {
-		const req = store.get(path);
-		return reqToPromise(req).then((val) => ({ path, val }));
-	});
-	const results = await Promise.all(reqs);
-	await txComplete(tx);
-	const isDebug = (typeof window !== 'undefined' && window.__VGM_DEBUG__) || (typeof self !== 'undefined' && self.__VGM_DEBUG__);
-	for (const { path, val } of results) {
-		if (val) {
-			if (isDebug) {
-				console.log('[VGM Cache] getFiles path:', path, 'val type:', typeof val, 'isBlob:', val instanceof Blob, 'isArrayBuffer:', val instanceof ArrayBuffer, 'val.b64:', !!val?.b64, 'val.data:', !!val?.data, 'val.data type:', typeof val?.data, 'val.data instanceof ArrayBuffer:', val?.data instanceof ArrayBuffer, 'val.len:', val?.len);
-			}
-    if (val && val.b64) {
-    files.push({ path, b64: val.b64 });
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_FILES_STORE, 'readonly');
+    const store = tx.objectStore(CACHE_FILES_STORE);
+    const files = [];
+    const missing = [];
+    const reqs = paths.map((path) => {
+        const req = store.get(path);
+        return reqToPromise(req).then((val) => ({ path, val }));
+    });
+    const results = await Promise.all(reqs);
+    await txComplete(tx);
+    const isDebug = (typeof window !== 'undefined' && window.__VGM_DEBUG__) || (typeof self !== 'undefined' && self.__VGM_DEBUG__);
+    for (const { path, val } of results) {
+        if (val) {
+            if (isDebug) {
+                console.log('[VGM Cache] getFiles path:', path, 'val type:', typeof val, 'isBlob:', val instanceof Blob, 'isArrayBuffer:', val instanceof ArrayBuffer, 'val.b64:', !!val?.b64, 'val.data:', !!val?.data, 'val.data type:', typeof val?.data, 'val.data instanceof ArrayBuffer:', val?.data instanceof ArrayBuffer, 'val.len:', val?.len);
+            }
+            if (val && val.b64) {
+                files.push({ path, b64: val.b64 });
             } else if (val instanceof Blob) {
                 const buf = await val.arrayBuffer();
                 const bytes = new Uint8Array(buf);
@@ -170,42 +170,42 @@ async function cacheGetFiles(paths) {
                 }
                 files.push({ path, b64: btoa(binary) });
             } else if (val && val.data instanceof ArrayBuffer) {
-            const bytes = new Uint8Array(val.data);
-            let binary = '';
-            const chunkSize = 0x8000;
-            for (let i = 0; i < bytes.length; i += chunkSize) {
-            const sub = bytes.subarray(i, i + chunkSize);
-            binary += String.fromCharCode.apply(null, sub);
-            }
-            files.push({ path, b64: btoa(binary) });
+                const bytes = new Uint8Array(val.data);
+                let binary = '';
+                const chunkSize = 0x8000;
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    const sub = bytes.subarray(i, i + chunkSize);
+                    binary += String.fromCharCode.apply(null, sub);
+                }
+                files.push({ path, b64: btoa(binary) });
             } else if (val && val.data && val.len) {
-            // Handle case where val.data is a plain object (IndexedDB structured clone issue)
-            // Reconstruct the ArrayBuffer from the stored length
-            const data = val.data;
-            let bytes = null;
-            if (data instanceof ArrayBuffer) {
-            bytes = new Uint8Array(data);
-            } else if (data && typeof data === 'object') {
-            // data might be a plain object with indexed properties (from structured clone)
-            const len = val.len;
-            bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-            bytes[i] = data[i] || 0;
-            }
-            }
-            if (bytes) {
-            let binary = '';
-            const chunkSize = 0x8000;
-            for (let i = 0; i < bytes.length; i += chunkSize) {
-            const sub = bytes.subarray(i, i + chunkSize);
-            binary += String.fromCharCode.apply(null, sub);
-            }
-            files.push({ path, b64: btoa(binary) });
+                // Handle case where val.data is a plain object (IndexedDB structured clone issue)
+                // Reconstruct the ArrayBuffer from the stored length
+                const data = val.data;
+                let bytes = null;
+                if (data instanceof ArrayBuffer) {
+                    bytes = new Uint8Array(data);
+                } else if (data && typeof data === 'object') {
+                    // data might be a plain object with indexed properties (from structured clone)
+                    const len = val.len;
+                    bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) {
+                        bytes[i] = data[i] || 0;
+                    }
+                }
+                if (bytes) {
+                    let binary = '';
+                    const chunkSize = 0x8000;
+                    for (let i = 0; i < bytes.length; i += chunkSize) {
+                        const sub = bytes.subarray(i, i + chunkSize);
+                        binary += String.fromCharCode.apply(null, sub);
+                    }
+                    files.push({ path, b64: btoa(binary) });
+                } else {
+                    files.push({ path, data: val });
+                }
             } else {
-            files.push({ path, data: val });
-            }
-            } else {
-            files.push({ path, data: val.buffer ? val.buffer : val });
+                files.push({ path, data: val.buffer ? val.buffer : val });
             }
         } else {
             missing.push(path);
@@ -215,25 +215,25 @@ async function cacheGetFiles(paths) {
 }
 
 async function cachePutFiles(files) {
-	const db = await openCacheDb();
-	const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
-	const store = tx.objectStore(CACHE_FILES_STORE);
-	const isDebug = (typeof window !== 'undefined' && window.__VGM_DEBUG__) || (typeof self !== 'undefined' && self.__VGM_DEBUG__);
-	for (const item of files) {
-		if (!item || !item.path) continue;
-		if (item.b64) {
-			const len = item.b64.length;
-			if (isDebug) console.log('[VGM Cache] putFiles b64 path:', item.path, 'len:', len);
-			store.put({ b64: item.b64, len }, item.path);
-			continue;
-		}
-		if (!item.data) continue;
-		const data = item.data instanceof ArrayBuffer ? item.data : (item.data.buffer || item.data);
-		const len = data ? data.byteLength : 0;
-		if (isDebug) console.log('[VGM Cache] putFiles data path:', item.path, 'len:', len, 'data type:', typeof data, 'isArrayBuffer:', data instanceof ArrayBuffer);
-		store.put({ data, len }, item.path);
-	}
-	await txComplete(tx);
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
+    const store = tx.objectStore(CACHE_FILES_STORE);
+    const isDebug = (typeof window !== 'undefined' && window.__VGM_DEBUG__) || (typeof self !== 'undefined' && self.__VGM_DEBUG__);
+    for (const item of files) {
+        if (!item || !item.path) continue;
+        if (item.b64) {
+            const len = item.b64.length;
+            if (isDebug) console.log('[VGM Cache] putFiles b64 path:', item.path, 'len:', len);
+            store.put({ b64: item.b64, len }, item.path);
+            continue;
+        }
+        if (!item.data) continue;
+        const data = item.data instanceof ArrayBuffer ? item.data : (item.data.buffer || item.data);
+        const len = data ? data.byteLength : 0;
+        if (isDebug) console.log('[VGM Cache] putFiles data path:', item.path, 'len:', len, 'data type:', typeof data, 'isArrayBuffer:', data instanceof ArrayBuffer);
+        store.put({ data, len }, item.path);
+    }
+    await txComplete(tx);
 }
 
 async function cacheClearAll() {
@@ -245,11 +245,11 @@ async function cacheClearAll() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log('[Background] Message received:', message.type, message.action);
-  if (!message || message.type !== 'vgm-cache') {
-    console.log('[Background] Not vgm-cache message, returning false');
-    return false;
-  }
+    console.log('[Background] Message received:', message.type, message.action);
+    if (!message || (message.type !== 'vgm-cache' && message.type !== 'vgm-fetch')) {
+        console.log('[Background] Not a recognized message type, returning false');
+        return false;
+    }
     (async () => {
         try {
             if (message.action === 'getMeta') {
@@ -280,37 +280,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ ok: true });
                 return;
             }
-  if (message.action === 'clearAll') {
-    await cacheClearAll();
-    sendResponse({ ok: true });
-    return;
-  }
-if (message.action === 'extractArchive') {
-const { kind, url, id } = message;
-const tabId = sender.tab?.id;
-console.log('[Background] extractArchive request:', kind, 'id:', id, 'url:', url, 'tabId:', tabId);
-pendingExtractJobs.set(id, { tabId });
-(async () => {
-try {
-await ensureOffscreenDocument();
-console.log('[Background] Offscreen document ready, sending extraction request');
-chrome.runtime.sendMessage({ type: 'extract-archive', kind, url, id }, () => {
-// Ignore response - we'll get results via archive-extract-result message
-});
-} catch (e) {
-console.error('[Background] Offscreen extraction failed:', e);
-pendingExtractJobs.delete(id);
-chrome.tabs.sendMessage(tabId, {
-type: 'vgm-archive-extract-result',
-id,
-error: e.message || String(e)
-});
-}
-})();
-sendResponse({ ok: true });
-return true;
-}
-sendResponse({ error: 'unknown action' });
+            if (message.action === 'clearAll') {
+                await cacheClearAll();
+                sendResponse({ ok: true });
+                return;
+            }
+            if (message.action === 'extractArchive') {
+                const { kind, url, id } = message;
+                const tabId = sender.tab?.id;
+                console.log('[Background] extractArchive request:', kind, 'id:', id, 'url:', url, 'tabId:', tabId);
+                pendingExtractJobs.set(id, { tabId });
+                (async () => {
+                    try {
+                        await ensureOffscreenDocument();
+                        console.log('[Background] Offscreen document ready, sending extraction request');
+                        chrome.runtime.sendMessage({ type: 'extract-archive', kind, url, id }, () => {
+                            // Ignore response - we'll get results via archive-extract-result message
+                        });
+                    } catch (e) {
+                        console.error('[Background] Offscreen extraction failed:', e);
+                        pendingExtractJobs.delete(id);
+                        chrome.tabs.sendMessage(tabId, {
+                            type: 'vgm-archive-extract-result',
+                            id,
+                            error: e.message || String(e)
+                        });
+                    }
+                })();
+                sendResponse({ ok: true });
+                return true;
+            }
+            if (message.type === 'vgm-fetch' && message.action === 'getSize') {
+                const url = message.payload ? message.payload.url : null;
+                try {
+                    const res = await fetch(url, { method: 'HEAD' });
+                    const size = res.headers.get('Content-Length');
+                    sendResponse({ size: size ? parseInt(size, 10) : null });
+                } catch (e) {
+                    sendResponse({ error: String(e) });
+                }
+                return;
+            }
+            sendResponse({ error: 'unknown action' });
         } catch (e) {
             sendResponse({ error: String(e) });
         }
@@ -319,36 +330,36 @@ sendResponse({ error: 'unknown action' });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-console.log('[Background] Message received (handler 2):', message.type, message.id);
-if (message.type === 'archive-extract-result') {
-console.log('[Background] Archive extract result received:', message.id, 'done:', message.done);
-const pending = pendingExtractJobs.get(message.id);
-if (pending) {
-chrome.tabs.sendMessage(pending.tabId, {
-type: 'vgm-archive-extract-result',
-id: message.id,
-entries: message.entries || [],
-files: message.files || [],
-hasKss: message.hasKss || false,
-error: message.error,
-done: message.done !== false
-});
-if (message.done !== false) {
-pendingExtractJobs.delete(message.id);
-}
-} else {
-console.log('[Background] No pending job for id:', message.id);
-}
-return false;
-}
-return false;
+    console.log('[Background] Message received (handler 2):', message.type, message.id);
+    if (message.type === 'archive-extract-result') {
+        console.log('[Background] Archive extract result received:', message.id, 'done:', message.done);
+        const pending = pendingExtractJobs.get(message.id);
+        if (pending) {
+            chrome.tabs.sendMessage(pending.tabId, {
+                type: 'vgm-archive-extract-result',
+                id: message.id,
+                entries: message.entries || [],
+                files: message.files || [],
+                hasKss: message.hasKss || false,
+                error: message.error,
+                done: message.done !== false
+            });
+            if (message.done !== false) {
+                pendingExtractJobs.delete(message.id);
+            }
+        } else {
+            console.log('[Background] No pending job for id:', message.id);
+        }
+        return false;
+    }
+    return false;
 });
 
 function installDebugBridge() {
-  // Guard for service worker context where window doesn't exist
-  if (typeof window === 'undefined') return;
-  if (window.__VGM_DEBUG_SNAPSHOT__) return;
-  window.__VGM_DEBUG_SNAPSHOT__ = () => new Promise((resolve) => {
+    // Guard for service worker context where window doesn't exist
+    if (typeof window === 'undefined') return;
+    if (window.__VGM_DEBUG_SNAPSHOT__) return;
+    window.__VGM_DEBUG_SNAPSHOT__ = () => new Promise((resolve) => {
         const id = Date.now() + Math.random();
         const handler = (e) => {
             if (e.source !== window) return;
@@ -383,20 +394,20 @@ function installDebugBridge() {
 }
 
 function togglePlayer(extensionUrl) {
-	// Guard for service worker context where window doesn't exist
-	if (typeof window === 'undefined') return { injected: false };
-	// Load debug mode from localStorage
-	if (typeof window.__VGM_DEBUG__ === 'undefined') {
-		try {
-			const savedDebug = localStorage.getItem('vgm_debug_mode');
-			window.__VGM_DEBUG__ = savedDebug === 'true';
-		} catch (e) {
-			window.__VGM_DEBUG__ = false;
-		}
-	}
-	if (window.__VGM_DEBUG__) {
-		console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
-	}
+    // Guard for service worker context where window doesn't exist
+    if (typeof window === 'undefined') return { injected: false };
+    // Load debug mode from localStorage
+    if (typeof window.__VGM_DEBUG__ === 'undefined') {
+        try {
+            const savedDebug = localStorage.getItem('vgm_debug_mode');
+            window.__VGM_DEBUG__ = savedDebug === 'true';
+        } catch (e) {
+            window.__VGM_DEBUG__ = false;
+        }
+    }
+    if (window.__VGM_DEBUG__) {
+        console.log('[VGM Extension] togglePlayer called, extensionUrl:', extensionUrl);
+    }
     if (window.vgmPlayerInjected) {
         const container = document.getElementById('vgmplay-extension-root');
         if (container) {
@@ -430,18 +441,18 @@ function togglePlayer(extensionUrl) {
 
     const shadow = root.attachShadow({ mode: 'open' });
 
-	// Initialize Module in the isolated world before loading core scripts
-	window.__VGM_RUNTIME_READY__ = false;
-	window.Module = window.Module || {};
-	// Load debug mode from localStorage (already set above, but ensure it's set)
-	if (typeof window.__VGM_DEBUG__ === 'undefined') {
-		try {
-			const savedDebug = localStorage.getItem('vgm_debug_mode');
-			window.__VGM_DEBUG__ = savedDebug === 'true';
-		} catch (e) {
-			window.__VGM_DEBUG__ = false;
-		}
-	}
+    // Initialize Module in the isolated world before loading core scripts
+    window.__VGM_RUNTIME_READY__ = false;
+    window.Module = window.Module || {};
+    // Load debug mode from localStorage (already set above, but ensure it's set)
+    if (typeof window.__VGM_DEBUG__ === 'undefined') {
+        try {
+            const savedDebug = localStorage.getItem('vgm_debug_mode');
+            window.__VGM_DEBUG__ = savedDebug === 'true';
+        } catch (e) {
+            window.__VGM_DEBUG__ = false;
+        }
+    }
     if (!window.Module.dataFileDownloads) window.Module.dataFileDownloads = {};
     if (!window.Module.expectedDataFileDownloads) window.Module.expectedDataFileDownloads = 0;
     const base = extensionUrl;
@@ -467,17 +478,17 @@ function togglePlayer(extensionUrl) {
     // Add styles - load CSS content and inject directly for better Shadow DOM compatibility
     const style = document.createElement('style');
     shadow.appendChild(style);
-    
+
     // Fetch and inject CSS
     fetch(extensionUrl + 'css/style.css')
-      .then(response => response.text())
-      .then(css => {
-    style.textContent = css;
-    if (window.__VGM_DEBUG__) console.log('[VGM] CSS loaded and injected, length:', css.length);
-  })
-  .catch(err => {
-    if (window.__VGM_DEBUG__) console.error('[VGM] Failed to load CSS:', err);
-  });
+        .then(response => response.text())
+        .then(css => {
+            style.textContent = css;
+            if (window.__VGM_DEBUG__) console.log('[VGM] CSS loaded and injected, length:', css.length);
+        })
+        .catch(err => {
+            if (window.__VGM_DEBUG__) console.error('[VGM] Failed to load CSS:', err);
+        });
 
     // Container for the player
     const container = document.createElement('div');
@@ -498,15 +509,15 @@ function togglePlayer(extensionUrl) {
     `;
     shadow.appendChild(container);
 
-// Set options for the auto-init BEFORE loading the glue script
-window.VGMPLAY_EXTENSION_OPTIONS = {
-  container: container,
-  shadowRoot: shadow,
-  baseURL: extensionUrl,
-  extensionContentScript: true,
-  sharedCache: true,
-  autoScanDist: true
-};
+    // Set options for the auto-init BEFORE loading the glue script
+    window.VGMPLAY_EXTENSION_OPTIONS = {
+        container: container,
+        shadowRoot: shadow,
+        baseURL: extensionUrl,
+        extensionContentScript: true,
+        sharedCache: true,
+        autoScanDist: true
+    };
     if (window.__VGM_DEBUG__) {
         console.log('[VGM] VGMPLAY_EXTENSION_OPTIONS set for content script mode');
     }

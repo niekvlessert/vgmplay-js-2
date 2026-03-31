@@ -180,6 +180,18 @@ export function installUi(VGMPlay_js) {
 					this.searchBarVisible = false;
 					if (this.searchBar) this.searchBar.style.display = 'none';
 				}
+				if (this._hideSkippedWindow) {
+					this._hideSkippedWindow(false);
+				}
+				if (this._hideSettingsWindow) {
+					this._hideSettingsWindow();
+				}
+				if (this._hideExportModal) {
+					this._hideExportModal();
+				}
+				if (this._hideBulkLoadPrompt) {
+					this._hideBulkLoadPrompt();
+				}
 			};
 			document.addEventListener('keydown', this._searchGlobalKeyHandler);
 		}
@@ -284,6 +296,10 @@ export function installUi(VGMPlay_js) {
 		this.skippedNotice.className = 'vgmplaySkippedNotice';
 		this.skippedNotice.textContent = 'Big files detected; those files eat bandwidth and the memory on your device. Select files you want to load anyway.';
 		this.skippedWindow.appendChild(this.skippedNotice);
+
+		this.skippedHarvestMore = document.createElement('div');
+		this.skippedHarvestMore.className = 'vgmplaySkippedHarvestMore';
+		this.skippedWindow.appendChild(this.skippedHarvestMore);
 
 		this.skippedAutoLimit = document.createElement('div');
 		this.skippedAutoLimit.className = 'vgmplaySkippedAutoLimit';
@@ -652,6 +668,9 @@ export function installUi(VGMPlay_js) {
 		if (this.skippedAutoLimit) {
 			this._renderAutoLimitNotice();
 		}
+		if (this.skippedHarvestMore) {
+			this._renderHarvestMorePrompt();
+		}
 		if (this.skippedCacheClear) {
 			this._renderCacheClearPrompt();
 		}
@@ -849,12 +868,51 @@ export function installUi(VGMPlay_js) {
 		`;
 		const moreBtn = this.skippedAutoLimit.querySelector('.vgmplaySkippedLoadMore');
 		const allBtn = this.skippedAutoLimit.querySelector('.vgmplaySkippedLoadAll');
+
 		moreBtn.addEventListener('click', () => {
 			this._loadMoreAuto(10);
 		});
 		allBtn.addEventListener('click', () => {
 			this._loadMoreAuto(Infinity);
 		});
+	};
+
+	VGMPlay_js.prototype._renderHarvestMorePrompt = function () {
+		if (!this.skippedHarvestMore) return;
+
+		let validCandidates = [];
+		if (this.lastHarvestedCandidates && this.lastHarvestedCandidates.length > 0) {
+			validCandidates = this.lastHarvestedCandidates.filter(c => {
+				const filename = this._getFileNameFromUrl(c.url);
+				const alreadyLoaded = this.zipURLLoaded && this.zipURLLoaded.some(u => u === c.url || u.startsWith(filename + ':'));
+				const alreadyPending = this.zipURLPending && this.zipURLPending.includes(c.url);
+				const alreadyCounted = this.autoOverflowURLs && this.autoOverflowURLs.includes(c.url);
+				const inCache = this._isUrlInCache && this._isUrlInCache(c.url);
+				return !alreadyLoaded && !alreadyPending && !alreadyCounted && !inCache;
+			});
+		}
+
+		if (validCandidates.length > 0) {
+			this.skippedHarvestMore.innerHTML = `
+				<div class="vgmplaySkippedAutoLimit">
+					<div class="vgmplaySkippedAutoText" style="margin-top:8px;">${validCandidates.length} more files available on this page.</div>
+					<div class="vgmplaySkippedAutoActions" style="margin-bottom:8px;">
+						<button class="vgmplayHarvestMoreBtn" style="background:#2a2a4a;border-color:#4a4a6a;">Download more music from this site</button>
+					</div>
+				</div>
+			`;
+			const btn = this.skippedHarvestMore.querySelector('.vgmplayHarvestMoreBtn');
+			if (btn) {
+				btn.addEventListener('click', () => {
+					if (this._showBulkLoadPrompt) {
+						this._showBulkLoadPrompt(validCandidates);
+						this._hideSkippedWindow(true);
+					}
+				});
+			}
+		} else {
+			this.skippedHarvestMore.innerHTML = '';
+		}
 	};
 
 	VGMPlay_js.prototype._showSkippedWindow = function () {

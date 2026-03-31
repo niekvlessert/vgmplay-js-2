@@ -1,19 +1,19 @@
 {
-"manifest_version": 3,
-"name": "VGM Player Harvester",
-"version": "1.0",
-"description": "Scans pages for VGM music and plays it in an injected retro player.",
-"permissions": [
-"activeTab",
-"scripting",
-"offscreen"
-],
-"host_permissions": [
-"<all_urls>"
-],
-"action": {
-"default_title": "Inject VGM Player"
-},
+  "manifest_version": 3,
+  "name": "VGM Player Harvester",
+  "version": "1.0",
+  "description": "Scans pages for VGM music and plays it in an injected retro player.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Inject VGM Player"
+  },
   "background": {
     "service_worker": "background.js"
   },
@@ -51,6 +51,8 @@
         "vgmplay-queue.js",
         "vgmplay-spectrum.js",
         "vgmplay-ui.js",
+        "vgmplay-harvester.js",
+        "vgmplay-standalone-ui.js",
         "archive-worker.js",
         "offscreen.html"
       ],

@@ -143,6 +143,23 @@ export function installCache(VGMPlay_js) {
 		}
 	};
 
+	VGMPlay_js.prototype._isUrlInCache = function (url) {
+		if (!this._processedURLs || !url) return false;
+		let normalizedUrl;
+		if (url.startsWith('http://') || url.startsWith('https://')) {
+			try {
+				const u = new URL(url);
+				normalizedUrl = u.host + '/' + url.split('/').pop().split('?')[0].split('#')[0];
+			} catch (e) {
+				normalizedUrl = url;
+			}
+		} else {
+			const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : 'localhost';
+			normalizedUrl = currentHost + '/' + url.split('/').pop().split('?')[0].split('#')[0];
+		}
+		return this._processedURLs.has(normalizedUrl);
+	};
+
 	VGMPlay_js.prototype._bridgeFetchFiles = async function (paths, opts = {}) {
 		if (!paths || !paths.length) return;
 		const uniq = Array.from(new Set(paths.filter(Boolean)));

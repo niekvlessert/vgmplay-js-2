@@ -734,6 +734,13 @@ class VGMPlay_js {
 	}
 
 	loadWhenReady() {
+		// This will be overridden by the harvester module if loaded.
+		// If not overridden yet, we log and do nothing here; the async module loader
+		// will call the updated version once all modules are ready.
+		if (window.__VGM_DEBUG__) console.log('[VGM] loadWhenReady placeholder called (waiting for modules)');
+	}
+
+	_defaultLoadWhenReady() {
 		const scanNames = new Set();
 		this.elms = document.getElementsByTagName("a");
 		this.len = this.elms.length;
@@ -3461,6 +3468,7 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 		await loadModule('./vgmplay-archives.js', 'installArchives', 'archives');
 		await loadModule('./vgmplay-audio.js', 'installAudio', 'audio');
 		await loadModule('./vgmplay-queue.js', 'installQueue', 'queue');
+		await loadModule('./vgmplay-harvester.js', 'installHarvester', 'harvester');
 		await loadModule('./vgmplay-cache.js', 'installCache', 'cache');
 
 		installers.forEach((fn) => fn(VGMPlay_js));

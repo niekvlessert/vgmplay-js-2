@@ -301,10 +301,6 @@ export function installUi(VGMPlay_js) {
 		this.skippedHarvestMore.className = 'vgmplaySkippedHarvestMore';
 		this.skippedWindow.appendChild(this.skippedHarvestMore);
 
-		this.skippedAutoLimit = document.createElement('div');
-		this.skippedAutoLimit.className = 'vgmplaySkippedAutoLimit';
-		this.skippedWindow.appendChild(this.skippedAutoLimit);
-
 		this.skippedCacheClear = document.createElement('div');
 		this.skippedCacheClear.className = 'vgmplaySkippedCacheClear';
 		this.skippedWindow.appendChild(this.skippedCacheClear);
@@ -665,9 +661,6 @@ export function installUi(VGMPlay_js) {
 		this._updateSkippedTitle();
 		this._updateSkippedNotice();
 		this._updateSkippedCacheSize();
-		if (this.skippedAutoLimit) {
-			this._renderAutoLimitNotice();
-		}
 		if (this.skippedHarvestMore) {
 			this._renderHarvestMorePrompt();
 		}
@@ -838,47 +831,13 @@ export function installUi(VGMPlay_js) {
 		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 	};
 
-	VGMPlay_js.prototype._renderAutoLimitNotice = function () {
-		const count = this.autoOverflowURLs.length;
-		let cacheCount = this.autoCacheHits || 0;
-		if (cacheCount === 0 && this._cacheRestoredGameCount) {
-			cacheCount = this._cacheRestoredGameCount;
-		}
-		const hostKey = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
-		if (this._cacheRestoredByHost && this._cacheRestoredByHost.has(hostKey)) {
-			cacheCount = this._cacheRestoredByHost.get(hostKey);
-		}
-		if (count === 0) {
-			if (cacheCount > 0 && (this.autoDownloadCount || 0) === 0) {
-				this.skippedAutoLimit.innerHTML = `
-					<div class="vgmplaySkippedAutoText">All games (${cacheCount}) on this site loaded from cache.</div>
-				`;
-			} else {
-				this.skippedAutoLimit.innerHTML = '';
-			}
-			return;
-		}
-		const downloadedCount = this.autoDownloadCount || 0;
-		this.skippedAutoLimit.innerHTML = `
-			<div class="vgmplaySkippedAutoText">Auto-download limit hit. ${cacheCount} file${cacheCount === 1 ? '' : 's'} read from cache, downloaded ${downloadedCount} extra, ${count} left.</div>
-			<div class="vgmplaySkippedAutoActions">
-				<button class="vgmplaySkippedLoadMore">Load 10 more or &lt; 5MB</button>
-				<button class="vgmplaySkippedLoadAll">Load all</button>
-			</div>
-		`;
-		const moreBtn = this.skippedAutoLimit.querySelector('.vgmplaySkippedLoadMore');
-		const allBtn = this.skippedAutoLimit.querySelector('.vgmplaySkippedLoadAll');
-
-		moreBtn.addEventListener('click', () => {
-			this._loadMoreAuto(10);
-		});
-		allBtn.addEventListener('click', () => {
-			this._loadMoreAuto(Infinity);
-		});
-	};
-
 	VGMPlay_js.prototype._renderHarvestMorePrompt = function () {
 		if (!this.skippedHarvestMore) return;
+		// Don't show the button while the bulk-load prompt is already open
+		if (this._bulkLoadPromptVisible) {
+			this.skippedHarvestMore.innerHTML = '';
+			return;
+		}
 
 		let validCandidates = [];
 		if (this.lastHarvestedCandidates && this.lastHarvestedCandidates.length > 0) {

@@ -1299,14 +1299,14 @@ class VGMPlay_js {
 			const lower = url.toLowerCase();
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
 			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi) {
-				this._queueURL(url, false, true);
+				this._queueURL(url, false);
 				// Try to fetch matching image for archives
 				if (this._isArchiveUrl(lower)) {
 					this._tryFetchMatchingImageForArchive(url);
 				}
 			} else if (this.isPlayable(lower)) {
 				// Handle direct links as single files
-				this._queueURL(url, false, true);
+				this._queueURL(url, false);
 			}
 		});
 	}
@@ -2105,12 +2105,11 @@ class VGMPlay_js {
 			if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
 			if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
 
+			// Skip if the harvester has already claimed this URL (it manages via the prompt)
+			if (this.lastHarvestedCandidates && this.lastHarvestedCandidates.some(c => c.url === url)) continue;
+
 			if (this._isArchiveUrl(lower)) {
-				if (this._queueAutoURL) {
-					await this._queueAutoURL(url, false);
-				} else {
-					this._queueURL(url, false, true);
-				}
+				this._queueURL(url, false);
 			} else {
 				const rawName = url.split('/').pop().split('?')[0].split('#')[0];
 				let name = rawName;
@@ -2133,11 +2132,7 @@ class VGMPlay_js {
 						this._applyExternalGameImageToExistingGames(name);
 					}
 				} else if (this.isPlayable(lower) || (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower)) {
-					if (this._queueAutoURL) {
-						await this._queueAutoURL(url, false);
-					} else {
-						this._queueURL(url, false, true);
-					}
+					this._queueURL(url, false);
 				} else {
 					// skip non-archive
 				}
@@ -2446,7 +2441,8 @@ class VGMPlay_js {
 					const key = normalizeArchiveName(game && (game.archiveName || game.name));
 					const isFromCurrentScan = key && currentScan.has(key);
 					const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
-					if (isFromCurrentScan || isFromCurrentHostCache) {
+					const isNewlyDownloaded = !game._fromCache;
+					if (isFromCurrentScan || isFromCurrentHostCache || isNewlyDownloaded) {
 						foundSiteGame = game;
 						break;
 					}
@@ -2561,8 +2557,10 @@ class VGMPlay_js {
 			const key = normalizeArchiveName(game && (game.archiveName || game.name));
 			const isFromCurrentScan = key && currentScan.has(key);
 			const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
+			// Freshly downloaded games (not from cache) always belong to the current session/site
+			const isNewlyDownloaded = !game._fromCache;
 
-			if (isFromCurrentScan || isFromCurrentHostCache) {
+			if (isFromCurrentScan || isFromCurrentHostCache || isNewlyDownloaded) {
 				currentSiteGames.push(game);
 			} else {
 				const host = game.cacheHost || 'Other';

@@ -23,72 +23,18 @@ export function installQueue(VGMPlay_js) {
 		if (forceLarge) return true;
 		if (this.standalone) return true;
 		const size = await this._getRemoteFileSize(url);
+		// Silently skip large files — the harvester prompt handles them
 		if (!size || size <= this.largeDownloadLimitBytes) return true;
-		this._addSkippedDownload(url, size);
 		return false;
 	};
 
-	VGMPlay_js.prototype._queueURL = function (url, forceLarge = false, isAuto = false) {
+	VGMPlay_js.prototype._queueURL = function (url, forceLarge = false) {
 		const filename = this._getFileNameFromUrl(url);
 		if (this.zipURLLoaded.some(u => u === url || u.startsWith(filename + ':'))) return;
 		if (this.zipURLPending.includes(url)) return;
-		if (isAuto && this.autoDownloadCount >= this.autoDownloadLimit) {
-			this._queueAutoOverflow(url, null);
-			return;
-		}
-		this.zipURLPending.push(url);
-		this.zipQueue.push({ type: 'url', data: url, forceLarge, name: this._getFileNameFromUrl(url) });
-		if (isAuto) this.autoDownloadCount++;
-		this._processQueue();
-	};
-
-	VGMPlay_js.prototype._queueAutoOverflow = function (url, sizeBytes = null) {
-		if (!this.autoOverflowURLs.includes(url)) {
-			this.autoOverflowURLs.push(url);
-			if (this.autoOverflowSizes) {
-				this.autoOverflowSizes.set(url, sizeBytes);
-			}
-		}
-		this._showSkippedWindow();
-		this._renderSkippedDownloads();
-		this._checkLargeOverflow(url);
-	};
-
-	VGMPlay_js.prototype._queueAutoURL = async function (url, forceLarge = false, opts = {}) {
-		const filename = this._getFileNameFromUrl(url);
-		if (this.zipURLLoaded.some(u => u === url || u.startsWith(filename + ':'))) return false;
-		if (this.zipURLPending.includes(url)) return false;
-
-		let sizeBytes = (typeof opts.sizeBytes === 'number') ? opts.sizeBytes : null;
-		if (sizeBytes == null && !this.standalone) {
-			sizeBytes = await this._getRemoteFileSize(url);
-		}
-
-		if (!this.standalone && sizeBytes != null && this._isCached) {
-			const fingerprint = filename + ':' + sizeBytes;
-			if (this._isCached(fingerprint)) {
-				if (!this._cacheRestoredFingerprints || !this._cacheRestoredFingerprints.has(fingerprint)) {
-					this.autoCacheHits = (this.autoCacheHits || 0) + 1;
-				}
-				return false;
-			}
-		}
-
-		const ignoreLimit = !!opts.ignoreLimit;
-		const canDownload = ignoreLimit || this.standalone || (this.autoDownloadCount < this.autoDownloadLimit || this.autoDownloadBytes < this.autoDownloadBytesLimit);
-		if (!canDownload) {
-			this._queueAutoOverflow(url, sizeBytes);
-			return false;
-		}
-
 		this.zipURLPending.push(url);
 		this.zipQueue.push({ type: 'url', data: url, forceLarge, name: filename });
-		this.autoDownloadCount = (this.autoDownloadCount || 0) + 1;
-		if (sizeBytes != null) {
-			this.autoDownloadBytes = (this.autoDownloadBytes || 0) + sizeBytes;
-		}
 		this._processQueue();
-		return true;
 	};
 
 	VGMPlay_js.prototype._checkLargeOverflow = async function (url) {
@@ -126,9 +72,9 @@ export function installQueue(VGMPlay_js) {
 								FS.createDataFile("/", originalFilename || "remote_file.vgm", byteArray, true, true);
 								resolve(destPath);
 							} catch (e) {
-    if (this.debugMode) console.error("FS Error loading direct file:", e);
-    resolve(null);
-  }
+								if (this.debugMode) console.error("FS Error loading direct file:", e);
+								resolve(null);
+							}
 						} else {
 							resolve(null);
 						}
@@ -185,22 +131,22 @@ export function installQueue(VGMPlay_js) {
 								var arrayBuffer = xhr.response;
 								var byteArray = new Uint8Array(arrayBuffer);
 								const lower = job.data.toLowerCase();
-if (lower.endsWith('.7z')) {
-classContext.process7zBuffer(byteArray, job.data).then(next);
-} else if (lower.endsWith('.rar')) {
-classContext.processRarBuffer(byteArray, job.data).then(next);
-} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-classContext.processPSFBuffer(byteArray, job.data).then(next);
-} else if (lower.endsWith('.zip')) {
-    classContext.processZipBuffer(byteArray, job.data).then(next);
-  } else {
-    classContext.processSingleBuffer(byteArray, job.name || job.data).then(next);
-  }
+								if (lower.endsWith('.7z')) {
+									classContext.process7zBuffer(byteArray, job.data).then(next);
+								} else if (lower.endsWith('.rar')) {
+									classContext.processRarBuffer(byteArray, job.data).then(next);
+								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
+									classContext.processPSFBuffer(byteArray, job.data).then(next);
+								} else if (lower.endsWith('.zip')) {
+									classContext.processZipBuffer(byteArray, job.data).then(next);
+								} else {
+									classContext.processSingleBuffer(byteArray, job.name || job.data).then(next);
+								}
 								classContext.zipURLLoaded.push(job.data);
 							} else {
-    if (this.debugMode) console.error("Failed to load archive from URL:", job.data);
-    next();
-  }
+								if (this.debugMode) console.error("Failed to load archive from URL:", job.data);
+								next();
+							}
 							classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
 						}
 					}

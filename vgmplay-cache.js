@@ -846,6 +846,9 @@ export function installCache(VGMPlay_js) {
 					if (stat && typeof stat.size === 'number') fileSizes[path] = stat.size;
 				} catch (e) { }
 			}
+			// Update in-memory cache sizes so the UI reflects the real total immediately
+			this._cacheFileSizes = fileSizes;
+			if (this._updateSkippedCacheSize) this._updateSkippedCacheSize();
 
 			const meta = {
 				version: 2,

@@ -1,3 +1,102 @@
+diff --git a/cmake/FetchDependency.cmake b/cmake/FetchDependency.cmake
+index 249d8da1..14b1dec1 100644
+--- a/cmake/FetchDependency.cmake
++++ b/cmake/FetchDependency.cmake
+@@ -36,10 +36,18 @@ function(FetchDependency name)
+ 	endif()
+ 	list(APPEND ARGS_FETCH_PRIORITY none)
+ 	
+-	set(${name}_BIN ${VGM_BINARY_DIR}/dependencies/${ARGS_DIR})
+-	set(${name}_BIN ${${name}_BIN} PARENT_SCOPE)
+-	
+-	if(${name}_PATH)
++  set(${name}_BIN ${VGM_BINARY_DIR}/dependencies/${ARGS_DIR})
++  set(${name}_BIN ${${name}_BIN} PARENT_SCOPE)
++
++  # Handle cache variables passed from cmake command line
++  if(NOT ${name}_PATH)
++    get_property(_cache_path CACHE ${name}_PATH PROPERTY VALUE)
++    if(_cache_path)
++      set(${name}_PATH "${_cache_path}")
++    endif()
++  endif()
++
++  if(${name}_PATH)
+ 		if(IS_DIRECTORY "${${name}_PATH}")
+ 			set(${name}_SOURCE "(local path)" PARENT_SCOPE)
+ 		else()
+diff --git a/cmake/dependencies/atrac9.cmake b/cmake/dependencies/atrac9.cmake
+index 02ec805c..0154f879 100644
+--- a/cmake/dependencies/atrac9.cmake
++++ b/cmake/dependencies/atrac9.cmake
+@@ -1,29 +1,42 @@
+ if(NOT WIN32 AND USE_ATRAC9)
+-	FetchDependency(ATRAC9
+-		DIR LibAtrac9
+-		GIT_REPOSITORY https://github.com/Thealexbarney/LibAtrac9
+-		GIT_TAG 6a9e00f6c7abd74d037fd210b6670d3cdb313049
+-		GIT_UNSHALLOW ON
+-	)
+-	
+-	if(ATRAC9_PATH)
+-		set(ATRAC9_LINK_PATH ${ATRAC9_BIN}/bin/libatrac9.a)
+-		
+-		add_custom_target(ATRAC9_MAKE
+-			COMMAND make static CFLAGS="-fPIC" OBJDIR="${ATRAC9_BIN}/obj" BINDIR="${ATRAC9_BIN}/bin" CC="${CMAKE_C_COMPILER}" AR="${CMAKE_AR}"
+-			WORKING_DIRECTORY ${ATRAC9_PATH}/C
+-			BYPRODUCTS ${ATRAC9_LINK_PATH} ${ATRAC9_BIN}
+-		)
+-		
+-		add_library(atrac9 STATIC IMPORTED)
+-		if(NOT EXISTS ${ATRAC9_LINK_PATH})
+-			add_dependencies(atrac9 ATRAC9_MAKE)
+-		endif()
+-		set_target_properties(atrac9 PROPERTIES
+-			IMPORTED_LOCATION ${ATRAC9_LINK_PATH}
+-		)
+-	endif()
++  # Debug: show what ATRAC9_PATH is before FetchDependency
++  message(STATUS "Before FetchDependency: ATRAC9_PATH=${ATRAC9_PATH}")
++  get_property(_atrac9_cache CACHE ATRAC9_PATH PROPERTY VALUE)
++  message(STATUS "Before FetchDependency: ATRAC9_PATH (cache)=${_atrac9_cache}")
++  
++  FetchDependency(ATRAC9
++    DIR LibAtrac9
++    GIT_REPOSITORY https://github.com/Thealexbarney/LibAtrac9
++    GIT_TAG 6a9e00f6c7abd74d037fd210b6670d3cdb313049
++    GIT_UNSHALLOW ON
++  )
++
++  message(STATUS "After FetchDependency: ATRAC9_PATH=${ATRAC9_PATH}")
++  message(STATUS "After FetchDependency: ATRAC9_BIN=${ATRAC9_BIN}")
++
++  if(ATRAC9_PATH)
++    message(STATUS "ATRAC9_PATH: ${ATRAC9_PATH}")
++    message(STATUS "ATRAC9_BIN: ${ATRAC9_BIN}")
++    set(ATRAC9_LINK_PATH ${ATRAC9_BIN}/bin/libatrac9.a)
++
++    add_custom_target(ATRAC9_MAKE
++      COMMAND make static CFLAGS="-fPIC" OBJDIR="${ATRAC9_BIN}/obj" BINDIR="${ATRAC9_BIN}/bin" CC="${CMAKE_C_COMPILER}" AR="${CMAKE_AR}"
++      WORKING_DIRECTORY ${ATRAC9_PATH}/C
++      BYPRODUCTS ${ATRAC9_LINK_PATH} ${ATRAC9_BIN}
++    )
++
++    add_library(atrac9 STATIC IMPORTED GLOBAL)
++    if(NOT EXISTS ${ATRAC9_LINK_PATH})
++      add_dependencies(atrac9 ATRAC9_MAKE)
++    endif()
++    set_target_properties(atrac9 PROPERTIES
++      IMPORTED_LOCATION ${ATRAC9_LINK_PATH}
++    )
++  else()
++    message(STATUS "ATRAC9_PATH not set, ATRAC9 support disabled")
++    set(USE_ATRAC9 OFF CACHE BOOL "Use LibAtrac9 for support of ATRAC9" FORCE)
++  endif()
+ endif()
+ if(NOT USE_ATRAC9)
+-	unset(ATRAC9_SOURCE)
++  unset(ATRAC9_SOURCE)
+ endif()
 diff --git a/cmake/dependencies/speex.cmake b/cmake/dependencies/speex.cmake
 index fe5a2d9a..2c6d582a 100644
 --- a/cmake/dependencies/speex.cmake

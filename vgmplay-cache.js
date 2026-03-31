@@ -925,6 +925,16 @@ export function installCache(VGMPlay_js) {
 		}
 	};
 
+	VGMPlay_js.prototype._getTotalCacheSize = function () {
+		if (!this._cacheFileSizes) return 0;
+		let total = 0;
+		for (const path in this._cacheFileSizes) {
+			const size = this._cacheFileSizes[path];
+			if (typeof size === 'number') total += size;
+		}
+		return total;
+	};
+
 	VGMPlay_js.prototype._isCached = function (fingerprint) {
 		return this._cacheFingerprints.has(fingerprint);
 	};

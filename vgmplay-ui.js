@@ -27,59 +27,59 @@ export function installUi(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._resetWindowPositions = function () {
-	// For standalone: reset transforms and positions
-	if (this.standalone) {
-		this.standaloneGroupTransformX = 0;
-		this.standaloneGroupTransformY = 0;
-		if (this.standaloneGroup) {
-			this.standaloneGroup.style.transform = 'none';
-			this.standaloneGroup.style.width = '';
+		// For standalone: reset transforms and positions
+		if (this.standalone) {
+			this.standaloneGroupTransformX = 0;
+			this.standaloneGroupTransformY = 0;
+			if (this.standaloneGroup) {
+				this.standaloneGroup.style.transform = 'none';
+				this.standaloneGroup.style.width = '';
+			}
+			if (this.vgmplayContainer) {
+				this.vgmplayContainer.style.top = '';
+				this.vgmplayContainer.style.left = '';
+			}
 		}
-		if (this.vgmplayContainer) {
-			this.vgmplayContainer.style.top = '';
-			this.vgmplayContainer.style.left = '';
+		// For extension: reset position based on current mode
+		if (!this.standalone) {
+			// Reset root element position based on current mode
+			const root = document.getElementById('vgmplay-extension-root');
+			if (this.libraryState === 2) {
+				// Grid mode: reset to full screen position
+				if (root) {
+					root.style.setProperty('top', '0', 'important');
+					root.style.setProperty('left', '0', 'important');
+				}
+				// Also reset vgmplayContainer position (which is set during drag)
+				if (this.vgmplayContainer) {
+					this.vgmplayContainer.style.setProperty('top', '0', 'important');
+					this.vgmplayContainer.style.setProperty('left', '0', 'important');
+				}
+			} else {
+				// Attached or floating mode: reset to default position
+				if (root) {
+					root.style.setProperty('top', '10px', 'important');
+					root.style.setProperty('left', '10px', 'important');
+				}
+				// Also reset vgmplayContainer position (which is set during drag)
+				if (this.vgmplayContainer) {
+					this.vgmplayContainer.style.setProperty('top', '10px', 'important');
+					this.vgmplayContainer.style.setProperty('left', '10px', 'important');
+				}
+			}
 		}
-	}
-	// For extension: reset position based on current mode
-	if (!this.standalone) {
-	  // Reset root element position based on current mode
-	  const root = document.getElementById('vgmplay-extension-root');
-	  if (this.libraryState === 2) {
-	    // Grid mode: reset to full screen position
-	    if (root) {
-	      root.style.setProperty('top', '0', 'important');
-	      root.style.setProperty('left', '0', 'important');
-	    }
-	    // Also reset vgmplayContainer position (which is set during drag)
-	    if (this.vgmplayContainer) {
-	      this.vgmplayContainer.style.setProperty('top', '0', 'important');
-	      this.vgmplayContainer.style.setProperty('left', '0', 'important');
-	    }
-	  } else {
-	    // Attached or floating mode: reset to default position
-	    if (root) {
-	      root.style.setProperty('top', '10px', 'important');
-	      root.style.setProperty('left', '10px', 'important');
-	    }
-	    // Also reset vgmplayContainer position (which is set during drag)
-	    if (this.vgmplayContainer) {
-	      this.vgmplayContainer.style.setProperty('top', '10px', 'important');
-	      this.vgmplayContainer.style.setProperty('left', '10px', 'important');
-	    }
-	  }
-	}
-	// Common reset for both standalone and extension
-	this.trackListTransformX = 0;
-	this.trackListTransformY = 0;
-	if (this.tracksContainer) {
-		this.tracksContainer.style.transform = 'none';
-	}
-	if (this.zipFileListWindow) {
-	this.zipFileListWindow.scrollTop = 0;
-	}
-};
+		// Common reset for both standalone and extension
+		this.trackListTransformX = 0;
+		this.trackListTransformY = 0;
+		if (this.tracksContainer) {
+			this.tracksContainer.style.transform = 'none';
+		}
+		if (this.zipFileListWindow) {
+			this.zipFileListWindow.scrollTop = 0;
+		}
+	};
 
-VGMPlay_js.prototype.showPlayer = function () {
+	VGMPlay_js.prototype.showPlayer = function () {
 		this.playerWindow.className = "vgmplayPlayerWindow";
 		this.playerWindow.innerHTML = `
 			<div class="vgmplayControls">
@@ -91,6 +91,7 @@ VGMPlay_js.prototype.showPlayer = function () {
 				<button id="btnReverb">V</button>
 				<button id="btnRandom">R</button>
 				<button id="btnLoop">L</button>
+				<button id="btnAdditional">A</button>
 				<button id="btnLibrary">F</button>
 				<button id="btnSearch">&#128269;</button>
 				<button id="btnSettings">&#9881;</button>
@@ -114,6 +115,7 @@ VGMPlay_js.prototype.showPlayer = function () {
 		this.btnReverb = byId('btnReverb');
 		this.btnRandom = byId('btnRandom');
 		this.btnLoop = byId('btnLoop');
+		this.btnAdditional = byId('btnAdditional');
 		this.btnLibrary = byId('btnLibrary');
 		this.btnSearch = byId('btnSearch');
 		this.btnSettings = byId('btnSettings');
@@ -125,6 +127,7 @@ VGMPlay_js.prototype.showPlayer = function () {
 		if (this.btnReverb) this.btnReverb.addEventListener('click', () => this.toggleReverb());
 		if (this.btnRandom) this.btnRandom.addEventListener('click', () => this.toggleRandomScope());
 		if (this.btnLoop) this.btnLoop.addEventListener('click', () => this.toggleLoopMode());
+		if (this.btnAdditional) this.btnAdditional.addEventListener('click', () => this.toggleSkippedWindow());
 		if (this.btnLibrary) this.btnLibrary.addEventListener('click', () => this.toggleDisplayZipFileListWindow());
 		if (this.btnSearch) this.btnSearch.addEventListener('click', () => this.toggleSearchBar());
 		if (this.btnSettings) {
@@ -159,26 +162,26 @@ VGMPlay_js.prototype.showPlayer = function () {
 			}
 		});
 		if (!this._searchGlobalKeyHandler) {
-		this._searchGlobalKeyHandler = (e) => {
-		if (e.key !== 'Escape') return;
-		e.preventDefault();
-		this.searchQuery = "";
-		if (this.searchInput) this.searchInput.value = "";
-		this._applyGameSearchFilter();
-		this._collapseAllGames();
-		if (this.zipFileListWindow) this.zipFileListWindow.scrollTop = 0;
-		// Reset window positions for both standalone and extension
-		this._resetWindowPositions();
-		// In grid mode, filter to show only the active game
-		if (this.libraryState === 2 && this._applyOverviewTrackFilter) {
-		this._applyOverviewTrackFilter();
-		}
-		if (this.searchBarVisible) {
-		this.searchBarVisible = false;
-		if (this.searchBar) this.searchBar.style.display = 'none';
-		}
-		};
-		document.addEventListener('keydown', this._searchGlobalKeyHandler);
+			this._searchGlobalKeyHandler = (e) => {
+				if (e.key !== 'Escape') return;
+				e.preventDefault();
+				this.searchQuery = "";
+				if (this.searchInput) this.searchInput.value = "";
+				this._applyGameSearchFilter();
+				this._collapseAllGames();
+				if (this.zipFileListWindow) this.zipFileListWindow.scrollTop = 0;
+				// Reset window positions for both standalone and extension
+				this._resetWindowPositions();
+				// In grid mode, filter to show only the active game
+				if (this.libraryState === 2 && this._applyOverviewTrackFilter) {
+					this._applyOverviewTrackFilter();
+				}
+				if (this.searchBarVisible) {
+					this.searchBarVisible = false;
+					if (this.searchBar) this.searchBar.style.display = 'none';
+				}
+			};
+			document.addEventListener('keydown', this._searchGlobalKeyHandler);
 		}
 
 		// Create progress bar
@@ -250,21 +253,21 @@ VGMPlay_js.prototype.showPlayer = function () {
 		}, false);
 	};
 
-VGMPlay_js.prototype._createSkippedWindow = function () {
-  if (!this.vgmplayContainer) return;
-  this.skippedWindow = document.createElement('div');
-  this.skippedWindow.id = "vgmplaySkippedWindow";
-  this.skippedWindow.className = "vgmplaySkippedWindow";
-  this.skippedWindow.style.display = 'none';
-  this.skippedWindow.style.top = '20px';
-  this.skippedWindow.style.left = '300px';
-  if (this.isExtension && !this.standalone) {
-    this.skippedWindow.style.position = 'fixed';
-  }
+	VGMPlay_js.prototype._createSkippedWindow = function () {
+		if (!this.vgmplayContainer) return;
+		this.skippedWindow = document.createElement('div');
+		this.skippedWindow.id = "vgmplaySkippedWindow";
+		this.skippedWindow.className = "vgmplaySkippedWindow";
+		this.skippedWindow.style.display = 'none';
+		this.skippedWindow.style.top = '20px';
+		this.skippedWindow.style.left = '300px';
+		if (this.isExtension && !this.standalone) {
+			this.skippedWindow.style.position = 'fixed';
+		}
 
-  this.skippedHeader = document.createElement('div');
-  this.skippedHeader.className = 'vgmplaySkippedHeader';
-  this.skippedHeader.innerHTML = `
+		this.skippedHeader = document.createElement('div');
+		this.skippedHeader.className = 'vgmplaySkippedHeader';
+		this.skippedHeader.innerHTML = `
 <span class="vgmplaySkippedTitle">ADDITIONAL INFORMATION</span>
 <span class="vgmplaySkippedCountdown" style="display:none;">
 <span class="vgmplaySkippedSpinner"></span>
@@ -272,110 +275,114 @@ VGMPlay_js.prototype._createSkippedWindow = function () {
 </span>
 <button class="vgmplaySkippedClose" title="Close">×</button>
 `;
-  this.skippedWindow.appendChild(this.skippedHeader);
-  this.skippedTitleEl = this.skippedHeader.querySelector('.vgmplaySkippedTitle');
-  this.skippedCountdownEl = this.skippedHeader.querySelector('.vgmplaySkippedCountdown');
-  this.skippedCountdownNumEl = this.skippedHeader.querySelector('.vgmplaySkippedCountdownNum');
+		this.skippedWindow.appendChild(this.skippedHeader);
+		this.skippedTitleEl = this.skippedHeader.querySelector('.vgmplaySkippedTitle');
+		this.skippedCountdownEl = this.skippedHeader.querySelector('.vgmplaySkippedCountdown');
+		this.skippedCountdownNumEl = this.skippedHeader.querySelector('.vgmplaySkippedCountdownNum');
 
-  this.skippedNotice = document.createElement('div');
-  this.skippedNotice.className = 'vgmplaySkippedNotice';
-  this.skippedNotice.textContent = 'Big files detected; those files eat bandwidth and the memory on your device. Select files you want to load anyway.';
-  this.skippedWindow.appendChild(this.skippedNotice);
+		this.skippedNotice = document.createElement('div');
+		this.skippedNotice.className = 'vgmplaySkippedNotice';
+		this.skippedNotice.textContent = 'Big files detected; those files eat bandwidth and the memory on your device. Select files you want to load anyway.';
+		this.skippedWindow.appendChild(this.skippedNotice);
 
-  this.skippedAutoLimit = document.createElement('div');
-  this.skippedAutoLimit.className = 'vgmplaySkippedAutoLimit';
-  this.skippedWindow.appendChild(this.skippedAutoLimit);
+		this.skippedAutoLimit = document.createElement('div');
+		this.skippedAutoLimit.className = 'vgmplaySkippedAutoLimit';
+		this.skippedWindow.appendChild(this.skippedAutoLimit);
 
-  this.skippedCacheClear = document.createElement('div');
-  this.skippedCacheClear.className = 'vgmplaySkippedCacheClear';
-  this.skippedWindow.appendChild(this.skippedCacheClear);
+		this.skippedCacheClear = document.createElement('div');
+		this.skippedCacheClear.className = 'vgmplaySkippedCacheClear';
+		this.skippedWindow.appendChild(this.skippedCacheClear);
 
-  this.skippedList = document.createElement('div');
-  this.skippedList.className = 'vgmplaySkippedList';
-  this.skippedWindow.appendChild(this.skippedList);
+		this.skippedCacheSize = document.createElement('div');
+		this.skippedCacheSize.className = 'vgmplaySkippedCacheSize';
+		this.skippedWindow.appendChild(this.skippedCacheSize);
 
-  this.vgmplayContainer.appendChild(this.skippedWindow);
+		this.skippedList = document.createElement('div');
+		this.skippedList.className = 'vgmplaySkippedList';
+		this.skippedWindow.appendChild(this.skippedList);
 
-  this._elementDragWindow = this._elementDragWindow.bind(this);
-  this._stopDragWindow = this._stopDragWindow.bind(this);
-  this._dragStartWindow = this._dragStartWindow.bind(this);
+		this.vgmplayContainer.appendChild(this.skippedWindow);
 
-  this.skippedHeader.addEventListener('mousedown', this._dragStartWindow);
-  this.skippedHeader.querySelector('.vgmplaySkippedClose').addEventListener('click', () => {
-    this._hideSkippedWindow(false);
-  });
+		this._elementDragWindow = this._elementDragWindow.bind(this);
+		this._stopDragWindow = this._stopDragWindow.bind(this);
+		this._dragStartWindow = this._dragStartWindow.bind(this);
 
-  this._renderSkippedDownloads();
-  this._positionSkippedWindow();
-  window.addEventListener('resize', () => this._positionSkippedWindow());
-};
+		this.skippedHeader.addEventListener('mousedown', this._dragStartWindow);
+		this.skippedHeader.querySelector('.vgmplaySkippedClose').addEventListener('click', () => {
+			this._hideSkippedWindow(false);
+		});
 
-VGMPlay_js.prototype._createSettingsWindow = function () {
-  if (this.settingsWindow) return;
+		this._renderSkippedDownloads();
+		this._positionSkippedWindow();
+		window.addEventListener('resize', () => this._positionSkippedWindow());
+	};
 
-  this.settingsWindow = document.createElement('div');
-  this.settingsWindow.id = "vgmplaySettingsWindow";
-  this.settingsWindow.className = "vgmplaySettingsWindow";
-  this.settingsWindow.style.display = 'none';
+	VGMPlay_js.prototype._createSettingsWindow = function () {
+		if (this.settingsWindow) return;
 
-  this.settingsHeader = document.createElement('div');
-  this.settingsHeader.className = 'vgmplaySettingsHeader';
-  this.settingsHeader.innerHTML = `
+		this.settingsWindow = document.createElement('div');
+		this.settingsWindow.id = "vgmplaySettingsWindow";
+		this.settingsWindow.className = "vgmplaySettingsWindow";
+		this.settingsWindow.style.display = 'none';
+
+		this.settingsHeader = document.createElement('div');
+		this.settingsHeader.className = 'vgmplaySettingsHeader';
+		this.settingsHeader.innerHTML = `
 <span class="vgmplaySettingsTitle">SETTINGS</span>
 <button class="vgmplaySettingsClose" title="Close">×</button>
 `;
-  this.settingsWindow.appendChild(this.settingsHeader);
+		this.settingsWindow.appendChild(this.settingsHeader);
 
-  this.settingsContent = document.createElement('div');
-  this.settingsContent.className = 'vgmplaySettingsContent';
-  this.settingsWindow.appendChild(this.settingsContent);
+		this.settingsContent = document.createElement('div');
+		this.settingsContent.className = 'vgmplaySettingsContent';
+		this.settingsWindow.appendChild(this.settingsContent);
 
-  if (this.vgmplayContainer) {
-    this.vgmplayContainer.appendChild(this.settingsWindow);
-  } else if (this.shadowRoot) {
-    this.shadowRoot.appendChild(this.settingsWindow);
-  } else if (typeof document !== 'undefined') {
-    document.body.appendChild(this.settingsWindow);
-  }
+		if (this.vgmplayContainer) {
+			this.vgmplayContainer.appendChild(this.settingsWindow);
+		} else if (this.shadowRoot) {
+			this.shadowRoot.appendChild(this.settingsWindow);
+		} else if (typeof document !== 'undefined') {
+			document.body.appendChild(this.settingsWindow);
+		}
 
-  this.settingsHeader.addEventListener('mousedown', (e) => this._dragStartWindow(e, this.settingsWindow));
-  this.settingsHeader.querySelector('.vgmplaySettingsClose').addEventListener('click', () => {
-    this._hideSettingsWindow();
-  });
-};
+		this.settingsHeader.addEventListener('mousedown', (e) => this._dragStartWindow(e, this.settingsWindow));
+		this.settingsHeader.querySelector('.vgmplaySettingsClose').addEventListener('click', () => {
+			this._hideSettingsWindow();
+		});
+	};
 
-VGMPlay_js.prototype._showNotification = function (message, duration = 10000) {
-  if (!this.skippedWindow) return;
+	VGMPlay_js.prototype._showNotification = function (message, duration = 10000) {
+		if (!this.skippedWindow) return;
 
-  this.skippedTitleEl.textContent = 'NOTIFICATION';
-  this.skippedNotice.textContent = message;
-  this.skippedNotice.style.display = 'block';
-  this.skippedAutoLimit.innerHTML = '';
-  this.skippedCacheClear.innerHTML = '';
-  this.skippedList.innerHTML = '';
-  if (this.skippedContentEl) this.skippedContentEl.innerHTML = '';
+		this.skippedTitleEl.textContent = 'NOTIFICATION';
+		this.skippedNotice.textContent = message;
+		this.skippedNotice.style.display = 'block';
+		this.skippedAutoLimit.innerHTML = '';
+		this.skippedCacheClear.innerHTML = '';
+		this.skippedList.innerHTML = '';
+		if (this.skippedContentEl) this.skippedContentEl.innerHTML = '';
 
-  this.skippedWindow.style.display = 'block';
-  this.skippedWindowVisible = true;
-  this.skippedWindow.classList.remove('vgmplaySkippedFading');
+		this.skippedWindow.style.display = 'block';
+		this.skippedWindowVisible = true;
+		this.skippedWindow.classList.remove('vgmplaySkippedFading');
 
-  if (duration > 0) {
-    this._startCountdown(duration / 1000);
-  }
+		if (duration > 0) {
+			this._startCountdown(duration / 1000);
+		}
 
-  this._positionSkippedWindow();
-  this._positionSettingsWindow();
-};
+		this._positionSkippedWindow();
+		this._positionSettingsWindow();
+	};
 
-VGMPlay_js.prototype._showSettingsWindow = function () {
-  this._createSettingsWindow();
-  if (!this.settingsWindow) return;
+	VGMPlay_js.prototype._showSettingsWindow = function () {
+		this._createSettingsWindow();
+		if (!this.settingsWindow) return;
 
-  const gamesLoaded = this.games ? this.games.length : 0;
-  const cacheCount = Math.max(0, Math.min(this.autoCacheHits || 0, gamesLoaded));
-  const newCount = Math.max(0, gamesLoaded - cacheCount);
+		const gamesLoaded = this.games ? this.games.length : 0;
+		const cacheCount = Math.max(0, Math.min(this.autoCacheHits || 0, gamesLoaded));
+		const newCount = Math.max(0, gamesLoaded - cacheCount);
 
-  this.settingsContent.innerHTML = `
+		this.settingsContent.innerHTML = `
 <div class="vgmplaySettingsMenu">
 <div class="vgmplaySkippedAutoText">Cache: ${cacheCount} from cache, ${newCount} new.</div>
 <div class="vgmplaySkippedAutoActions">
@@ -387,40 +394,40 @@ VGMPlay_js.prototype._showSettingsWindow = function () {
 </div>
 `;
 
-  const clearBtn = this.settingsContent.querySelector('.vgmplaySettingsClearCache');
-  const checkBtn = this.settingsContent.querySelector('.vgmplaySettingsCheckCache');
-  const exportBtn = this.settingsContent.querySelector('.vgmplaySettingsExportMusic');
+		const clearBtn = this.settingsContent.querySelector('.vgmplaySettingsClearCache');
+		const checkBtn = this.settingsContent.querySelector('.vgmplaySettingsCheckCache');
+		const exportBtn = this.settingsContent.querySelector('.vgmplaySettingsExportMusic');
 
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      this._showCacheClearPrompt();
-    });
-  }
-  if (checkBtn) {
-    checkBtn.addEventListener('click', () => {
-      this._runCacheIntegrityCheck();
-    });
-  }
-  if (exportBtn) {
-    exportBtn.addEventListener('click', () => {
-      this._showExportModal();
-    });
-  }
+		if (clearBtn) {
+			clearBtn.addEventListener('click', () => {
+				this._showCacheClearPrompt();
+			});
+		}
+		if (checkBtn) {
+			checkBtn.addEventListener('click', () => {
+				this._runCacheIntegrityCheck();
+			});
+		}
+		if (exportBtn) {
+			exportBtn.addEventListener('click', () => {
+				this._showExportModal();
+			});
+		}
 
-  this.settingsWindow.style.display = 'block';
-  this._positionSettingsWindow();
-};
+		this.settingsWindow.style.display = 'block';
+		this._positionSettingsWindow();
+	};
 
-VGMPlay_js.prototype._hideSettingsWindow = function () {
-  if (this.settingsWindow) {
-    this.settingsWindow.style.display = 'none';
-  }
-};
+	VGMPlay_js.prototype._hideSettingsWindow = function () {
+		if (this.settingsWindow) {
+			this.settingsWindow.style.display = 'none';
+		}
+	};
 
-VGMPlay_js.prototype._showCacheClearPrompt = function () {
-  if (!this.settingsWindow || !this.settingsContent) return;
+	VGMPlay_js.prototype._showCacheClearPrompt = function () {
+		if (!this.settingsWindow || !this.settingsContent) return;
 
-  this.settingsContent.innerHTML = `
+		this.settingsContent.innerHTML = `
 <div class="vgmplaySettingsMenu">
 <div class="vgmplaySkippedAutoText">Delete all cache?</div>
 <div class="vgmplaySkippedAutoActions">
@@ -430,43 +437,43 @@ VGMPlay_js.prototype._showCacheClearPrompt = function () {
 </div>
 `;
 
-  const yesBtn = this.settingsContent.querySelector('.vgmplayCacheClearYes');
-  const noBtn = this.settingsContent.querySelector('.vgmplayCacheClearNo');
+		const yesBtn = this.settingsContent.querySelector('.vgmplayCacheClearYes');
+		const noBtn = this.settingsContent.querySelector('.vgmplayCacheClearNo');
 
-  if (yesBtn) {
-    yesBtn.addEventListener('click', () => {
-      if (this.clearCache) this.clearCache();
-      this._hideSettingsWindow();
-    });
-  }
-  if (noBtn) {
-    noBtn.addEventListener('click', () => {
-      this._hideSettingsWindow();
-    });
-  }
+		if (yesBtn) {
+			yesBtn.addEventListener('click', () => {
+				if (this.clearCache) this.clearCache();
+				this._hideSettingsWindow();
+			});
+		}
+		if (noBtn) {
+			noBtn.addEventListener('click', () => {
+				this._hideSettingsWindow();
+			});
+		}
 
-  this.settingsWindow.style.display = 'block';
-  this._positionSettingsWindow();
-};
+		this.settingsWindow.style.display = 'block';
+		this._positionSettingsWindow();
+	};
 
-VGMPlay_js.prototype._positionSettingsWindow = function () {
-  if (!this.settingsWindow || !this.playerWindow) return;
-  if (this.settingsWindow.style.display === 'none') return;
+	VGMPlay_js.prototype._positionSettingsWindow = function () {
+		if (!this.settingsWindow || !this.playerWindow) return;
+		if (this.settingsWindow.style.display === 'none') return;
 
-  const playerRect = this.playerWindow.getBoundingClientRect();
-  const skippedVisible = this.skippedWindowVisible && this.skippedWindow && this.skippedWindow.style.display !== 'none';
+		const playerRect = this.playerWindow.getBoundingClientRect();
+		const skippedVisible = this.skippedWindowVisible && this.skippedWindow && this.skippedWindow.style.display !== 'none';
 
-  if (skippedVisible) {
-    const skippedRect = this.skippedWindow.getBoundingClientRect();
-    this.settingsWindow.style.position = 'fixed';
-    this.settingsWindow.style.left = skippedRect.left + 'px';
-    this.settingsWindow.style.top = (skippedRect.bottom + 10) + 'px';
-  } else {
-    this.settingsWindow.style.position = 'fixed';
-    this.settingsWindow.style.left = playerRect.right + 10 + 'px';
-    this.settingsWindow.style.top = playerRect.top + 'px';
-  }
-};
+		if (skippedVisible) {
+			const skippedRect = this.skippedWindow.getBoundingClientRect();
+			this.settingsWindow.style.position = 'fixed';
+			this.settingsWindow.style.left = skippedRect.left + 'px';
+			this.settingsWindow.style.top = (skippedRect.bottom + 10) + 'px';
+		} else {
+			this.settingsWindow.style.position = 'fixed';
+			this.settingsWindow.style.left = playerRect.right + 10 + 'px';
+			this.settingsWindow.style.top = playerRect.top + 'px';
+		}
+	};
 
 	VGMPlay_js.prototype._setupTooltips = function () {
 		const buttons = this.playerWindow.querySelectorAll('button');
@@ -481,6 +488,7 @@ VGMPlay_js.prototype._positionSettingsWindow = function () {
 			'btnReverb': 'Reverb (V)',
 			'btnRandom': 'Shuffle game/all (R)',
 			'btnLoop': 'Loop track/game (L)',
+			'btnAdditional': 'Additional Information (A)',
 			'btnLibrary': 'Toggle Float/Library (F)',
 			'btnSearch': 'Search (S)',
 			'btnSettings': 'Settings'
@@ -530,13 +538,13 @@ VGMPlay_js.prototype._positionSettingsWindow = function () {
 		}
 	};
 
-VGMPlay_js.prototype.toggleSettingsMenu = function () {
-  if (this.settingsWindow && this.settingsWindow.style.display !== 'none') {
-    this._hideSettingsWindow();
-  } else {
-    this._showSettingsWindow();
-  }
-};
+	VGMPlay_js.prototype.toggleSettingsMenu = function () {
+		if (this.settingsWindow && this.settingsWindow.style.display !== 'none') {
+			this._hideSettingsWindow();
+		} else {
+			this._showSettingsWindow();
+		}
+	};
 
 	VGMPlay_js.prototype._dumpDebugSnapshot = function () {
 		let snapshot = null;
@@ -558,61 +566,61 @@ VGMPlay_js.prototype.toggleSettingsMenu = function () {
 		this._renderSkippedDownloads();
 	};
 
-VGMPlay_js.prototype._runCacheIntegrityCheck = async function () {
-  const games = Array.isArray(this.games) ? this.games : [];
-  const filePaths = [];
-  const coverPaths = [];
-  for (const g of games) {
-    if (!g) continue;
-    if (g.coverPath) coverPaths.push(g.coverPath);
-    const files = Array.isArray(g.files) ? g.files : [];
-    for (const f of files) {
-      if (f && f.filepath) filePaths.push(f.filepath);
-    }
-  }
-  const allPaths = Array.from(new Set([...filePaths, ...coverPaths]));
-  let missingLocal = [];
-  let zeroLocal = [];
-  for (const p of allPaths) {
-    try {
-      const info = FS.analyzePath(p);
-      if (!info.exists) {
-        missingLocal.push(p);
-      } else if (info.object && info.object.contents && info.object.contents.byteLength === 0) {
-        zeroLocal.push(p);
-      } else if (info.object && info.object.usedBytes === 0) {
-        zeroLocal.push(p);
-      }
-    } catch (e) {
-      missingLocal.push(p);
-    }
-  }
-  let missingShared = [];
-  if (this._cacheBridgeAvailable && this._cacheBridgeAvailable()) {
-    try {
-      missingShared = await this._cacheBridgeMissing(allPaths);
-    } catch (e) {
-      missingShared = [];
-    }
-  }
-  const summary = {
-    games: games.length,
-    files: filePaths.length,
-    covers: coverPaths.length,
-    missingLocal: missingLocal.length,
-    zeroLocal: zeroLocal.length,
-    missingShared: missingShared.length
-  };
-	this._log && this._log('CACHE', 'Cache integrity check:', summary, {
-		sampleMissingLocal: missingLocal.slice(0, 10),
-		sampleZeroLocal: zeroLocal.slice(0, 10),
-		sampleMissingShared: missingShared.slice(0, 10)
-	});
-  this._settingsStatusText = `Integrity: ${summary.files + summary.covers} items, local missing ${summary.missingLocal}, shared missing ${summary.missingShared}.`;
-  if (this.settingsWindow && this.settingsWindow.style.display !== 'none') {
-    this._showSettingsWindow();
-  }
-};
+	VGMPlay_js.prototype._runCacheIntegrityCheck = async function () {
+		const games = Array.isArray(this.games) ? this.games : [];
+		const filePaths = [];
+		const coverPaths = [];
+		for (const g of games) {
+			if (!g) continue;
+			if (g.coverPath) coverPaths.push(g.coverPath);
+			const files = Array.isArray(g.files) ? g.files : [];
+			for (const f of files) {
+				if (f && f.filepath) filePaths.push(f.filepath);
+			}
+		}
+		const allPaths = Array.from(new Set([...filePaths, ...coverPaths]));
+		let missingLocal = [];
+		let zeroLocal = [];
+		for (const p of allPaths) {
+			try {
+				const info = FS.analyzePath(p);
+				if (!info.exists) {
+					missingLocal.push(p);
+				} else if (info.object && info.object.contents && info.object.contents.byteLength === 0) {
+					zeroLocal.push(p);
+				} else if (info.object && info.object.usedBytes === 0) {
+					zeroLocal.push(p);
+				}
+			} catch (e) {
+				missingLocal.push(p);
+			}
+		}
+		let missingShared = [];
+		if (this._cacheBridgeAvailable && this._cacheBridgeAvailable()) {
+			try {
+				missingShared = await this._cacheBridgeMissing(allPaths);
+			} catch (e) {
+				missingShared = [];
+			}
+		}
+		const summary = {
+			games: games.length,
+			files: filePaths.length,
+			covers: coverPaths.length,
+			missingLocal: missingLocal.length,
+			zeroLocal: zeroLocal.length,
+			missingShared: missingShared.length
+		};
+		this._log && this._log('CACHE', 'Cache integrity check:', summary, {
+			sampleMissingLocal: missingLocal.slice(0, 10),
+			sampleZeroLocal: zeroLocal.slice(0, 10),
+			sampleMissingShared: missingShared.slice(0, 10)
+		});
+		this._settingsStatusText = `Integrity: ${summary.files + summary.covers} items, local missing ${summary.missingLocal}, shared missing ${summary.missingShared}.`;
+		if (this.settingsWindow && this.settingsWindow.style.display !== 'none') {
+			this._showSettingsWindow();
+		}
+	};
 
 	VGMPlay_js.prototype._applyGameSearchFilter = function () {
 		const query = (this.searchQuery || '').toLowerCase();
@@ -635,21 +643,22 @@ VGMPlay_js.prototype._runCacheIntegrityCheck = async function () {
 		}
 	};
 
-VGMPlay_js.prototype._renderSkippedDownloads = function () {
-  if (!this.skippedList) return;
-  this.skippedList.innerHTML = '';
-  this._updateSkippedTitle();
-  this._updateSkippedNotice();
-  if (this.skippedAutoLimit) {
-    this._renderAutoLimitNotice();
-  }
-  if (this.skippedCacheClear) {
-    this._renderCacheClearPrompt();
-  }
+	VGMPlay_js.prototype._renderSkippedDownloads = function () {
+		if (!this.skippedList) return;
+		this.skippedList.innerHTML = '';
+		this._updateSkippedTitle();
+		this._updateSkippedNotice();
+		this._updateSkippedCacheSize();
+		if (this.skippedAutoLimit) {
+			this._renderAutoLimitNotice();
+		}
+		if (this.skippedCacheClear) {
+			this._renderCacheClearPrompt();
+		}
 
-  if (this.skippedContentEl) {
-    this.skippedContentEl.innerHTML = '';
-  }
+		if (this.skippedContentEl) {
+			this.skippedContentEl.innerHTML = '';
+		}
 
 		if (this._settingsMenuVisible) {
 			if (this.skippedNotice) this.skippedNotice.style.display = 'none';
@@ -749,6 +758,19 @@ VGMPlay_js.prototype._renderSkippedDownloads = function () {
 		}
 	};
 
+	VGMPlay_js.prototype.toggleSkippedWindow = function () {
+		if (this.skippedWindowVisible) {
+			this._hideSkippedWindow(true);
+		} else {
+			if (!this.skippedWindow) return;
+			// Ensure it has something to show
+			this._renderSkippedDownloads();
+			this.skippedWindow.style.display = 'block';
+			this.skippedWindowVisible = true;
+			this._positionSkippedWindow();
+		}
+	};
+
 	VGMPlay_js.prototype._updateSkippedAutoHide = function () {
 		if (!this.skippedWindowVisible) return;
 		const needsAction = this.skippedDownloads.length > 0 || this.autoOverflowURLs.length > 0 || this._cacheClearPromptVisible || this._settingsMenuVisible;
@@ -781,6 +803,20 @@ VGMPlay_js.prototype._renderSkippedDownloads = function () {
 	VGMPlay_js.prototype._updateSkippedNotice = function () {
 		if (!this.skippedNotice) return;
 		this.skippedNotice.style.display = (this.skippedDownloads.length > 0) ? 'block' : 'none';
+	};
+
+	VGMPlay_js.prototype._updateSkippedCacheSize = function () {
+		if (!this.skippedCacheSize || !this._getTotalCacheSize) return;
+		const totalBytes = this._getTotalCacheSize();
+		this.skippedCacheSize.innerHTML = `<div class="vgmplaySkippedCacheSizeText">Total Cache Size: ${this._formatBytes(totalBytes)}</div>`;
+	};
+
+	VGMPlay_js.prototype._formatBytes = function (bytes) {
+		if (bytes === 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 	};
 
 	VGMPlay_js.prototype._renderAutoLimitNotice = function () {
@@ -832,7 +868,7 @@ VGMPlay_js.prototype._renderSkippedDownloads = function () {
 		this._updateSkippedAutoHide();
 	};
 
-VGMPlay_js.prototype._addSkippedDownload = function (url, size) {
+	VGMPlay_js.prototype._addSkippedDownload = function (url, size) {
 		const existing = this.skippedDownloads.find((x) => x.url === url);
 		if (existing) return;
 		const name = this._getFileNameFromUrl(url);
@@ -840,36 +876,36 @@ VGMPlay_js.prototype._addSkippedDownload = function (url, size) {
 		this.skippedDownloads.push({ url, name, sizeMB });
 		this._showSkippedWindow();
 		this._renderSkippedDownloads();
-};
+	};
 
-VGMPlay_js.prototype._addInfoNotice = function (msg) {
-  if (!msg) return;
-  if (this.noPlayableNotices.includes(msg)) return;
-  this.noPlayableNotices.push(msg);
-  this._showSkippedWindow();
-  this._renderSkippedDownloads();
-};
+	VGMPlay_js.prototype._addInfoNotice = function (msg) {
+		if (!msg) return;
+		if (this.noPlayableNotices.includes(msg)) return;
+		this.noPlayableNotices.push(msg);
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	};
 
-VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {
-	const safeName = name || 'File';
-	let msg = `${safeName} did not contain playable music for VGMPlay!`;
-	if (opts && opts.isMuntRom) {
-	msg = opts.fromCache
-	? `Munt ROM file ${safeName} loaded from cache.`
-	: `Munt ROM file ${safeName} uploaded and saved to root.`;
-	} else if (opts && opts.isRom) {
-	const lower = String(safeName).toLowerCase();
-	if (lower === 'yrw801.rom') {
-	msg = opts.fromCache
-	? `yrw801.rom loaded from cache, playback of VGM files using YMF278B will work now.`
-	: `yrw801.rom loaded, playback of VGM files using YMF278B will work now.`;
-	}
-	} else if (opts && opts.isMidiArchive) {
-	msg = `${safeName} contains MIDI only. Playback not supported yet.`;
-	} else if ((opts && opts.isMidi) || (this._isMidiFile && this._isMidiFile(safeName))) {
-	const typeLabel = (opts && opts.typeLabel) ? opts.typeLabel : 'MIDI';
-	msg = `${safeName} is ${typeLabel}. Playback not supported yet.`;
-	}
+	VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {
+		const safeName = name || 'File';
+		let msg = `${safeName} did not contain playable music for VGMPlay!`;
+		if (opts && opts.isMuntRom) {
+			msg = opts.fromCache
+				? `Munt ROM file ${safeName} loaded from cache.`
+				: `Munt ROM file ${safeName} uploaded and saved to root.`;
+		} else if (opts && opts.isRom) {
+			const lower = String(safeName).toLowerCase();
+			if (lower === 'yrw801.rom') {
+				msg = opts.fromCache
+					? `yrw801.rom loaded from cache, playback of VGM files using YMF278B will work now.`
+					: `yrw801.rom loaded, playback of VGM files using YMF278B will work now.`;
+			}
+		} else if (opts && opts.isMidiArchive) {
+			msg = `${safeName} contains MIDI only. Playback not supported yet.`;
+		} else if ((opts && opts.isMidi) || (this._isMidiFile && this._isMidiFile(safeName))) {
+			const typeLabel = (opts && opts.typeLabel) ? opts.typeLabel : 'MIDI';
+			msg = `${safeName} is ${typeLabel}. Playback not supported yet.`;
+		}
 		if (this.noPlayableNotices.includes(msg)) return;
 		this.noPlayableNotices.push(msg);
 		this._showSkippedWindow();
@@ -1027,83 +1063,83 @@ VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {
 				}
 			}
 
-if (this.isExtension && !this.standalone) {
-    const playerRect = this.playerWindow.getBoundingClientRect();
-    const skippedWidth = this.skippedWindow.offsetWidth;
-    const desiredLeft = playerRect.right + gap;
-    const maxLeft = Math.max(0, window.innerWidth - skippedWidth - 8);
-    this.skippedWindow.style.position = 'fixed';
-    this.skippedWindow.style.right = 'auto';
-    this.skippedWindow.style.left = Math.min(desiredLeft, maxLeft) + "px";
-    this.skippedWindow.style.top = playerRect.top + "px";
-    return;
-  }
+			if (this.isExtension && !this.standalone) {
+				const playerRect = this.playerWindow.getBoundingClientRect();
+				const skippedWidth = this.skippedWindow.offsetWidth;
+				const desiredLeft = playerRect.right + gap;
+				const maxLeft = Math.max(0, window.innerWidth - skippedWidth - 8);
+				this.skippedWindow.style.position = 'fixed';
+				this.skippedWindow.style.right = 'auto';
+				this.skippedWindow.style.left = Math.min(desiredLeft, maxLeft) + "px";
+				this.skippedWindow.style.top = playerRect.top + "px";
+				return;
+			}
 
-  if (isMobile) {
-    this.skippedWindow.style.left = playerLeft + "px";
-    const desiredTop = playerTop - this.skippedWindow.offsetHeight - gap;
-    this.skippedWindow.style.top = Math.max(0, desiredTop) + "px";
-  } else {
-    const desiredLeft = playerLeft + playerWidth + gap;
-    this.skippedWindow.style.right = "auto";
-    this.skippedWindow.style.left = desiredLeft + "px";
-    this.skippedWindow.style.top = playerTop + "px";
-  }
-});
+			if (isMobile) {
+				this.skippedWindow.style.left = playerLeft + "px";
+				const desiredTop = playerTop - this.skippedWindow.offsetHeight - gap;
+				this.skippedWindow.style.top = Math.max(0, desiredTop) + "px";
+			} else {
+				const desiredLeft = playerLeft + playerWidth + gap;
+				this.skippedWindow.style.right = "auto";
+				this.skippedWindow.style.left = desiredLeft + "px";
+				this.skippedWindow.style.top = playerTop + "px";
+			}
+		});
 
-VGMPlay_js.prototype._showExportModal = function () {
-  if (this._exportModalVisible) return;
-  this._exportModalVisible = true;
-  this._exportSelectedGames = new Set();
-  this._renderExportModal();
-};
+		VGMPlay_js.prototype._showExportModal = function () {
+			if (this._exportModalVisible) return;
+			this._exportModalVisible = true;
+			this._exportSelectedGames = new Set();
+			this._renderExportModal();
+		};
 
-VGMPlay_js.prototype._hideExportModal = function () {
-  this._exportModalVisible = false;
-  if (this._exportModalEl) {
-    this._exportModalEl.remove();
-    this._exportModalEl = null;
-  }
-  this._exportSelectedGames = null;
-};
+		VGMPlay_js.prototype._hideExportModal = function () {
+			this._exportModalVisible = false;
+			if (this._exportModalEl) {
+				this._exportModalEl.remove();
+				this._exportModalEl = null;
+			}
+			this._exportSelectedGames = null;
+		};
 
-VGMPlay_js.prototype._renderExportModal = function () {
-  if (!this._exportModalVisible) return;
+		VGMPlay_js.prototype._renderExportModal = function () {
+			if (!this._exportModalVisible) return;
 
-  let modal = this._exportModalEl;
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.className = 'vgmplayExportModal';
-    this._exportModalEl = modal;
-    if (this.vgmplayContainer) {
-      this.vgmplayContainer.appendChild(modal);
-    } else if (this.shadowRoot) {
-      this.shadowRoot.appendChild(modal);
-    } else {
-      document.body.appendChild(modal);
-    }
-  }
+			let modal = this._exportModalEl;
+			if (!modal) {
+				modal = document.createElement('div');
+				modal.className = 'vgmplayExportModal';
+				this._exportModalEl = modal;
+				if (this.vgmplayContainer) {
+					this.vgmplayContainer.appendChild(modal);
+				} else if (this.shadowRoot) {
+					this.shadowRoot.appendChild(modal);
+				} else {
+					document.body.appendChild(modal);
+				}
+			}
 
-  const games = Array.isArray(this.games) ? this.games : [];
-  const unexportedGames = games.filter(g => g && !g._exported);
-  const allSelected = this._exportSelectedGames ? this._exportSelectedGames.size === games.length : false;
+			const games = Array.isArray(this.games) ? this.games : [];
+			const unexportedGames = games.filter(g => g && !g._exported);
+			const allSelected = this._exportSelectedGames ? this._exportSelectedGames.size === games.length : false;
 
-  let listHtml = '';
-  for (const game of games) {
-    if (!game) continue;
-    const name = game.name || game.archiveName || 'Unknown';
-    const selected = this._exportSelectedGames && this._exportSelectedGames.has(game);
-    const exported = game._exported;
-    listHtml += `
+			let listHtml = '';
+			for (const game of games) {
+				if (!game) continue;
+				const name = game.name || game.archiveName || 'Unknown';
+				const selected = this._exportSelectedGames && this._exportSelectedGames.has(game);
+				const exported = game._exported;
+				listHtml += `
       <div class="vgmplayExportGameRow" data-game-id="${game._id || games.indexOf(game)}">
         <input type="checkbox" class="vgmplayExportGameCheckbox" ${selected ? 'checked' : ''} ${exported ? 'data-exported="true"' : ''}>
         <span class="vgmplayExportGameName">${this._escapeHtml(name)}</span>
         ${exported ? '<span class="vgmplayExportGameBadge">Exported</span>' : ''}
       </div>
     `;
-  }
+			}
 
-  modal.innerHTML = `
+			modal.innerHTML = `
     <div class="vgmplayExportModalContent">
       <div class="vgmplayExportModalHeader">
         <h3>Export Music</h3>
@@ -1125,288 +1161,288 @@ VGMPlay_js.prototype._renderExportModal = function () {
     </div>
   `;
 
-  this._bindExportModalEvents();
-};
+			this._bindExportModalEvents();
+		};
 
-VGMPlay_js.prototype._bindExportModalEvents = function () {
-  const modal = this._exportModalEl;
-  if (!modal) return;
+		VGMPlay_js.prototype._bindExportModalEvents = function () {
+			const modal = this._exportModalEl;
+			if (!modal) return;
 
-  const closeBtn = modal.querySelector('.vgmplayExportModalClose');
-  const cancelBtn = modal.querySelector('.vgmplayExportCancel');
-  const exportNowBtn = modal.querySelector('.vgmplayExportNow');
-  const selectAllBtn = modal.querySelector('.vgmplayExportSelectAll');
-  const selectNewBtn = modal.querySelector('.vgmplayExportSelectNew');
-  const deselectAllBtn = modal.querySelector('.vgmplayExportDeselectAll');
-  const gameCheckboxes = modal.querySelectorAll('.vgmplayExportGameCheckbox');
+			const closeBtn = modal.querySelector('.vgmplayExportModalClose');
+			const cancelBtn = modal.querySelector('.vgmplayExportCancel');
+			const exportNowBtn = modal.querySelector('.vgmplayExportNow');
+			const selectAllBtn = modal.querySelector('.vgmplayExportSelectAll');
+			const selectNewBtn = modal.querySelector('.vgmplayExportSelectNew');
+			const deselectAllBtn = modal.querySelector('.vgmplayExportDeselectAll');
+			const gameCheckboxes = modal.querySelectorAll('.vgmplayExportGameCheckbox');
 
-  if (closeBtn) closeBtn.addEventListener('click', () => this._hideExportModal());
-  if (cancelBtn) cancelBtn.addEventListener('click', () => this._hideExportModal());
+			if (closeBtn) closeBtn.addEventListener('click', () => this._hideExportModal());
+			if (cancelBtn) cancelBtn.addEventListener('click', () => this._hideExportModal());
 
-  if (selectAllBtn) {
-    selectAllBtn.addEventListener('click', () => {
-      const games = Array.isArray(this.games) ? this.games : [];
-      this._exportSelectedGames = new Set(games.filter(g => g));
-      this._renderExportModal();
-    });
-  }
+			if (selectAllBtn) {
+				selectAllBtn.addEventListener('click', () => {
+					const games = Array.isArray(this.games) ? this.games : [];
+					this._exportSelectedGames = new Set(games.filter(g => g));
+					this._renderExportModal();
+				});
+			}
 
-  if (selectNewBtn) {
-    selectNewBtn.addEventListener('click', () => {
-      const games = Array.isArray(this.games) ? this.games : [];
-      this._exportSelectedGames = new Set(games.filter(g => g && !g._exported));
-      this._renderExportModal();
-    });
-  }
+			if (selectNewBtn) {
+				selectNewBtn.addEventListener('click', () => {
+					const games = Array.isArray(this.games) ? this.games : [];
+					this._exportSelectedGames = new Set(games.filter(g => g && !g._exported));
+					this._renderExportModal();
+				});
+			}
 
-  if (deselectAllBtn) {
-    deselectAllBtn.addEventListener('click', () => {
-      this._exportSelectedGames = new Set();
-      this._renderExportModal();
-    });
-  }
+			if (deselectAllBtn) {
+				deselectAllBtn.addEventListener('click', () => {
+					this._exportSelectedGames = new Set();
+					this._renderExportModal();
+				});
+			}
 
-  gameCheckboxes.forEach((cb, idx) => {
-    cb.addEventListener('change', (e) => {
-      const games = Array.isArray(this.games) ? this.games : [];
-      const game = games[idx];
-      if (!game) return;
-      if (e.target.checked) {
-        this._exportSelectedGames.add(game);
-      } else {
-        this._exportSelectedGames.delete(game);
-      }
-      const listEl = modal.querySelector('.vgmplayExportGameList');
-      const scrollTop = listEl ? listEl.scrollTop : 0;
-      this._renderExportModal();
-      const newListEl = this._exportModalEl ? this._exportModalEl.querySelector('.vgmplayExportGameList') : null;
-      if (newListEl) newListEl.scrollTop = scrollTop;
-    });
-  });
+			gameCheckboxes.forEach((cb, idx) => {
+				cb.addEventListener('change', (e) => {
+					const games = Array.isArray(this.games) ? this.games : [];
+					const game = games[idx];
+					if (!game) return;
+					if (e.target.checked) {
+						this._exportSelectedGames.add(game);
+					} else {
+						this._exportSelectedGames.delete(game);
+					}
+					const listEl = modal.querySelector('.vgmplayExportGameList');
+					const scrollTop = listEl ? listEl.scrollTop : 0;
+					this._renderExportModal();
+					const newListEl = this._exportModalEl ? this._exportModalEl.querySelector('.vgmplayExportGameList') : null;
+					if (newListEl) newListEl.scrollTop = scrollTop;
+				});
+			});
 
-  if (exportNowBtn && !exportNowBtn.classList.contains('disabled')) {
-    exportNowBtn.addEventListener('click', () => this._performExport());
-  }
-};
+			if (exportNowBtn && !exportNowBtn.classList.contains('disabled')) {
+				exportNowBtn.addEventListener('click', () => this._performExport());
+			}
+		};
 
-VGMPlay_js.prototype._escapeHtml = function (text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-};
+		VGMPlay_js.prototype._escapeHtml = function (text) {
+			const div = document.createElement('div');
+			div.textContent = text;
+			return div.innerHTML;
+		};
 
-VGMPlay_js.prototype._performExport = async function () {
-  const selectedGames = Array.from(this._exportSelectedGames || []);
-  if (selectedGames.length === 0) {
-    this._exportStatusText = 'No games selected';
-    this._renderExportModal();
-    return;
-  }
+		VGMPlay_js.prototype._performExport = async function () {
+			const selectedGames = Array.from(this._exportSelectedGames || []);
+			if (selectedGames.length === 0) {
+				this._exportStatusText = 'No games selected';
+				this._renderExportModal();
+				return;
+			}
 
-  this._exportStatusText = 'Preparing export...';
-  this._renderExportModal();
+			this._exportStatusText = 'Preparing export...';
+			this._renderExportModal();
 
-  try {
-    const zip = await this._createExportZip(selectedGames);
-    const blob = new Blob([zip], { type: 'application/zip' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'vgmplay-export-' + new Date().toISOString().slice(0, 10) + '.zip';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+			try {
+				const zip = await this._createExportZip(selectedGames);
+				const blob = new Blob([zip], { type: 'application/zip' });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = 'vgmplay-export-' + new Date().toISOString().slice(0, 10) + '.zip';
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
 
-    for (const game of selectedGames) {
-      if (game) game._exported = true;
-    }
+				for (const game of selectedGames) {
+					if (game) game._exported = true;
+				}
 
-    this._exportStatusText = `Exported ${selectedGames.length} game(s)`;
-    this._renderExportModal();
-	} catch (err) {
-		this._logError && this._logError('UI', 'Export failed:', err);
-		this._exportStatusText = 'Export failed: ' + err.message;
-    this._renderExportModal();
-  }
-};
+				this._exportStatusText = `Exported ${selectedGames.length} game(s)`;
+				this._renderExportModal();
+			} catch (err) {
+				this._logError && this._logError('UI', 'Export failed:', err);
+				this._exportStatusText = 'Export failed: ' + err.message;
+				this._renderExportModal();
+			}
+		};
 
-VGMPlay_js.prototype._createExportZip = async function (games) {
-  const addedPaths = new Set();
-  const files = [];
+		VGMPlay_js.prototype._createExportZip = async function (games) {
+			const addedPaths = new Set();
+			const files = [];
 
-  for (const game of games) {
-    if (!game) continue;
-    const gameName = game.name || game.archiveName || 'Unknown';
-    const safeName = gameName.replace(/[<>:"/\\|?*]/g, '_');
-    const gamePath = safeName;
+			for (const game of games) {
+				if (!game) continue;
+				const gameName = game.name || game.archiveName || 'Unknown';
+				const safeName = gameName.replace(/[<>:"/\\|?*]/g, '_');
+				const gamePath = safeName;
 
-    const coverPath = game.coverPath || game.png;
-    if (coverPath) {
-      try {
-        const data = FS.readFile(coverPath);
-        const ext = coverPath.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
-        const coverFile = gamePath + '/cover.' + ext;
-        if (!addedPaths.has(coverFile)) {
-          files.push({ path: coverFile, data: new Uint8Array(data) });
-          addedPaths.add(coverFile);
-        }
-      } catch (e) { }
-    }
+				const coverPath = game.coverPath || game.png;
+				if (coverPath) {
+					try {
+						const data = FS.readFile(coverPath);
+						const ext = coverPath.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+						const coverFile = gamePath + '/cover.' + ext;
+						if (!addedPaths.has(coverFile)) {
+							files.push({ path: coverFile, data: new Uint8Array(data) });
+							addedPaths.add(coverFile);
+						}
+					} catch (e) { }
+				}
 
-    const gameFiles = Array.isArray(game.files) ? game.files : [];
-    for (const file of gameFiles) {
-      if (!file || !file.filepath) continue;
-      try {
-        const data = FS.readFile(file.filepath);
-        const fileName = file.filepath.split('/').pop();
-        const filePath = gamePath + '/' + fileName;
-        if (!addedPaths.has(filePath)) {
-          files.push({ path: filePath, data: new Uint8Array(data) });
-          addedPaths.add(filePath);
-        }
-      } catch (e) { }
-    }
+				const gameFiles = Array.isArray(game.files) ? game.files : [];
+				for (const file of gameFiles) {
+					if (!file || !file.filepath) continue;
+					try {
+						const data = FS.readFile(file.filepath);
+						const fileName = file.filepath.split('/').pop();
+						const filePath = gamePath + '/' + fileName;
+						if (!addedPaths.has(filePath)) {
+							files.push({ path: filePath, data: new Uint8Array(data) });
+							addedPaths.add(filePath);
+						}
+					} catch (e) { }
+				}
 
-    const meta = {
-      name: game.name,
-      archiveName: game.archiveName,
-      exportedAt: new Date().toISOString()
-    };
-    const metaJson = JSON.stringify(meta, null, 2);
-    const metaFile = gamePath + '/game.json';
-    if (!addedPaths.has(metaFile)) {
-      files.push({ path: metaFile, data: new TextEncoder().encode(metaJson) });
-      addedPaths.add(metaFile);
-    }
-  }
+				const meta = {
+					name: game.name,
+					archiveName: game.archiveName,
+					exportedAt: new Date().toISOString()
+				};
+				const metaJson = JSON.stringify(meta, null, 2);
+				const metaFile = gamePath + '/game.json';
+				if (!addedPaths.has(metaFile)) {
+					files.push({ path: metaFile, data: new TextEncoder().encode(metaJson) });
+					addedPaths.add(metaFile);
+				}
+			}
 
-  const zipBlob = this._createZipBlob(files);
-  return zipBlob;
-};
+			const zipBlob = this._createZipBlob(files);
+			return zipBlob;
+		};
 
-VGMPlay_js.prototype._createZipBlob = function (files) {
-  const encoder = new TextEncoder();
-  const localFileHeaders = [];
-  const centralDirectory = [];
-  let offset = 0;
+		VGMPlay_js.prototype._createZipBlob = function (files) {
+			const encoder = new TextEncoder();
+			const localFileHeaders = [];
+			const centralDirectory = [];
+			let offset = 0;
 
-  const crcTable = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) {
-      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-    }
-    crcTable[i] = c;
-  }
+			const crcTable = new Uint32Array(256);
+			for (let i = 0; i < 256; i++) {
+				let c = i;
+				for (let j = 0; j < 8; j++) {
+					c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+				}
+				crcTable[i] = c;
+			}
 
-  function crc32(data) {
-    let crc = 0xFFFFFFFF;
-    for (let i = 0; i < data.length; i++) {
-      crc = crcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
-    }
-    return (crc ^ 0xFFFFFFFF) >>> 0;
-  }
+			function crc32(data) {
+				let crc = 0xFFFFFFFF;
+				for (let i = 0; i < data.length; i++) {
+					crc = crcTable[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+				}
+				return (crc ^ 0xFFFFFFFF) >>> 0;
+			}
 
-  function writeUint32LE(arr, pos, val) {
-    arr[pos] = val & 0xFF;
-    arr[pos + 1] = (val >>> 8) & 0xFF;
-    arr[pos + 2] = (val >>> 16) & 0xFF;
-    arr[pos + 3] = (val >>> 24) & 0xFF;
-  }
+			function writeUint32LE(arr, pos, val) {
+				arr[pos] = val & 0xFF;
+				arr[pos + 1] = (val >>> 8) & 0xFF;
+				arr[pos + 2] = (val >>> 16) & 0xFF;
+				arr[pos + 3] = (val >>> 24) & 0xFF;
+			}
 
-  function writeUint16LE(arr, pos, val) {
-    arr[pos] = val & 0xFF;
-    arr[pos + 1] = (val >>> 8) & 0xFF;
-  }
+			function writeUint16LE(arr, pos, val) {
+				arr[pos] = val & 0xFF;
+				arr[pos + 1] = (val >>> 8) & 0xFF;
+			}
 
-  for (const file of files) {
-    const pathBytes = encoder.encode(file.path);
-    const crc = crc32(file.data);
-    const compressed = file.data;
+			for (const file of files) {
+				const pathBytes = encoder.encode(file.path);
+				const crc = crc32(file.data);
+				const compressed = file.data;
 
-    const localHeader = new Uint8Array(30 + pathBytes.length);
-    writeUint32LE(localHeader, 0, 0x04034B50);
-    writeUint16LE(localHeader, 4, 20);
-    writeUint16LE(localHeader, 6, 0);
-    writeUint16LE(localHeader, 8, 0);
-    writeUint16LE(localHeader, 10, 0);
-    writeUint32LE(localHeader, 12, crc);
-    writeUint32LE(localHeader, 16, compressed.length);
-    writeUint32LE(localHeader, 20, file.data.length);
-    writeUint16LE(localHeader, 24, pathBytes.length);
-    writeUint16LE(localHeader, 26, 0);
-    localHeader.set(pathBytes, 30);
+				const localHeader = new Uint8Array(30 + pathBytes.length);
+				writeUint32LE(localHeader, 0, 0x04034B50);
+				writeUint16LE(localHeader, 4, 20);
+				writeUint16LE(localHeader, 6, 0);
+				writeUint16LE(localHeader, 8, 0);
+				writeUint16LE(localHeader, 10, 0);
+				writeUint32LE(localHeader, 12, crc);
+				writeUint32LE(localHeader, 16, compressed.length);
+				writeUint32LE(localHeader, 20, file.data.length);
+				writeUint16LE(localHeader, 24, pathBytes.length);
+				writeUint16LE(localHeader, 26, 0);
+				localHeader.set(pathBytes, 30);
 
-    localFileHeaders.push({
-      header: localHeader,
-      path: pathBytes,
-      data: compressed,
-      crc: crc,
-      offset: offset,
-      pathStr: file.path
-    });
+				localFileHeaders.push({
+					header: localHeader,
+					path: pathBytes,
+					data: compressed,
+					crc: crc,
+					offset: offset,
+					pathStr: file.path
+				});
 
-    offset += 30 + pathBytes.length + compressed.length;
-  }
+				offset += 30 + pathBytes.length + compressed.length;
+			}
 
-  const centralDirStart = offset;
-  for (const f of localFileHeaders) {
-    const centralHeader = new Uint8Array(46 + f.path.length);
-    writeUint32LE(centralHeader, 0, 0x02014B50);
-    writeUint16LE(centralHeader, 4, 20);
-    writeUint16LE(centralHeader, 6, 20);
-    writeUint16LE(centralHeader, 8, 0);
-    writeUint16LE(centralHeader, 10, 0);
-    writeUint16LE(centralHeader, 12, 0);
-    writeUint32LE(centralHeader, 14, f.crc);
-    writeUint32LE(centralHeader, 18, f.data.length);
-    writeUint32LE(centralHeader, 22, f.data.length);
-    writeUint16LE(centralHeader, 26, f.path.length);
-    writeUint16LE(centralHeader, 28, 0);
-    writeUint16LE(centralHeader, 30, 0);
-    writeUint16LE(centralHeader, 32, 0);
-    writeUint16LE(centralHeader, 34, 0);
-    writeUint32LE(centralHeader, 36, 0);
-    writeUint32LE(centralHeader, 40, f.offset);
-    centralHeader.set(f.path, 46);
+			const centralDirStart = offset;
+			for (const f of localFileHeaders) {
+				const centralHeader = new Uint8Array(46 + f.path.length);
+				writeUint32LE(centralHeader, 0, 0x02014B50);
+				writeUint16LE(centralHeader, 4, 20);
+				writeUint16LE(centralHeader, 6, 20);
+				writeUint16LE(centralHeader, 8, 0);
+				writeUint16LE(centralHeader, 10, 0);
+				writeUint16LE(centralHeader, 12, 0);
+				writeUint32LE(centralHeader, 14, f.crc);
+				writeUint32LE(centralHeader, 18, f.data.length);
+				writeUint32LE(centralHeader, 22, f.data.length);
+				writeUint16LE(centralHeader, 26, f.path.length);
+				writeUint16LE(centralHeader, 28, 0);
+				writeUint16LE(centralHeader, 30, 0);
+				writeUint16LE(centralHeader, 32, 0);
+				writeUint16LE(centralHeader, 34, 0);
+				writeUint32LE(centralHeader, 36, 0);
+				writeUint32LE(centralHeader, 40, f.offset);
+				centralHeader.set(f.path, 46);
 
-    centralDirectory.push({
-      header: centralHeader,
-      path: f.path
-    });
-    offset += 46 + f.path.length;
-  }
+				centralDirectory.push({
+					header: centralHeader,
+					path: f.path
+				});
+				offset += 46 + f.path.length;
+			}
 
-  const centralDirEnd = offset;
-  const endRecord = new Uint8Array(22);
-  writeUint32LE(endRecord, 0, 0x06054B50);
-  writeUint16LE(endRecord, 4, 0);
-  writeUint16LE(endRecord, 6, 0);
-  writeUint16LE(endRecord, 8, localFileHeaders.length);
-  writeUint16LE(endRecord, 10, localFileHeaders.length);
-  writeUint32LE(endRecord, 12, centralDirEnd - centralDirStart);
-  writeUint32LE(endRecord, 16, centralDirStart);
-  writeUint16LE(endRecord, 20, 0);
+			const centralDirEnd = offset;
+			const endRecord = new Uint8Array(22);
+			writeUint32LE(endRecord, 0, 0x06054B50);
+			writeUint16LE(endRecord, 4, 0);
+			writeUint16LE(endRecord, 6, 0);
+			writeUint16LE(endRecord, 8, localFileHeaders.length);
+			writeUint16LE(endRecord, 10, localFileHeaders.length);
+			writeUint32LE(endRecord, 12, centralDirEnd - centralDirStart);
+			writeUint32LE(endRecord, 16, centralDirStart);
+			writeUint16LE(endRecord, 20, 0);
 
-  const totalLength = localFileHeaders.reduce((sum, f) => sum + f.header.length + f.path.length + f.data.length, 0) +
-    centralDirectory.reduce((sum, c) => sum + c.header.length, 0) + 22;
-  const result = new Uint8Array(totalLength);
-  let pos = 0;
+			const totalLength = localFileHeaders.reduce((sum, f) => sum + f.header.length + f.path.length + f.data.length, 0) +
+				centralDirectory.reduce((sum, c) => sum + c.header.length, 0) + 22;
+			const result = new Uint8Array(totalLength);
+			let pos = 0;
 
-  for (const f of localFileHeaders) {
-    result.set(f.header, pos); pos += f.header.length;
-    result.set(f.path, pos); pos += f.path.length;
-    result.set(f.data, pos); pos += f.data.length;
-  }
+			for (const f of localFileHeaders) {
+				result.set(f.header, pos); pos += f.header.length;
+				result.set(f.path, pos); pos += f.path.length;
+				result.set(f.data, pos); pos += f.data.length;
+			}
 
-  for (const c of centralDirectory) {
-    result.set(c.header, pos); pos += c.header.length;
-  }
+			for (const c of centralDirectory) {
+				result.set(c.header, pos); pos += c.header.length;
+			}
 
-  result.set(endRecord, pos);
+			result.set(endRecord, pos);
 
-  return new Blob([result], { type: 'application/zip' });
-};
-};
+			return new Blob([result], { type: 'application/zip' });
+		};
+	};
 }

@@ -112,6 +112,10 @@ export function installKss(VGMPlay_js) {
 		if (this.rightPanelMode !== 'prismPerChannel') return;
 		if (!this.standaloneAnalyzerEl || !this.GetKSSDeviceMask) return;
 		const baseMask = this.kssDeviceBaseMask || (this.GetKSSDeviceMask ? this.GetKSSDeviceMask() : 0);
+		if (!this._kssDeviceScanDone && !this.kssDeviceDetectedMask) {
+			if (this.kssAnalyzerEl) this.kssAnalyzerEl.style.display = 'none';
+			return;
+		}
 		const mask = this.kssDeviceDetectedMask ? this.kssDeviceDetectedMask : baseMask;
 		const defs = this._buildKssChannelDefs(mask);
 		const needsRebuild = forceRebuild || !this.kssAnalyzerEl || this.kssChannelDefs.length !== defs.length || this.kssDeviceActiveMask !== mask;
@@ -229,6 +233,10 @@ export function installKss(VGMPlay_js) {
 		}
 
 		const baseMask = this.kssDeviceBaseMask || (this.GetKSSDeviceMask ? this.GetKSSDeviceMask() : 0);
+		if (!this._kssDeviceScanDone && !this.kssDeviceDetectedMask) {
+			if (this.kssOverlayEl) this.kssOverlayEl.style.display = 'none';
+			return;
+		}
 		const mask = this.kssDeviceDetectedMask ? this.kssDeviceDetectedMask : baseMask;
 		const defs = this._buildKssChannelDefs(mask);
 		const needsRebuild = forceRebuild ||
@@ -307,26 +315,26 @@ export function installKss(VGMPlay_js) {
 	};
 
 	VGMPlay_js.prototype._positionKssMiniOverlay = function () {
-if (!this.kssMiniOverlayEl) return;
-// Position next to titleWindow (information window) for extension
-if (!this.standalone && this.titleWindow && this.vgmplayContainer) {
-const gap = 6; // Similar gap between player and information window
-// Use getBoundingClientRect for accurate positioning regardless of DOM structure
-const titleRect = this.titleWindow.getBoundingClientRect();
-const containerRect = this.vgmplayContainer.getBoundingClientRect();
-// Calculate position relative to the container
-const top = titleRect.top - containerRect.top;
-const left = titleRect.right - containerRect.left + gap;
-this.kssMiniOverlayEl.style.top = `${top}px`;
-this.kssMiniOverlayEl.style.left = `${left}px`;
-} else if (this.spectrumCanvas && this.playerWindow) {
-// Fallback to original positioning for standalone
-const top = this.spectrumCanvas.offsetTop + 2;
-const left = this.spectrumCanvas.offsetLeft + 40;
-this.kssMiniOverlayEl.style.top = `${top}px`;
-this.kssMiniOverlayEl.style.left = `${left}px`;
-}
-};
+		if (!this.kssMiniOverlayEl) return;
+		// Position next to titleWindow (information window) for extension
+		if (!this.standalone && this.titleWindow && this.vgmplayContainer) {
+			const gap = 6; // Similar gap between player and information window
+			// Use getBoundingClientRect for accurate positioning regardless of DOM structure
+			const titleRect = this.titleWindow.getBoundingClientRect();
+			const containerRect = this.vgmplayContainer.getBoundingClientRect();
+			// Calculate position relative to the container
+			const top = titleRect.top - containerRect.top;
+			const left = titleRect.right - containerRect.left + gap;
+			this.kssMiniOverlayEl.style.top = `${top}px`;
+			this.kssMiniOverlayEl.style.left = `${left}px`;
+		} else if (this.spectrumCanvas && this.playerWindow) {
+			// Fallback to original positioning for standalone
+			const top = this.spectrumCanvas.offsetTop + 2;
+			const left = this.spectrumCanvas.offsetLeft + 40;
+			this.kssMiniOverlayEl.style.top = `${top}px`;
+			this.kssMiniOverlayEl.style.left = `${left}px`;
+		}
+	};
 
 	VGMPlay_js.prototype._initKssMiniOverlay = function (forceRebuild = false) {
 		if (this.standalone) return;
@@ -337,6 +345,10 @@ this.kssMiniOverlayEl.style.left = `${left}px`;
 		}
 
 		const baseMask = this.kssDeviceBaseMask || (this.GetKSSDeviceMask ? this.GetKSSDeviceMask() : 0);
+		if (!this._kssDeviceScanDone && !this.kssDeviceDetectedMask) {
+			if (this.kssMiniOverlayEl) this.kssMiniOverlayEl.style.display = 'none';
+			return;
+		}
 		const mask = this.kssDeviceDetectedMask ? this.kssDeviceDetectedMask : baseMask;
 		const defs = this._buildKssChannelDefs(mask);
 		const needsRebuild = forceRebuild ||
@@ -361,25 +373,25 @@ this.kssMiniOverlayEl.style.left = `${left}px`;
 			});
 
 			if (!this.kssMiniOverlayEl) {
-this.kssMiniOverlayEl = document.createElement('div');
-this.kssMiniOverlayEl.className = 'vgmplayKssOverlay vgmplayKssOverlayMini';
-this.kssMiniOverlayEl.style.position = 'absolute';
-this.kssMiniOverlayEl.style.zIndex = '6';
-this.kssMiniOverlayEl.style.pointerEvents = 'auto';
-this.kssMiniOverlayEl.style.maxWidth = '220px';
-this.kssMiniOverlayEl.style.overflow = 'auto';
-}
-if (!this.kssMiniOverlayEl.isConnected) {
-// For extension, append to vgmplayContainer for proper positioning
-// For standalone, append to playerWindow (but standalone doesn't use mini overlay)
-if (!this.standalone && this.vgmplayContainer) {
-this.vgmplayContainer.style.position = this.vgmplayContainer.style.position || 'relative';
-this.vgmplayContainer.appendChild(this.kssMiniOverlayEl);
-} else if (this.playerWindow) {
-this.playerWindow.style.position = this.playerWindow.style.position || 'relative';
-this.playerWindow.appendChild(this.kssMiniOverlayEl);
-}
-}
+				this.kssMiniOverlayEl = document.createElement('div');
+				this.kssMiniOverlayEl.className = 'vgmplayKssOverlay vgmplayKssOverlayMini';
+				this.kssMiniOverlayEl.style.position = 'absolute';
+				this.kssMiniOverlayEl.style.zIndex = '6';
+				this.kssMiniOverlayEl.style.pointerEvents = 'auto';
+				this.kssMiniOverlayEl.style.maxWidth = '220px';
+				this.kssMiniOverlayEl.style.overflow = 'auto';
+			}
+			if (!this.kssMiniOverlayEl.isConnected) {
+				// For extension, append to vgmplayContainer for proper positioning
+				// For standalone, append to playerWindow (but standalone doesn't use mini overlay)
+				if (!this.standalone && this.vgmplayContainer) {
+					this.vgmplayContainer.style.position = this.vgmplayContainer.style.position || 'relative';
+					this.vgmplayContainer.appendChild(this.kssMiniOverlayEl);
+				} else if (this.playerWindow) {
+					this.playerWindow.style.position = this.playerWindow.style.position || 'relative';
+					this.playerWindow.appendChild(this.kssMiniOverlayEl);
+				}
+			}
 
 			this.kssMiniOverlayEl.innerHTML = '';
 			this.kssMiniOverlayRows = [];
@@ -576,15 +588,15 @@ this.playerWindow.appendChild(this.kssMiniOverlayEl);
 				const y = height - v * height;
 				ctx.lineTo(x, y);
 			}
-      ctx.stroke();
-    });
-  };
+			ctx.stroke();
+		});
+	};
 
-  // Reset KSS channel mute/solo states when switching tracks
-  VGMPlay_js.prototype._resetKssChannelStates = function () {
-    if (!this.kssChannelStates || !this.kssChannelDefs) return;
-    this.kssChannelStates = this.kssChannelDefs.map(() => ({ mute: false, solo: false }));
-    this._applyKssChannelMasks();
-    this._updateKssChannelButtons();
-  };
+	// Reset KSS channel mute/solo states when switching tracks
+	VGMPlay_js.prototype._resetKssChannelStates = function () {
+		if (!this.kssChannelStates || !this.kssChannelDefs) return;
+		this.kssChannelStates = this.kssChannelDefs.map(() => ({ mute: false, solo: false }));
+		this._applyKssChannelMasks();
+		this._updateKssChannelButtons();
+	};
 }

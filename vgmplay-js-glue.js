@@ -65,11 +65,11 @@ class VGMPlay_js {
 		this.zipURLPending = [];
 		this._isLoadingFile = false;
 		this._loadLock = Promise.resolve();
-  this.archiveWorker = null;
-  this._archiveWorkerJobs = new Map();
-  this._archiveWorkerSeq = 1;
-  this._backgroundExtractJobs = new Map();
-  this._backgroundExtractSeq = 1;
+		this.archiveWorker = null;
+		this._archiveWorkerJobs = new Map();
+		this._archiveWorkerSeq = 1;
+		this._backgroundExtractJobs = new Map();
+		this._backgroundExtractSeq = 1;
 		this.pendingZipRender = false;
 		this._lastSeekAt = 0;
 		this._lastSeekWasMUS = false;
@@ -104,6 +104,9 @@ class VGMPlay_js {
 		this._kssDeviceScanPeaks = null;
 		this._kssDeviceScanFrames = 0;
 		this._kssDeviceScanDone = false;
+		this._failedImageProbeCount = 0;
+		this._suppressImageGuesses = false;
+		this._imageProbePromise = Promise.resolve();
 		this._mousetrapStopCallbackPatched = false;
 		// No auto-download cap in full standalone mode (desktop or mobile)
 		this.autoDownloadLimit = this.standalone ? Number.POSITIVE_INFINITY : 10;
@@ -118,19 +121,19 @@ class VGMPlay_js {
 		this.autoScanDistBase = options.autoScanDistBase || '/dist/';
 		this._autoScanDistDone = false;
 		this._pendingRomLoads = [];
-this._pendingRomRetryScheduled = false;
-this._pendingExternalGameImages = {};
-this.debugMode = this._loadDebugModeSetting();
-this.debugModeHasBeenToggled = false;
-this._debugSettingsWindowVisible = false;
-this._debugPrefixes = {};
-this._loadDebugPrefixSettings();
-if (this.debugMode && typeof window !== 'undefined') {
-  window.__VGM_DEBUG__ = true;
-}
-this.sharedCache = this._normalizeBool(options.sharedCache);
-this._settingsMenuVisible = false;
-this._settingsStatusText = '';
+		this._pendingRomRetryScheduled = false;
+		this._pendingExternalGameImages = {};
+		this.debugMode = this._loadDebugModeSetting();
+		this.debugModeHasBeenToggled = false;
+		this._debugSettingsWindowVisible = false;
+		this._debugPrefixes = {};
+		this._loadDebugPrefixSettings();
+		if (this.debugMode && typeof window !== 'undefined') {
+			window.__VGM_DEBUG__ = true;
+		}
+		this.sharedCache = this._normalizeBool(options.sharedCache);
+		this._settingsMenuVisible = false;
+		this._settingsStatusText = '';
 
 		this.pos1 = 0;
 		this.pos2 = 0;
@@ -247,11 +250,11 @@ this._settingsStatusText = '';
 			// Skip creating link element for extension - CSS is loaded via fetch in background.js
 			// This prevents double-loading of CSS which causes specificity issues
 			if (!options.shadowRoot) {
-			  var link = document.createElement('link');
-			  link.rel = 'stylesheet';
-			  link.type = 'text/css';
-			  link.href = this.baseURL + 'css/style.css' + cacheSuffix;
-			  document.head.appendChild(link);
+				var link = document.createElement('link');
+				link.rel = 'stylesheet';
+				link.type = 'text/css';
+				link.href = this.baseURL + 'css/style.css' + cacheSuffix;
+				document.head.appendChild(link);
 			}
 
 			// Container logic
@@ -270,46 +273,46 @@ this._settingsStatusText = '';
 				this.vgmplayContainer.classList.add('vgmplayMobile');
 			}
 
-	if (this.standalone && !this.isLibrary) {
-		document.documentElement.style.height = '100%';
-		document.body.style.height = '100%';
-		document.body.style.margin = '0';
-		document.body.style.background = '#2a2a2a';
-		document.body.style.overflow = 'hidden';
-		this.vgmplayContainer.style.position = 'fixed';
-		this.vgmplayContainer.style.top = '0';
-		this.vgmplayContainer.style.left = '0';
-		this.vgmplayContainer.style.width = '100vw';
-		this.vgmplayContainer.style.height = '100vh';
+			if (this.standalone && !this.isLibrary) {
+				document.documentElement.style.height = '100%';
+				document.body.style.height = '100%';
+				document.body.style.margin = '0';
+				document.body.style.background = '#2a2a2a';
+				document.body.style.overflow = 'hidden';
+				this.vgmplayContainer.style.position = 'fixed';
+				this.vgmplayContainer.style.top = '0';
+				this.vgmplayContainer.style.left = '0';
+				this.vgmplayContainer.style.width = '100vw';
+				this.vgmplayContainer.style.height = '100vh';
 
-		this.standaloneLeft = document.createElement('div');
-		this.standaloneLeft.className = 'vgmplayStandaloneLeft';
-		this.vgmplayContainer.appendChild(this.standaloneLeft);
+				this.standaloneLeft = document.createElement('div');
+				this.standaloneLeft.className = 'vgmplayStandaloneLeft';
+				this.vgmplayContainer.appendChild(this.standaloneLeft);
 
-		this.standaloneGroup = document.createElement('div');
-		this.standaloneGroup.className = 'vgmplayStandaloneGroup';
-		this.standaloneLeft.appendChild(this.standaloneGroup);
+				this.standaloneGroup = document.createElement('div');
+				this.standaloneGroup.className = 'vgmplayStandaloneGroup';
+				this.standaloneLeft.appendChild(this.standaloneGroup);
 
-		this.standaloneRight = document.createElement('div');
-		this.standaloneRight.className = 'vgmplayStandaloneRight';
-		this.vgmplayContainer.appendChild(this.standaloneRight);
+				this.standaloneRight = document.createElement('div');
+				this.standaloneRight.className = 'vgmplayStandaloneRight';
+				this.vgmplayContainer.appendChild(this.standaloneRight);
 
-		this.standaloneAnalyzerEl = document.createElement('div');
-		this.standaloneAnalyzerEl.className = 'vgmplayStandaloneAnalyzer';
-		this.standaloneRight.appendChild(this.standaloneAnalyzerEl);
+				this.standaloneAnalyzerEl = document.createElement('div');
+				this.standaloneAnalyzerEl.className = 'vgmplayStandaloneAnalyzer';
+				this.standaloneRight.appendChild(this.standaloneAnalyzerEl);
 
-		this.standaloneGameGrid = document.createElement('div');
-		this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
-		this.standaloneRight.appendChild(this.standaloneGameGrid);
+				this.standaloneGameGrid = document.createElement('div');
+				this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
+				this.standaloneRight.appendChild(this.standaloneGameGrid);
 
-		const menuEl = document.getElementById('vgmplayMenu');
-		if (menuEl) {
-			menuEl.style.display = 'none';
-		}
+				const menuEl = document.getElementById('vgmplayMenu');
+				if (menuEl) {
+					menuEl.style.display = 'none';
+				}
 
-		this.standaloneOverlay = document.createElement('div');
-		this.standaloneOverlay.className = 'vgmplayStandaloneOverlay';
-		this.standaloneOverlay.innerHTML = `
+				this.standaloneOverlay = document.createElement('div');
+				this.standaloneOverlay.className = 'vgmplayStandaloneOverlay';
+				this.standaloneOverlay.innerHTML = `
 <div class="vgmplayMemoryDisplay"></div>
 <br>
 <label class="vgmplayStandaloneLabel">Spectrum</label>
@@ -323,71 +326,71 @@ this._settingsStatusText = '';
 <option value="linePrism">Line Prism (Dual Vertical)</option>
 </select>
 `;
-		this.standaloneRight.appendChild(this.standaloneOverlay);
-		this.standaloneSelect = this.standaloneOverlay.querySelector('.vgmplayStandaloneSelect');
-		this.standaloneSelect.value = this.rightPanelMode;
-		this.standaloneSelect.addEventListener('change', () => {
-			this.rightPanelMode = this.standaloneSelect.value;
-			this._updateStandaloneRightPanel();
-		});
-		this._updateStandaloneSelectOptions();
+				this.standaloneRight.appendChild(this.standaloneOverlay);
+				this.standaloneSelect = this.standaloneOverlay.querySelector('.vgmplayStandaloneSelect');
+				this.standaloneSelect.value = this.rightPanelMode;
+				this.standaloneSelect.addEventListener('change', () => {
+					this.rightPanelMode = this.standaloneSelect.value;
+					this._updateStandaloneRightPanel();
+				});
+				this._updateStandaloneSelectOptions();
 
-		// Memory display
-		this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
-		if (this.memoryDisplay) this.memoryDisplay.style.display = 'none';
-		this._updateMemoryDisplay();
-	}
-
-	// Extension case: create the panel structure (but elements will be in container directly for non-grid mode)
-	if (!this.standalone) {
-	this.standaloneLeft = document.createElement('div');
-	this.standaloneLeft.className = 'vgmplayStandaloneLeft';
-	this.vgmplayContainer.appendChild(this.standaloneLeft);
-	
-	this.standaloneGroup = document.createElement('div');
-	this.standaloneGroup.className = 'vgmplayStandaloneGroup';
-	this.standaloneLeft.appendChild(this.standaloneGroup);
-	
-	this.standaloneRight = document.createElement('div');
-	this.standaloneRight.className = 'vgmplayStandaloneRight';
-	this.vgmplayContainer.appendChild(this.standaloneRight);
-	
-	this.standaloneGameGrid = document.createElement('div');
-	this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
-	this.standaloneGameGrid.style.display = 'none';
-	this.standaloneRight.appendChild(this.standaloneGameGrid);
-	
-	// Note: tracksContainer, titleWindow, and playerWindow will be created in the container directly
-	// and moved to the panel structure when entering grid mode
-	}
-
-	// Extension case: ensure container has proper dimensions and interactivity
-	if (options.container && options.shadowRoot && !this.standalone) {
-		if (window.__VGM_DEBUG__) {
-			console.log('[VGM] Extension case detected, applying container styles');
-		}
-		// Default width for normal mode, will be overridden by grid mode CSS
-		this.vgmplayContainer.style.cssText = 'position: fixed !important; top: 10px !important; left: 10px !important; bottom: 10px !important; width: 350px !important; height: auto !important; max-height: none !important; display: flex !important; flex-direction: column !important; overflow: visible !important; pointer-events: auto !important; z-index: 2147483647 !important;';
-	}
-
-	if (this.standalone) {
-		const children = Array.from(document.body.children);
-		const hiddenWrapper = document.createElement('div');
-		hiddenWrapper.id = 'vgmplayHiddenContent';
-		hiddenWrapper.style.display = 'none';
-		for (const child of children) {
-			if (child !== this.vgmplayContainer) {
-				hiddenWrapper.appendChild(child);
+				// Memory display
+				this.memoryDisplay = this.standaloneOverlay.querySelector('.vgmplayMemoryDisplay');
+				if (this.memoryDisplay) this.memoryDisplay.style.display = 'none';
+				this._updateMemoryDisplay();
 			}
-		}
-		if (hiddenWrapper.childNodes.length) {
-			document.body.appendChild(hiddenWrapper);
-		}
-	}
 
-	// For standalone, use standaloneGroup as uiParent
-	// For extension, use vgmplayContainer directly (elements will be moved to panel structure when entering grid mode)
-	const uiParent = this.standalone ? this.standaloneGroup : this.vgmplayContainer;
+			// Extension case: create the panel structure (but elements will be in container directly for non-grid mode)
+			if (!this.standalone) {
+				this.standaloneLeft = document.createElement('div');
+				this.standaloneLeft.className = 'vgmplayStandaloneLeft';
+				this.vgmplayContainer.appendChild(this.standaloneLeft);
+
+				this.standaloneGroup = document.createElement('div');
+				this.standaloneGroup.className = 'vgmplayStandaloneGroup';
+				this.standaloneLeft.appendChild(this.standaloneGroup);
+
+				this.standaloneRight = document.createElement('div');
+				this.standaloneRight.className = 'vgmplayStandaloneRight';
+				this.vgmplayContainer.appendChild(this.standaloneRight);
+
+				this.standaloneGameGrid = document.createElement('div');
+				this.standaloneGameGrid.className = 'vgmplayStandaloneGameGrid';
+				this.standaloneGameGrid.style.display = 'none';
+				this.standaloneRight.appendChild(this.standaloneGameGrid);
+
+				// Note: tracksContainer, titleWindow, and playerWindow will be created in the container directly
+				// and moved to the panel structure when entering grid mode
+			}
+
+			// Extension case: ensure container has proper dimensions and interactivity
+			if (options.container && options.shadowRoot && !this.standalone) {
+				if (window.__VGM_DEBUG__) {
+					console.log('[VGM] Extension case detected, applying container styles');
+				}
+				// Default width for normal mode, will be overridden by grid mode CSS
+				this.vgmplayContainer.style.cssText = 'position: fixed !important; top: 10px !important; left: 10px !important; bottom: 10px !important; width: 350px !important; height: auto !important; max-height: none !important; display: flex !important; flex-direction: column !important; overflow: visible !important; pointer-events: auto !important; z-index: 2147483647 !important;';
+			}
+
+			if (this.standalone) {
+				const children = Array.from(document.body.children);
+				const hiddenWrapper = document.createElement('div');
+				hiddenWrapper.id = 'vgmplayHiddenContent';
+				hiddenWrapper.style.display = 'none';
+				for (const child of children) {
+					if (child !== this.vgmplayContainer) {
+						hiddenWrapper.appendChild(child);
+					}
+				}
+				if (hiddenWrapper.childNodes.length) {
+					document.body.appendChild(hiddenWrapper);
+				}
+			}
+
+			// For standalone, use standaloneGroup as uiParent
+			// For extension, use vgmplayContainer directly (elements will be moved to panel structure when entering grid mode)
+			const uiParent = this.standalone ? this.standaloneGroup : this.vgmplayContainer;
 
 			if (typeof vgmplaySettings !== 'undefined') {
 				if (typeof vgmplaySettings.displayZipFileList !== 'undefined') {
@@ -437,35 +440,35 @@ this._settingsStatusText = '';
 				this.showPlayer();
 				this._bindScrollProxy(this.playerWindow);
 			}
-	if (this.displayZipFileList) {
-	// For extension, tracksContainer is created in the container directly (not in panel structure)
-	// It will be moved to the panel structure when entering grid mode
-	if (!this.tracksContainer) {
-	this.tracksContainer = document.createElement('div');
-	this.tracksContainer.id = "vgmplayTracksContainer";
-	if (this.standalone) {
-	this.standaloneLeft.appendChild(this.tracksContainer);
-	} else {
-	// For extension, add to container directly
-	this.vgmplayContainer.appendChild(this.tracksContainer);
-	}
-	}
-	
-	this.zipFileListWindow = document.createElement('div');
-	this.zipFileListWindow.id = "vgmplayZipFileList";
-	this.tracksContainer.appendChild(this.zipFileListWindow);
-	this.showZipFileListWindow = true;
-	this.zipFileListWindow.className = "vgmplayZipFileListWindow";
-	// Bind scroll proxy to prevent site background scrolling
-	if (this._bindScrollProxy) {
-	  this._bindScrollProxy(this.zipFileListWindow);
-	}
-	
-	this.loader = document.createElement('div');
-	this.loader.className = 'vgmplayLoader';
-	this.loader.innerHTML = 'Loading track data';
-	this.zipFileListWindow.appendChild(this.loader);
-	}
+			if (this.displayZipFileList) {
+				// For extension, tracksContainer is created in the container directly (not in panel structure)
+				// It will be moved to the panel structure when entering grid mode
+				if (!this.tracksContainer) {
+					this.tracksContainer = document.createElement('div');
+					this.tracksContainer.id = "vgmplayTracksContainer";
+					if (this.standalone) {
+						this.standaloneLeft.appendChild(this.tracksContainer);
+					} else {
+						// For extension, add to container directly
+						this.vgmplayContainer.appendChild(this.tracksContainer);
+					}
+				}
+
+				this.zipFileListWindow = document.createElement('div');
+				this.zipFileListWindow.id = "vgmplayZipFileList";
+				this.tracksContainer.appendChild(this.zipFileListWindow);
+				this.showZipFileListWindow = true;
+				this.zipFileListWindow.className = "vgmplayZipFileListWindow";
+				// Bind scroll proxy to prevent site background scrolling
+				if (this._bindScrollProxy) {
+					this._bindScrollProxy(this.zipFileListWindow);
+				}
+
+				this.loader = document.createElement('div');
+				this.loader.className = 'vgmplayLoader';
+				this.loader.innerHTML = 'Loading track data';
+				this.zipFileListWindow.appendChild(this.loader);
+			}
 			this.setupDropZone();
 			this._createSkippedWindow();
 			if (this.standalone) {
@@ -573,28 +576,28 @@ this._settingsStatusText = '';
 		if (typeof Mousetrap === 'undefined') {
 			if (this.isExtension && !this._extensionKeyFallback) {
 				this._extensionKeyFallback = true;
-window.addEventListener('keydown', (e) => {
-				const tgt = e.target;
-				const tag = tgt && tgt.tagName ? tgt.tagName.toLowerCase() : '';
-				const isTyping = this._eventIsTyping && this._eventIsTyping(e);
-				if (tag === 'input' || tag === 'textarea' || (tgt && tgt.isContentEditable) || isTyping) {
-					e.__vgmplayHandled = true;
-					e.stopPropagation();
-					return;
-				}
-				if (e.key === 'Escape') {
-					if (this._handleEscapeKey && this._handleEscapeKey()) {
-						e.preventDefault();
+				window.addEventListener('keydown', (e) => {
+					const tgt = e.target;
+					const tag = tgt && tgt.tagName ? tgt.tagName.toLowerCase() : '';
+					const isTyping = this._eventIsTyping && this._eventIsTyping(e);
+					if (tag === 'input' || tag === 'textarea' || (tgt && tgt.isContentEditable) || isTyping) {
+						e.__vgmplayHandled = true;
+						e.stopPropagation();
 						return;
 					}
-				}
-				if (e.key === 'd' || e.key === 'D') {
-			if (this._debugSettingsWindowVisible) {
-				this._hideDebugSettingsWindow();
-			} else {
-				this.toggleDebugMode();
-			}
-		}
+					if (e.key === 'Escape') {
+						if (this._handleEscapeKey && this._handleEscapeKey()) {
+							e.preventDefault();
+							return;
+						}
+					}
+					if (e.key === 'd' || e.key === 'D') {
+						if (this._debugSettingsWindowVisible) {
+							this._hideDebugSettingsWindow();
+						} else {
+							this.toggleDebugMode();
+						}
+					}
 					if (e.key === 'w' || e.key === 'W') {
 						if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
 					}
@@ -615,6 +618,9 @@ window.addEventListener('keydown', (e) => {
 					}
 					if (e.key === 'r' || e.key === 'R') {
 						this.toggleRandomScope();
+					}
+					if (e.key === 'a' || e.key === 'A') {
+						this.toggleSkippedWindow();
 					}
 					if (e.key === 'l' || e.key === 'L') {
 						this.toggleLoopMode();
@@ -709,14 +715,18 @@ window.addEventListener('keydown', (e) => {
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			this._setMemoryStatsVisible(!this.showMemoryStats);
 		});
-	Mousetrap.bind('d', (e) => {
-		if (this._eventIsTyping && this._eventIsTyping(e)) return;
-		if (this._debugSettingsWindowVisible) {
-			this._hideDebugSettingsWindow();
-		} else {
-			this.toggleDebugMode();
-		}
-	});
+		Mousetrap.bind('d', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
+			if (this._debugSettingsWindowVisible) {
+				this._hideDebugSettingsWindow();
+			} else {
+				this.toggleDebugMode();
+			}
+		});
+		Mousetrap.bind('a', (e) => {
+			if (this._eventIsTyping && this._eventIsTyping(e)) return;
+			this.toggleSkippedWindow();
+		});
 		Mousetrap.bind('w', (e) => {
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this._toggleCacheClearPrompt) this._toggleCacheClearPrompt();
@@ -754,26 +764,26 @@ window.addEventListener('keydown', (e) => {
 			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
 				const url = this.elms[ii].href;
 				this._queueURL(url, false, true);
-// Try to fetch matching image for archives
-  if (this._isArchiveUrl(lower)) {
-    this._log && this._log('ARCHIVES', 'Calling _tryFetchMatchingImageForArchive for:', url);
-    this._tryFetchMatchingImageForArchive(url);
-  }
+				// Try to fetch matching image for archives
+				if (this._isArchiveUrl(lower)) {
+					this._log && this._log('ARCHIVES', 'Calling _tryFetchMatchingImageForArchive for:', url);
+					this._tryFetchMatchingImageForArchive(url);
+				}
 			}
 		}
-this._currentScanNames = scanNames;
-if (this._renderZipGamesNow && this.games && this.games.length) {
-  this._renderZipGamesNow();
-}
-this.setKeyBindings();
+		this._currentScanNames = scanNames;
+		if (this._renderZipGamesNow && this.games && this.games.length) {
+			this._renderZipGamesNow();
+		}
+		this.setKeyBindings();
 
-// Show debug notice in the additional information window
-if (this.debugMode && this._addInfoNotice) {
-  setTimeout(() => {
-    this._addInfoNotice("Debug is enabled, press D to toggle");
-  }, 1000);
-}
-}
+		// Show debug notice in the additional information window
+		if (this.debugMode && this._addInfoNotice) {
+			setTimeout(() => {
+				this._addInfoNotice("Debug is enabled, press D to toggle");
+			}, 1000);
+		}
+	}
 
 	_yieldToUI() {
 		return new Promise((resolve) => {
@@ -839,8 +849,8 @@ if (this.debugMode && this._addInfoNotice) {
 		}
 	}
 
-async _processArchiveEntries(entries, fileDataByPath, sourceName = '', hasKss = false) {
-this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName, 'entries:', entries.length, 'hasKss:', hasKss, 'fileDataByPath size:', fileDataByPath.size);
+	async _processArchiveEntries(entries, fileDataByPath, sourceName = '', hasKss = false) {
+		this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName, 'entries:', entries.length, 'hasKss:', hasKss, 'fileDataByPath size:', fileDataByPath.size);
 		const yieldEvery = 50;
 		let sinceYield = 0;
 		const maybeYield = async () => {
@@ -860,19 +870,19 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 			this._makedirs(gamePath);
 
 			for (const entry of entries) {
-			if (!entry || !entry.filepath) continue;
-			const relPath = entry.filepath;
-			const fileArray = fileDataByPath.get(relPath);
-			if (!fileArray) {
-				if (this.debugMode) console.log("[VGM] No fileArray for:", relPath);
-				continue;
-			}
-			const lowerRel = relPath.toLowerCase();
-			if (lowerRel.endsWith('.png')) {
-				if (this.debugMode) console.log("[VGM] PNG file found in archive entries:", relPath, "size:", fileArray.length);
-			}
-			const isImage = lowerRel.endsWith('.png') || lowerRel.endsWith('.jpg') || lowerRel.endsWith('.jpeg') || lowerRel.endsWith('.gif') || lowerRel.endsWith('.bmp') || lowerRel.endsWith('.webp');
-			const fullPath = gamePath + "/" + relPath;
+				if (!entry || !entry.filepath) continue;
+				const relPath = entry.filepath;
+				const fileArray = fileDataByPath.get(relPath);
+				if (!fileArray) {
+					if (this.debugMode) console.log("[VGM] No fileArray for:", relPath);
+					continue;
+				}
+				const lowerRel = relPath.toLowerCase();
+				if (lowerRel.endsWith('.png')) {
+					if (this.debugMode) console.log("[VGM] PNG file found in archive entries:", relPath, "size:", fileArray.length);
+				}
+				const isImage = lowerRel.endsWith('.png') || lowerRel.endsWith('.jpg') || lowerRel.endsWith('.jpeg') || lowerRel.endsWith('.gif') || lowerRel.endsWith('.bmp') || lowerRel.endsWith('.webp');
+				const fullPath = gamePath + "/" + relPath;
 
 				const lastSlash = fullPath.lastIndexOf('/');
 				if (lastSlash > gamePath.length) {
@@ -885,8 +895,8 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 					const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
 					FS.createDataFile(parent, name, fileArray, true, true);
 				} catch (e) {
-    if (this.debugMode) console.error("Error creating file in FS:", e);
-  }
+					if (this.debugMode) console.error("Error creating file in FS:", e);
+				}
 				const lower = relPath.toLowerCase();
 				if (lower.includes("m3u")) m3uFile = FS.readFile(fullPath, { encoding: "utf8" });
 				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo") || lower.includes("gameinfo")) {
@@ -897,13 +907,13 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 						txtFile = txt;
 					}
 				}
-	if (lower.endsWith(".png")) {
-				pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-				if (this.debugMode) console.log("[VGM] Found PNG in archive:", relPath);
-			}
-			if (isImage && !lower.endsWith(".png")) {
-				if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
-			}
+				if (lower.endsWith(".png")) {
+					pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+					if (this.debugMode) console.log("[VGM] Found PNG in archive:", relPath);
+				}
+				if (isImage && !lower.endsWith(".png")) {
+					if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
+				}
 				await maybeYield();
 			}
 
@@ -920,16 +930,16 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 				});
 			}
 
-	const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
-	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName, sourceUrl: sourceName };
-	const key = this._baseNameNoExt(sourceName).toLowerCase();
-	this._log && this._log('ARCHIVES', 'PUSHING game:', derivedName, 'archiveName:', sourceName, 'key:', key, 'games.length:', this.games.length);
-	if (this._applyExternalGameImage && sourceName) {
-		this._applyExternalGameImage(game, sourceName, false);
-		this._log && this._log('ARCHIVES', 'After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
-	}
-	this.tempGameInfo = null;
-	this.games.push(game);
+			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName, sourceUrl: sourceName };
+			const key = this._baseNameNoExt(sourceName).toLowerCase();
+			this._log && this._log('ARCHIVES', 'PUSHING game:', derivedName, 'archiveName:', sourceName, 'key:', key, 'games.length:', this.games.length);
+			if (this._applyExternalGameImage && sourceName) {
+				this._applyExternalGameImage(game, sourceName, false);
+				this._log && this._log('ARCHIVES', 'After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
+			}
+			this.tempGameInfo = null;
+			this.games.push(game);
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 			const hasMidi = game.files.some((f) => {
@@ -967,16 +977,16 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 			return relPath;
 		};
 
-	const getGame = (gameKey) => {
-		if (gamesByKey[gameKey]) return gamesByKey[gameKey];
-		this.amountOfGamesLoaded++;
-		const gamePath = this._getGamePath(this.amountOfGamesLoaded);
-		this._makedirs(gamePath);
-		const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, sourceUrl: sourceName };
-		gamesByKey[gameKey] = game;
-		gamesInOrder.push(game);
-		return game;
-	};
+		const getGame = (gameKey) => {
+			if (gamesByKey[gameKey]) return gamesByKey[gameKey];
+			this.amountOfGamesLoaded++;
+			const gamePath = this._getGamePath(this.amountOfGamesLoaded);
+			this._makedirs(gamePath);
+			const game = { files: [], path: gamePath, kssTxtByBase: {}, kssTxtOrder: [], png: null, archiveName: sourceName, sourceUrl: sourceName };
+			gamesByKey[gameKey] = game;
+			gamesInOrder.push(game);
+			return game;
+		};
 
 		for (const entry of entries) {
 			if (!entry || !entry.filepath) continue;
@@ -1007,8 +1017,8 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 					}
 				}
 			} catch (e) {
-    if (this.debugMode) console.error("Error creating file in FS:", e);
-  }
+				if (this.debugMode) console.error("Error creating file in FS:", e);
+			}
 
 			game.files.push({ filepath: fullPath });
 
@@ -1027,53 +1037,53 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 						game.kssTxtOrder.push(base);
 					}
 				} catch (e) {
-    if (this.debugMode) console.error("Failed to read info file:", fullPath, e);
-  }
+					if (this.debugMode) console.error("Failed to read info file:", fullPath, e);
+				}
 			}
 			if (lower.endsWith('.png') && !game.png) {
 				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
 			} else if (isImage && !lower.endsWith('.png')) {
-    if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
-  }
+				if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
+			}
 			await maybeYield();
 		}
 
-	let anyPlayable = false;
-	for (const game of gamesInOrder) {
-		const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
-		if (hasPlayable) {
-			const hasMusLmp = game.files.some(f => {
-				const l = (f.filepath || "").toLowerCase();
-				return l.endsWith('.mus') || l.endsWith('.lmp');
-			});
-			if (hasMusLmp) {
-				game.files.sort((a, b) => {
-					const nameA = (a.filepath || "").split('/').pop().toLowerCase();
-					const nameB = (b.filepath || "").split('/').pop().toLowerCase();
-					return nameA.localeCompare(nameB);
+		let anyPlayable = false;
+		for (const game of gamesInOrder) {
+			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			if (hasPlayable) {
+				const hasMusLmp = game.files.some(f => {
+					const l = (f.filepath || "").toLowerCase();
+					return l.endsWith('.mus') || l.endsWith('.lmp');
 				});
-			}
+				if (hasMusLmp) {
+					game.files.sort((a, b) => {
+						const nameA = (a.filepath || "").split('/').pop().toLowerCase();
+						const nameB = (b.filepath || "").split('/').pop().toLowerCase();
+						return nameA.localeCompare(nameB);
+					});
+				}
 
-	const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-	game.name = name;
-	if (this._applyExternalGameImage) {
-		this._applyExternalGameImage(game, name, true);
-	}
-	this._log && this._log('ARCHIVES', 'MULTI-GAME PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
-	this.games.push(game);
-	anyPlayable = true;
-	} else if (game.png && game.png.size > 0) {
-	// Add game even without playable files if it has a PNG cover
-	const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-	game.name = name;
-	if (this._applyExternalGameImage) {
-		this._applyExternalGameImage(game, name, true);
-	}
-	this._log && this._log('ARCHIVES', 'MULTI-GAME PNG-ONLY PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
-	this.games.push(game);
-	}
-		await maybeYield();
-	}
+				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+				game.name = name;
+				if (this._applyExternalGameImage) {
+					this._applyExternalGameImage(game, name, true);
+				}
+				this._log && this._log('ARCHIVES', 'MULTI-GAME PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
+				this.games.push(game);
+				anyPlayable = true;
+			} else if (game.png && game.png.size > 0) {
+				// Add game even without playable files if it has a PNG cover
+				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+				game.name = name;
+				if (this._applyExternalGameImage) {
+					this._applyExternalGameImage(game, name, true);
+				}
+				this._log && this._log('ARCHIVES', 'MULTI-GAME PNG-ONLY PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
+				this.games.push(game);
+			}
+			await maybeYield();
+		}
 
 		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
@@ -1088,14 +1098,14 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 			}
 		}
 
-	await this.checkEverythingReady();
-	if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
-	this._log && this._log('ARCHIVES', '_processArchiveEntries COMPLETE: games.length:', this.games.length, 'archiveName:', sourceName);
-	for (const game of this.games) {
-		game.uiElement = null;
-		this.showVGMFromZip(game);
-		await maybeYield();
-	}
+		await this.checkEverythingReady();
+		if (this.zipFileListWindow) this.zipFileListWindow.innerHTML = "";
+		this._log && this._log('ARCHIVES', '_processArchiveEntries COMPLETE: games.length:', this.games.length, 'archiveName:', sourceName);
+		for (const game of this.games) {
+			game.uiElement = null;
+			this.showVGMFromZip(game);
+			await maybeYield();
+		}
 	}
 
 	_makedirs(path) {
@@ -1145,8 +1155,8 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 			}
 			this.amountOfGamesLoaded = 0;
 		} catch (e) {
-    if (this.debugMode) console.error("[VGM] purgeGamesFS failed:", e);
-  }
+			if (this.debugMode) console.error("[VGM] purgeGamesFS failed:", e);
+		}
 	}
 
 	_rmRecursive(path) {
@@ -1163,8 +1173,8 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 				FS.unlink(path);
 			}
 		} catch (e) {
-    if (this.debugMode) console.error("[VGM] Failed to remove:", path, e);
-  }
+			if (this.debugMode) console.error("[VGM] Failed to remove:", path, e);
+		}
 	}
 
 	processSingleBuffer(byteArray, sourceName = '') {
@@ -1272,26 +1282,26 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 		this.games.push(game);
 		await this.checkEverythingReady();
 		this.showVGMFromZip(game);
-		
+
 		if (this._markCached) this._markCached(fingerprint);
 		if (this._saveCache) this._saveCache();
 	}
 
 	addHarvestedTracks(urls) {
-	    urls.forEach(url => {
-	        const lower = url.toLowerCase();
-	        const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
-	        if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi) {
-	            this._queueURL(url, false, true);
-	            // Try to fetch matching image for archives
-	            if (this._isArchiveUrl(lower)) {
-	                this._tryFetchMatchingImageForArchive(url);
-	            }
-	        } else if (this.isPlayable(lower)) {
-	            // Handle direct links as single files
-	            this._queueURL(url, false, true);
-	        }
-	    });
+		urls.forEach(url => {
+			const lower = url.toLowerCase();
+			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi) {
+				this._queueURL(url, false, true);
+				// Try to fetch matching image for archives
+				if (this._isArchiveUrl(lower)) {
+					this._tryFetchMatchingImageForArchive(url);
+				}
+			} else if (this.isPlayable(lower)) {
+				// Handle direct links as single files
+				this._queueURL(url, false, true);
+			}
+		});
 	}
 
 	_updateHighlight() {
@@ -1326,78 +1336,78 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 					if (toggle) toggle.click();
 				}
 				// If game changed, scroll it into view
-      if (this.activeGame && this.activeGame !== oldActiveGame && this.activeGame.uiElement) {
-        this.activeGame.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-  if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
-  // Reset KSS channel mute/solo states when switching tracks
-  if (this._resetKssChannelStates) {
-    this._resetKssChannelStates();
-  }
-  await this.checkEverythingReady();
+				if (this.activeGame && this.activeGame !== oldActiveGame && this.activeGame.uiElement) {
+					this.activeGame.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			}
+			if (!this.isPlaybackPaused || this.isVGMPlaying) this.stop();
+			// Reset KSS channel mute/solo states when switching tracks
+			if (this._resetKssChannelStates) {
+				this._resetKssChannelStates();
+			}
+			await this.checkEverythingReady();
 
-  // On-demand file loading for progressive cache restore
-  // Check if file exists first, then load on-demand if needed
-  const lowerFile = file.toLowerCase().split('|track=')[0];
-  const isLargeFile = lowerFile.endsWith('.at9') || lowerFile.endsWith('.at3') || 
-                       lowerFile.endsWith('.atrac') || lowerFile.endsWith('.aa3') ||
-                       lowerFile.endsWith('.brstm') || lowerFile.endsWith('.bfstm') ||
-                       lowerFile.endsWith('.bcstm') || lowerFile.endsWith('.dsp') ||
-                       lowerFile.endsWith('.idsp') || lowerFile.endsWith('.hca') ||
-                       lowerFile.endsWith('.adx') || lowerFile.endsWith('.vag') ||
-                       lowerFile.endsWith('.fsb');
-  
-  if (this._ensureFileLoaded) {
-    let fileExists = false;
-    try {
-      fileExists = FS.analyzePath(file).exists;
-    } catch (e) {}
-    
-    if (!fileExists) {
-      // Only show loading spinner for large files
-      const loaded = await this._ensureFileLoaded(file, isLargeFile);
-      if (!loaded && this.debugMode) {
-        console.warn('[VGM] File not available:', file);
-      }
-    }
-  }
+			// On-demand file loading for progressive cache restore
+			// Check if file exists first, then load on-demand if needed
+			const lowerFile = file.toLowerCase().split('|track=')[0];
+			const isLargeFile = lowerFile.endsWith('.at9') || lowerFile.endsWith('.at3') ||
+				lowerFile.endsWith('.atrac') || lowerFile.endsWith('.aa3') ||
+				lowerFile.endsWith('.brstm') || lowerFile.endsWith('.bfstm') ||
+				lowerFile.endsWith('.bcstm') || lowerFile.endsWith('.dsp') ||
+				lowerFile.endsWith('.idsp') || lowerFile.endsWith('.hca') ||
+				lowerFile.endsWith('.adx') || lowerFile.endsWith('.vag') ||
+				lowerFile.endsWith('.fsb');
 
-  if (game && this._ensureGameFilesLoaded) {
-    const activeGame = this.games[game - 1];
-    if (activeGame && activeGame._needsOnDemandFiles && !activeGame._deferTracksByHost) {
-      await this._ensureGameFilesLoaded(activeGame);
-    }
-  }
+			if (this._ensureFileLoaded) {
+				let fileExists = false;
+				try {
+					fileExists = FS.analyzePath(file).exists;
+				} catch (e) { }
 
-  // Ensure PSF/USF library files are present (cache-restore may defer them).
-  const lowerBase = lowerFile.split('|track=')[0];
-  const isPsfFamily = lowerBase.endsWith('.psf') || lowerBase.endsWith('.minipsf') || lowerBase.endsWith('.psflib') ||
-                      lowerBase.endsWith('.usf') || lowerBase.endsWith('.miniusf') || lowerBase.endsWith('.usflib');
-  if (isPsfFamily && this._ensureFileLoaded && game) {
-    const activeGame = this.games[game - 1];
-    if (activeGame && activeGame.files) {
-      const libs = activeGame.files.filter(f => f && f.filepath && (f.filepath.toLowerCase().endsWith('.psflib') || f.filepath.toLowerCase().endsWith('.usflib')));
-      if (libs.length) {
-        if (this._setInfoLoading) this._setInfoLoading(true, 'Fetching PSF libraries...');
-        for (const lib of libs) {
-          try {
-            if (!FS.analyzePath(lib.filepath).exists) {
-              await this._ensureFileLoaded(lib.filepath, false);
-            }
-          } catch (e) { }
-        }
-        if (this._setInfoLoading) this._setInfoLoading(false);
-      }
-    }
-  }
+				if (!fileExists) {
+					// Only show loading spinner for large files
+					const loaded = await this._ensureFileLoaded(file, isLargeFile);
+					if (!loaded && this.debugMode) {
+						console.warn('[VGM] File not available:', file);
+					}
+				}
+			}
 
-  if (!this.isPlayable(file)) {
-    return;
-  }
+			if (game && this._ensureGameFilesLoaded) {
+				const activeGame = this.games[game - 1];
+				if (activeGame && activeGame._needsOnDemandFiles && !activeGame._deferTracksByHost) {
+					await this._ensureGameFilesLoaded(activeGame);
+				}
+			}
 
-  // On-demand GENMIDI loading for DOOM MUS files
-  const isMusFile = lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp');
+			// Ensure PSF/USF library files are present (cache-restore may defer them).
+			const lowerBase = lowerFile.split('|track=')[0];
+			const isPsfFamily = lowerBase.endsWith('.psf') || lowerBase.endsWith('.minipsf') || lowerBase.endsWith('.psflib') ||
+				lowerBase.endsWith('.usf') || lowerBase.endsWith('.miniusf') || lowerBase.endsWith('.usflib');
+			if (isPsfFamily && this._ensureFileLoaded && game) {
+				const activeGame = this.games[game - 1];
+				if (activeGame && activeGame.files) {
+					const libs = activeGame.files.filter(f => f && f.filepath && (f.filepath.toLowerCase().endsWith('.psflib') || f.filepath.toLowerCase().endsWith('.usflib')));
+					if (libs.length) {
+						if (this._setInfoLoading) this._setInfoLoading(true, 'Fetching PSF libraries...');
+						for (const lib of libs) {
+							try {
+								if (!FS.analyzePath(lib.filepath).exists) {
+									await this._ensureFileLoaded(lib.filepath, false);
+								}
+							} catch (e) { }
+						}
+						if (this._setInfoLoading) this._setInfoLoading(false);
+					}
+				}
+			}
+
+			if (!this.isPlayable(file)) {
+				return;
+			}
+
+			// On-demand GENMIDI loading for DOOM MUS files
+			const isMusFile = lowerFile.endsWith('.mus') || lowerFile.endsWith('.lmp');
 			const isMidiPath = (this._isMidiFile && this._isMidiFile(lowerFile)) || (this._isMidiExt && this._isMidiExt(lowerFile));
 			if (isMusFile) {
 				if (game) {
@@ -1412,8 +1422,8 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 								this.LoadGENMIDI(ptr, data.length);
 								Module._free(ptr);
 							} catch (e) {
-    if (this.debugMode) console.error("Error loading GENMIDI.lmp from FS:", e);
-  }
+								if (this.debugMode) console.error("Error loading GENMIDI.lmp from FS:", e);
+							}
 						}
 					}
 				}
@@ -1494,7 +1504,7 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 				this._updateHighlight();
 				this._updateMemoryDisplay();
 			} finally {
-			this._isLoadingFile = false;
+				this._isLoadingFile = false;
 			}
 		});
 	}
@@ -1758,190 +1768,208 @@ this._log && this._log('ARCHIVES', '_processArchiveEntries called:', sourceName,
 		return links;
 	}
 
-_baseNameNoExt(p) {
-	const file = String(p || '').split('/').pop();
-	const dot = file.lastIndexOf('.');
-	const base = dot > 0 ? file.substring(0, dot) : file;
-	// Decode URL encoding to handle filenames like "Antarctic%20Adventure.zip"
-	try {
-		return decodeURIComponent(base);
-	} catch (e) {
-		return base;
+	_baseNameNoExt(p) {
+		const file = String(p || '').split('/').pop();
+		const dot = file.lastIndexOf('.');
+		const base = dot > 0 ? file.substring(0, dot) : file;
+		// Decode URL encoding to handle filenames like "Antarctic%20Adventure.zip"
+		try {
+			return decodeURIComponent(base);
+		} catch (e) {
+			return base;
+		}
 	}
-}
 
 	_isExternalGameImage(p) {
-  const lower = String(p || '').toLowerCase();
-  return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp');
-}
-
-  _tryFetchMatchingImageForArchive(archiveUrl) {
-  	if (!archiveUrl) {
-  		if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] _tryFetchMatchingImageForArchive: no archiveUrl');
-  		return;
-  	}
-  	if (this._externalImageFetchAttempts?.has(archiveUrl)) {
-  		if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] _tryFetchMatchingImageForArchive: already attempted', archiveUrl);
-  		return;
-  	}
-  	if (!this._externalImageFetchAttempts) this._externalImageFetchAttempts = new Set();
-  	this._externalImageFetchAttempts.add(archiveUrl);
-
-    // Extract directory and base name from archive URL
-    const lastSlash = archiveUrl.lastIndexOf('/');
-    const directory = archiveUrl.substring(0, lastSlash + 1);
-    const fileName = archiveUrl.substring(lastSlash + 1);
-    const dotIdx = fileName.lastIndexOf('.');
-    const baseName = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
-
-    if (!baseName) return;
-
-    // Skip numbered archives (01, 02, etc.) as they're unlikely to have matching images
-    if (/^\d+$/.test(baseName)) return;
-
-    // Use window.__VGM_DEBUG__ for immediate logging (before debugMode is set)
-    if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Trying to find matching image for archive:', baseName, 'url:', archiveUrl);
-
-	// Check if a matching image is listed on the page (in _currentScanNames)
-	const scanNames = this._currentScanNames;
-	const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
-	let foundImageExt = null;
-	for (const ext of imageExts) {
-const imageName = (baseName + ext).toLowerCase();
-  if (scanNames && scanNames.has(imageName)) {
-    foundImageExt = ext;
-    break;
-  }
-}
-
-this._log && this._log('ARCHIVES', '_tryFetchMatchingImageForArchive:', 'baseName:', baseName, 'scanNames size:', scanNames ? scanNames.size : 0, 'foundImageExt:', foundImageExt);
-
-// If a matching image is listed on the page, fetch it directly
-if (foundImageExt) {
-  const imageUrl = directory + baseName + foundImageExt;
-  this._log && this._log('ARCHIVES', 'Image found in scan names, fetching:', imageUrl);
-  this._fetchUrlAsUint8(imageUrl).then(bytes => {
-    this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 callback for', imageUrl, 'bytes:', bytes ? bytes.length : 'null');
-    if (bytes && bytes.length > 0) {
-      this._log && this._log('ARCHIVES', 'Found matching image for archive:', imageUrl, 'size:', bytes.length);
-      this._registerExternalGameImage(baseName + foundImageExt, bytes);
-      this._applyExternalGameImageToExistingGames(baseName + foundImageExt);
-    }
-  }).catch((err) => {
-    this._log && this._log('ARCHIVES', 'Image fetch failed:', imageUrl, err);
-  });
-  return;
-}
-
-// If no matching image is listed on the page, try all image extensions as fallback
-// This handles cases where the image exists on the server but isn't linked on the page
-this._log && this._log('ARCHIVES', 'Trying to find image for archive:', baseName, 'in directory:', directory);
-this._tryFetchImageWithFallbacks(directory, baseName, imageExts, 0);
-}
-
-async _tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex) {
-if (startIndex >= extensions.length) {
-  // All extensions tried, no image found
-  this._log && this._log('ARCHIVES', 'No image found for archive:', baseName, 'tried extensions:', extensions.join(', '));
-  return;
-}
-const ext = extensions[startIndex];
-const imageUrl = directory + baseName + ext;
-this._log && this._log('ARCHIVES', 'Trying image URL:', imageUrl);
-try {
-  const bytes = await this._fetchUrlAsUint8(imageUrl);
-  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 result for', imageUrl, ':', bytes ? bytes.length : 'null');
-  if (bytes && bytes.length > 0) {
-    this._log && this._log('ARCHIVES', 'Found matching image for archive:', imageUrl, 'size:', bytes.length);
-    this._registerExternalGameImage(baseName + ext, bytes);
-    this._applyExternalGameImageToExistingGames(baseName + ext);
-  } else {
-    // Try next extension
-    this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
-  }
-} catch (e) {
-  this._log && this._log('ARCHIVES', '_tryFetchImageWithFallbacks error:', imageUrl, e);
-  // Image not found with this extension, try next
-  this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
-}
-}
-
-_registerExternalGameImage(name, byteArray) {
-if (!name || !byteArray) {
-  this._log && this._log('ARCHIVES', '_registerExternalGameImage: invalid params', 'name:', name, 'byteArray:', byteArray ? byteArray.length : 'null');
-  return;
-}
-
-this._log && this._log('ARCHIVES', '_registerExternalGameImage:', name, 'size:', byteArray.length);
-
-const key = this._baseNameNoExt(name).toLowerCase();
-if (!key) {
-  this._log && this._log('ARCHIVES', '_registerExternalGameImage: no key for', name);
-  return;
-}
-if (!this._pendingExternalGameImages) this._pendingExternalGameImages = {};
-try {
-  const lower = name.toLowerCase();
-  let mime = 'image/jpeg';
-  if (lower.endsWith('.png')) mime = 'image/png';
-  else if (lower.endsWith('.webp')) mime = 'image/webp';
-  else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
-  this._pendingExternalGameImages[key] = new Blob([byteArray], { type: mime });
-  this._log && this._log('ARCHIVES', 'Registered external game image:', key, 'mime:', mime, 'blob size:', this._pendingExternalGameImages[key].size);
-} catch (e) {
-		if (this.debugMode) console.error('[VGM] Failed to cache external game image', name, e);
+		const lower = String(p || '').toLowerCase();
+		return lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp');
 	}
-}
 
-_applyExternalGameImage(game, archiveName, overrideOnly) {
-if (!game || !archiveName || !this._pendingExternalGameImages) return;
-const key = this._baseNameNoExt(archiveName).toLowerCase();
-const blob = this._pendingExternalGameImages[key];
-if (!blob) return;
-if (!game.png) {
-  game.png = blob;
-}
-}
+	_tryFetchMatchingImageForArchive(archiveUrl) {
+		if (!archiveUrl) {
+			if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] _tryFetchMatchingImageForArchive: no archiveUrl');
+			return;
+		}
+		if (this._externalImageFetchAttempts?.has(archiveUrl)) {
+			if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] _tryFetchMatchingImageForArchive: already attempted', archiveUrl);
+			return;
+		}
+		if (!this._externalImageFetchAttempts) this._externalImageFetchAttempts = new Set();
+		this._externalImageFetchAttempts.add(archiveUrl);
 
-_applyExternalGameImageToExistingGames(imageName) {
-const key = this._baseNameNoExt(imageName).toLowerCase();
-if (!this.games || !this.games.length) {
-  return;
-}
-if (!key) return;
-let anyUpdated = false;
-for (const game of this.games) {
-  if (!game) continue;
-  const archiveName = game.archiveName || game.name || '';
-  const base = this._baseNameNoExt(archiveName).toLowerCase();
-  if (base === key) {
-    this._applyExternalGameImage(game, archiveName, false);
-    anyUpdated = true;
-    if (game.uiElement) {
-      const img = game.uiElement.querySelector('img.vgmplayGameToggle');
-      if (img && game.png) {
-        try {
-          img.src = URL.createObjectURL(game.png);
-        } catch (e) { }
-        continue;
-      }
-      if (game.uiElement.parentNode) {
-        game.uiElement.parentNode.removeChild(game.uiElement);
-      }
-      game.uiElement = null;
-    }
-    if (this.showVGMFromZip) {
-      this.showVGMFromZip(game);
-    }
-  }
-}
-if (anyUpdated && this._renderZipGamesNow) {
-  this._renderZipGamesNow();
-}
-if (anyUpdated && this._saveCache) {
-  this._saveCache();
-}
-}
+		// Extract directory and base name from archive URL
+		const lastSlash = archiveUrl.lastIndexOf('/');
+		const directory = archiveUrl.substring(0, lastSlash + 1);
+		const fileName = archiveUrl.substring(lastSlash + 1);
+		const dotIdx = fileName.lastIndexOf('.');
+		const baseName = dotIdx > 0 ? fileName.substring(0, dotIdx) : fileName;
+
+		if (!baseName) return;
+
+		// Skip numbered archives (01, 02, etc.) as they're unlikely to have matching images
+		if (/^\d+$/.test(baseName)) return;
+
+		// Use window.__VGM_DEBUG__ for immediate logging (before debugMode is set)
+		if (window.__VGM_DEBUG__ || this.debugMode) console.log('[VGM] Trying to find matching image for archive:', baseName, 'url:', archiveUrl);
+
+		// Check if a matching image is listed on the page (in _currentScanNames)
+		const scanNames = this._currentScanNames;
+		const imageExts = ['.png', '.jpg', '.jpeg', '.webp'];
+		let foundImageExt = null;
+		for (const ext of imageExts) {
+			const imageName = (baseName + ext).toLowerCase();
+			if (scanNames && scanNames.has(imageName)) {
+				foundImageExt = ext;
+				break;
+			}
+		}
+
+		this._log && this._log('ARCHIVES', '_tryFetchMatchingImageForArchive:', 'baseName:', baseName, 'scanNames size:', scanNames ? scanNames.size : 0, 'foundImageExt:', foundImageExt);
+
+		// If a matching image is listed on the page, fetch it directly
+		if (foundImageExt) {
+			const imageUrl = directory + baseName + foundImageExt;
+			this._log && this._log('ARCHIVES', 'Image found in scan names, fetching:', imageUrl);
+			this._fetchUrlAsUint8(imageUrl).then(bytes => {
+				this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 callback for', imageUrl, 'bytes:', bytes ? bytes.length : 'null');
+				if (bytes && bytes.length > 0) {
+					this._log && this._log('ARCHIVES', 'Found matching image for archive:', imageUrl, 'size:', bytes.length);
+					this._registerExternalGameImage(baseName + foundImageExt, bytes);
+					this._applyExternalGameImageToExistingGames(baseName + foundImageExt);
+				}
+			}).catch((err) => {
+				this._log && this._log('ARCHIVES', 'Image fetch failed:', imageUrl, err);
+			});
+			return;
+		}
+
+		// If no matching image is listed on the page, try all image extensions as fallback
+		// This handles cases where the image exists on the server but isn't linked on the page
+		if (this._suppressImageGuesses) return;
+
+		if (!this._imageProbePromise) this._imageProbePromise = Promise.resolve();
+		this._imageProbePromise = this._imageProbePromise.then(() => {
+			if (this._suppressImageGuesses) return;
+			this._log && this._log('ARCHIVES', 'Trying to find image for archive:', baseName, 'in directory:', directory);
+			return this._tryFetchImageWithFallbacks(directory, baseName, imageExts, 0);
+		});
+	}
+
+	async _tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex) {
+		if (startIndex >= extensions.length) {
+			// All extensions tried, no image found
+			this._log && this._log('ARCHIVES', 'No image found for archive:', baseName, 'tried extensions:', extensions.join(', '));
+			return;
+		}
+		const ext = extensions[startIndex];
+		const imageUrl = directory + baseName + ext;
+		this._log && this._log('ARCHIVES', 'Trying image URL:', imageUrl);
+		try {
+			const bytes = await this._fetchUrlAsUint8(imageUrl);
+			this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 result for', imageUrl, ':', bytes ? bytes.length : 'null');
+			if (bytes && bytes.length > 0) {
+				this._log && this._log('ARCHIVES', 'Found matching image for archive:', imageUrl, 'size:', bytes.length);
+				this._registerExternalGameImage(baseName + ext, bytes);
+				this._applyExternalGameImageToExistingGames(baseName + ext);
+			} else {
+				// Try next extension
+				this._failedImageProbeCount++;
+				if (this._failedImageProbeCount > 3) {
+					this._suppressImageGuesses = true;
+					this._log && this._log('ARCHIVES', 'Image guessing suppressed for session.');
+				} else {
+					this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+				}
+			}
+		} catch (e) {
+			this._log && this._log('ARCHIVES', '_tryFetchImageWithFallbacks error:', imageUrl, e);
+			// Image not found with this extension, try next
+			this._failedImageProbeCount++;
+			if (this._failedImageProbeCount > 3) {
+				this._suppressImageGuesses = true;
+				this._log && this._log('ARCHIVES', 'Image guessing suppressed for session.');
+			} else {
+				this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+			}
+		}
+	}
+
+	_registerExternalGameImage(name, byteArray) {
+		if (!name || !byteArray) {
+			this._log && this._log('ARCHIVES', '_registerExternalGameImage: invalid params', 'name:', name, 'byteArray:', byteArray ? byteArray.length : 'null');
+			return;
+		}
+
+		this._log && this._log('ARCHIVES', '_registerExternalGameImage:', name, 'size:', byteArray.length);
+
+		const key = this._baseNameNoExt(name).toLowerCase();
+		if (!key) {
+			this._log && this._log('ARCHIVES', '_registerExternalGameImage: no key for', name);
+			return;
+		}
+		if (!this._pendingExternalGameImages) this._pendingExternalGameImages = {};
+		try {
+			const lower = name.toLowerCase();
+			let mime = 'image/jpeg';
+			if (lower.endsWith('.png')) mime = 'image/png';
+			else if (lower.endsWith('.webp')) mime = 'image/webp';
+			else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+			this._pendingExternalGameImages[key] = new Blob([byteArray], { type: mime });
+			this._log && this._log('ARCHIVES', 'Registered external game image:', key, 'mime:', mime, 'blob size:', this._pendingExternalGameImages[key].size);
+		} catch (e) {
+			if (this.debugMode) console.error('[VGM] Failed to cache external game image', name, e);
+		}
+	}
+
+	_applyExternalGameImage(game, archiveName, overrideOnly) {
+		if (!game || !archiveName || !this._pendingExternalGameImages) return;
+		const key = this._baseNameNoExt(archiveName).toLowerCase();
+		const blob = this._pendingExternalGameImages[key];
+		if (!blob) return;
+		if (!game.png) {
+			game.png = blob;
+		}
+	}
+
+	_applyExternalGameImageToExistingGames(imageName) {
+		const key = this._baseNameNoExt(imageName).toLowerCase();
+		if (!this.games || !this.games.length) {
+			return;
+		}
+		if (!key) return;
+		let anyUpdated = false;
+		for (const game of this.games) {
+			if (!game) continue;
+			const archiveName = game.archiveName || game.name || '';
+			const base = this._baseNameNoExt(archiveName).toLowerCase();
+			if (base === key) {
+				this._applyExternalGameImage(game, archiveName, false);
+				anyUpdated = true;
+				if (game.uiElement) {
+					const img = game.uiElement.querySelector('img.vgmplayGameToggle');
+					if (img && game.png) {
+						try {
+							img.src = URL.createObjectURL(game.png);
+						} catch (e) { }
+						continue;
+					}
+					if (game.uiElement.parentNode) {
+						game.uiElement.parentNode.removeChild(game.uiElement);
+					}
+					game.uiElement = null;
+				}
+				if (this.showVGMFromZip) {
+					this.showVGMFromZip(game);
+				}
+			}
+		}
+		if (anyUpdated && this._renderZipGamesNow) {
+			this._renderZipGamesNow();
+		}
+		if (anyUpdated && this._saveCache) {
+			this._saveCache();
+		}
+	}
 
 	_tryLoadMiscImageFromFS() {
 		if (typeof FS === 'undefined' || !FS.analyzePath || !FS.readFile) return;
@@ -1995,20 +2023,20 @@ if (anyUpdated && this._saveCache) {
 		}
 	}
 
-async _fetchUrlAsUint8(url) {
-this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 called for:', url);
-try {
-  const resp = await fetch(url, { cache: 'no-store' });
-  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 response:', url, 'status:', resp.status, 'ok:', resp.ok);
-  if (!resp.ok) return null;
-  const buf = await resp.arrayBuffer();
-  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 buffer size:', url, buf.byteLength);
-  return new Uint8Array(buf);
-} catch (e) {
-  this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 error:', url, e);
-  return null;
-}
-}
+	async _fetchUrlAsUint8(url) {
+		this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 called for:', url);
+		try {
+			const resp = await fetch(url, { cache: 'no-store' });
+			this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 response:', url, 'status:', resp.status, 'ok:', resp.ok);
+			if (!resp.ok) return null;
+			const buf = await resp.arrayBuffer();
+			this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 buffer size:', url, buf.byteLength);
+			return new Uint8Array(buf);
+		} catch (e) {
+			this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 error:', url, e);
+			return null;
+		}
+	}
 
 	async _autoScanDist() {
 		if (!this.autoScanDist || this._autoScanDistDone) return;
@@ -2044,31 +2072,31 @@ try {
 		for (const url of files) {
 			const lower = url.toLowerCase().split('?')[0].split('#')[0];
 			const rawName = url.split('/').pop().split('?')[0].split('#')[0];
-			
-	let decodedName = rawName;
-	try { decodedName = decodeURIComponent(rawName); } catch (e) { }
-	const decodedKey = decodedName.toLowerCase();
-	if (decodedKey) scanNames.add(decodedKey);
 
-	// Check if this URL was already processed (from cache or previous run)
-	let normalizedUrl;
-	try {
-		const urlObj = new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
-		normalizedUrl = urlObj.host + '/' + rawName;
-	} catch (e) {
-		normalizedUrl = (typeof window !== 'undefined' ? window.location.host : 'localhost') + '/' + rawName;
-	}
-	if (this._processedURLs && this._processedURLs.has(normalizedUrl)) {
-		this._log && this._log('ARCHIVES', 'Auto-scan skipping already processed URL:', normalizedUrl);
-		continue;
-	}
+			let decodedName = rawName;
+			try { decodedName = decodeURIComponent(rawName); } catch (e) { }
+			const decodedKey = decodedName.toLowerCase();
+			if (decodedKey) scanNames.add(decodedKey);
 
-	if (this._cacheArchiveNames && this._cacheArchiveNames.has(decodedKey)) {
-		continue;
-	}
+			// Check if this URL was already processed (from cache or previous run)
+			let normalizedUrl;
+			try {
+				const urlObj = new URL(url, typeof window !== 'undefined' ? window.location.href : 'http://localhost');
+				normalizedUrl = urlObj.host + '/' + rawName;
+			} catch (e) {
+				normalizedUrl = (typeof window !== 'undefined' ? window.location.host : 'localhost') + '/' + rawName;
+			}
+			if (this._processedURLs && this._processedURLs.has(normalizedUrl)) {
+				this._log && this._log('ARCHIVES', 'Auto-scan skipping already processed URL:', normalizedUrl);
+				continue;
+			}
 
-	if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
-	if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
+			if (this._cacheArchiveNames && this._cacheArchiveNames.has(decodedKey)) {
+				continue;
+			}
+
+			if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
+			if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
 
 			if (this._isArchiveUrl(lower)) {
 				if (this._queueAutoURL) {
@@ -2085,13 +2113,13 @@ try {
 				const romType = this._getRomType ? this._getRomType(name) : null;
 				const isExtImage = this._isExternalGameImage ? this._isExternalGameImage(name) : false;
 				if (romType) {
-    const bytes = await this._fetchUrlAsUint8(url);
-    if (bytes) {
-      this.saveRomFile(bytes, name, romType);
-    } else {
-      if (this.debugMode) console.warn('ROM fetch failed', url);
-    }
-  } else if (isExtImage) {
+					const bytes = await this._fetchUrlAsUint8(url);
+					if (bytes) {
+						this.saveRomFile(bytes, name, romType);
+					} else {
+						if (this.debugMode) console.warn('ROM fetch failed', url);
+					}
+				} else if (isExtImage) {
 					const bytes = await this._fetchUrlAsUint8(url);
 					if (bytes) {
 						this._registerExternalGameImage(name, bytes);
@@ -2294,8 +2322,8 @@ try {
 				} catch (e) { }
 			}
 		} catch (e) {
-    if (this.debugMode) console.error('[AudioMotion] init failed', e);
-  }
+			if (this.debugMode) console.error('[AudioMotion] init failed', e);
+		}
 	}
 
 	async _ensureAudioMotion() {
@@ -2308,8 +2336,8 @@ try {
 					window.AudioMotionAnalyzer = mod.default || mod;
 				})
 				.catch((e) => {
-    if (this.debugMode) console.warn('[AudioMotion] failed to load', e);
-  });
+					if (this.debugMode) console.warn('[AudioMotion] failed to load', e);
+				});
 		}
 		await this._audioMotionLoading;
 	}
@@ -2394,31 +2422,31 @@ try {
 	}
 
 	_setOverviewMode(enabled) {
-	  this.overviewMode = !!enabled;
-	  if (this.overviewMode && (!this.activeGame || (this.games && !this.games.includes(this.activeGame)))) {
-	    if (this.games && this.games.length) {
-	      // Try to find a game from the current site first
-	      const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
-	      const currentScan = this._currentScanNames || new Set();
-	      const normalizeArchiveName = (value) => {
-	        if (!value) return '';
-	        const base = String(value).split('?')[0].split('#')[0];
-	        const last = base.split('/').pop() || base;
-	        try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
-	      };
-	      let foundSiteGame = null;
-	      for (const game of this.games) {
-	        const key = normalizeArchiveName(game && (game.archiveName || game.name));
-	        const isFromCurrentScan = key && currentScan.has(key);
-	        const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
-	        if (isFromCurrentScan || isFromCurrentHostCache) {
-	          foundSiteGame = game;
-	          break;
-	        }
-	      }
-	      this.activeGame = foundSiteGame || this.games[0];
-	    }
-	  }
+		this.overviewMode = !!enabled;
+		if (this.overviewMode && (!this.activeGame || (this.games && !this.games.includes(this.activeGame)))) {
+			if (this.games && this.games.length) {
+				// Try to find a game from the current site first
+				const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+				const currentScan = this._currentScanNames || new Set();
+				const normalizeArchiveName = (value) => {
+					if (!value) return '';
+					const base = String(value).split('?')[0].split('#')[0];
+					const last = base.split('/').pop() || base;
+					try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
+				};
+				let foundSiteGame = null;
+				for (const game of this.games) {
+					const key = normalizeArchiveName(game && (game.archiveName || game.name));
+					const isFromCurrentScan = key && currentScan.has(key);
+					const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
+					if (isFromCurrentScan || isFromCurrentHostCache) {
+						foundSiteGame = game;
+						break;
+					}
+				}
+				this.activeGame = foundSiteGame || this.games[0];
+			}
+		}
 		if (this.overviewMode && this.activeGame) {
 			if (!this.activeGame.uiElement && this.showVGMFromZip) {
 				try { this.showVGMFromZip(this.activeGame); } catch (e) { }
@@ -2436,14 +2464,14 @@ try {
 			this.vgmplayContainer.classList.toggle('vgmplayOverviewMode', this.overviewMode);
 		}
 		if (this.standalone) {
-		  this._updateStandaloneRightPanel();
+			this._updateStandaloneRightPanel();
 		} else if (this.standaloneGameGrid) {
-		  // Extension: show game grid in right panel when in overview mode
-		  this.standaloneGameGrid.style.display = this.overviewMode ? 'grid' : 'none';
-		  // Hide the analyzer overlay in grid mode
-		  if (this.standaloneOverlay) {
-		    this.standaloneOverlay.style.display = this.overviewMode ? 'none' : '';
-		  }
+			// Extension: show game grid in right panel when in overview mode
+			this.standaloneGameGrid.style.display = this.overviewMode ? 'grid' : 'none';
+			// Hide the analyzer overlay in grid mode
+			if (this.standaloneOverlay) {
+				this.standaloneOverlay.style.display = this.overviewMode ? 'none' : '';
+			}
 		}
 		this._applyOverviewTrackFilter();
 		this._updateOverviewGridSelection();
@@ -2494,117 +2522,117 @@ try {
 	}
 
 	_renderOverviewGrid() {
-	if (!this.standaloneGameGrid || !this.games) return;
-	this.standaloneGameGrid.innerHTML = '';
-	const normalizeTitle = (value) => {
-	if (!value) return value;
-	if (this._normalizeGameTitle) {
-	const normalized = this._normalizeGameTitle(value);
-	return normalized || value;
-	}
-	return value;
-	};
-	
-	// Group games by site
-	const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
-	const currentScan = this._currentScanNames || new Set();
-	const normalizeArchiveName = (value) => {
-	if (!value) return '';
-	const base = String(value).split('?')[0].split('#')[0];
-	const last = base.split('/').pop() || base;
-	try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
-	};
-	
-	// Group games: current site first, then other sites
-	const currentSiteGames = [];
-	const gamesByHost = new Map(); // host -> games
-	
-	for (const game of this.games) {
-	if (!game || !game.files || !game.files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()))) {
-	continue;
-	}
-	const key = normalizeArchiveName(game && (game.archiveName || game.name));
-	const isFromCurrentScan = key && currentScan.has(key);
-	const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
-	
-	if (isFromCurrentScan || isFromCurrentHostCache) {
-	currentSiteGames.push(game);
-	} else {
-	const host = game.cacheHost || 'Other';
-	if (!gamesByHost.has(host)) gamesByHost.set(host, []);
-	gamesByHost.get(host).push(game);
-	}
-	}
-	
-	// Helper function to create a tile
-	const createTile = (game) => {
-	const tile = document.createElement('button');
-	tile.type = 'button';
-	tile.className = 'vgmplayOverviewTile';
-	const name = normalizeTitle(game.name || game.archiveName || 'Unknown Game');
-	
-	if (game.png) {
-	if (!game._overviewImageUrl) {
-	game._overviewImageUrl = URL.createObjectURL(game.png);
-	}
-	const img = document.createElement('img');
-	img.src = game._overviewImageUrl;
-	img.alt = name;
-	tile.appendChild(img);
-	} else {
-	const text = document.createElement('div');
-	text.className = 'vgmplayOverviewTileText';
-	text.textContent = name;
-	tile.appendChild(text);
-	}
-	
-	tile.title = name;
-	tile.addEventListener('click', () => {
-	this.activeGame = game;
-	this._applyOverviewTrackFilter();
-	this._updateOverviewGridSelection();
-	if (game.uiElement) {
-	game.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-	}
-	});
-	game._overviewTile = tile;
-	return tile;
-	};
-	
-	// Render current site games first
-	for (const game of currentSiteGames) {
-	const tile = createTile(game);
-	this.standaloneGameGrid.appendChild(tile);
-	}
-	
-	// Render other sites with separators
-	const otherHosts = Array.from(gamesByHost.keys()).sort();
-	for (const host of otherHosts) {
-	const games = gamesByHost.get(host);
-	if (!games.length) continue;
-	
-	// Add separator with label for this site
-	if (currentSiteGames.length > 0 || otherHosts.indexOf(host) > 0) {
-	const label = document.createElement('div');
-	label.className = 'vgmplayGridSeparatorLabel';
-	label.textContent = `Cached from: ${host}`;
-	this.standaloneGameGrid.appendChild(label);
-	const separator = document.createElement('div');
-	separator.className = 'vgmplayGridSeparator';
-	this.standaloneGameGrid.appendChild(separator);
-	}
-	
-	// Render games for this site
-	for (const game of games) {
-	const tile = createTile(game);
-	this.standaloneGameGrid.appendChild(tile);
-	}
-	}
-	
-	this._updateOverviewGridSelection();
-	if (this.overviewMode) {
-	this._applyOverviewTrackFilter();
-	}
+		if (!this.standaloneGameGrid || !this.games) return;
+		this.standaloneGameGrid.innerHTML = '';
+		const normalizeTitle = (value) => {
+			if (!value) return value;
+			if (this._normalizeGameTitle) {
+				const normalized = this._normalizeGameTitle(value);
+				return normalized || value;
+			}
+			return value;
+		};
+
+		// Group games by site
+		const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : '';
+		const currentScan = this._currentScanNames || new Set();
+		const normalizeArchiveName = (value) => {
+			if (!value) return '';
+			const base = String(value).split('?')[0].split('#')[0];
+			const last = base.split('/').pop() || base;
+			try { return decodeURIComponent(last).toLowerCase(); } catch (e) { return last.toLowerCase(); }
+		};
+
+		// Group games: current site first, then other sites
+		const currentSiteGames = [];
+		const gamesByHost = new Map(); // host -> games
+
+		for (const game of this.games) {
+			if (!game || !game.files || !game.files.some((f) => f && f.filepath && this.isPlayable(String(f.filepath).toLowerCase()))) {
+				continue;
+			}
+			const key = normalizeArchiveName(game && (game.archiveName || game.name));
+			const isFromCurrentScan = key && currentScan.has(key);
+			const isFromCurrentHostCache = game._fromCache && (game.cacheHost === currentHost || !game.cacheHost);
+
+			if (isFromCurrentScan || isFromCurrentHostCache) {
+				currentSiteGames.push(game);
+			} else {
+				const host = game.cacheHost || 'Other';
+				if (!gamesByHost.has(host)) gamesByHost.set(host, []);
+				gamesByHost.get(host).push(game);
+			}
+		}
+
+		// Helper function to create a tile
+		const createTile = (game) => {
+			const tile = document.createElement('button');
+			tile.type = 'button';
+			tile.className = 'vgmplayOverviewTile';
+			const name = normalizeTitle(game.name || game.archiveName || 'Unknown Game');
+
+			if (game.png) {
+				if (!game._overviewImageUrl) {
+					game._overviewImageUrl = URL.createObjectURL(game.png);
+				}
+				const img = document.createElement('img');
+				img.src = game._overviewImageUrl;
+				img.alt = name;
+				tile.appendChild(img);
+			} else {
+				const text = document.createElement('div');
+				text.className = 'vgmplayOverviewTileText';
+				text.textContent = name;
+				tile.appendChild(text);
+			}
+
+			tile.title = name;
+			tile.addEventListener('click', () => {
+				this.activeGame = game;
+				this._applyOverviewTrackFilter();
+				this._updateOverviewGridSelection();
+				if (game.uiElement) {
+					game.uiElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			});
+			game._overviewTile = tile;
+			return tile;
+		};
+
+		// Render current site games first
+		for (const game of currentSiteGames) {
+			const tile = createTile(game);
+			this.standaloneGameGrid.appendChild(tile);
+		}
+
+		// Render other sites with separators
+		const otherHosts = Array.from(gamesByHost.keys()).sort();
+		for (const host of otherHosts) {
+			const games = gamesByHost.get(host);
+			if (!games.length) continue;
+
+			// Add separator with label for this site
+			if (currentSiteGames.length > 0 || otherHosts.indexOf(host) > 0) {
+				const label = document.createElement('div');
+				label.className = 'vgmplayGridSeparatorLabel';
+				label.textContent = `Cached from: ${host}`;
+				this.standaloneGameGrid.appendChild(label);
+				const separator = document.createElement('div');
+				separator.className = 'vgmplayGridSeparator';
+				this.standaloneGameGrid.appendChild(separator);
+			}
+
+			// Render games for this site
+			for (const game of games) {
+				const tile = createTile(game);
+				this.standaloneGameGrid.appendChild(tile);
+			}
+		}
+
+		this._updateOverviewGridSelection();
+		if (this.overviewMode) {
+			this._applyOverviewTrackFilter();
+		}
 	}
 
 
@@ -2630,8 +2658,8 @@ try {
 			Module.SetCurrentArchiveName(archiveName);
 		}
 		if (!ok) {
-    if (this.debugMode) console.error("[VGM] Failed to open file:", fileName);
-  }
+			if (this.debugMode) console.error("[VGM] Failed to open file:", fileName);
+		}
 		this.isVGMLoaded = ok;
 		this.isKSSActive = ok && this._isKssFile(fileName);
 		if (this.isKSSActive && this._ensureKssBindings) {
@@ -2702,9 +2730,9 @@ try {
 			} catch (e) { }
 		}
 		if (!bytes || !bytes.buffer) {
-    if (this.debugMode) console.error('Error saving ROM file: invalid data for', name);
-    return;
-  }
+			if (this.debugMode) console.error('Error saving ROM file: invalid data for', name);
+			return;
+		}
 
 		if (typeof FS === 'undefined' || !FS.createDataFile) {
 			this._queueRomRetry(bytes, name, type);
@@ -2727,25 +2755,25 @@ try {
 			return;
 		}
 
-  try {
-    const path = '/' + targetName;
-    if (FS.analyzePath(path).exists) {
-      FS.unlink(path);
-    }
-    FS.createDataFile('/', targetName, bytes, true, true);
-    if (!this._romLoaded[key]) {
-      const opts = { typeLabel: label, isRom: true };
-      if (type === 'munt') opts.isMuntRom = true;
-      this._addNoPlayableNotice(name || targetName, opts);
-      this._romLoaded[key] = true;
-    }
-    // Also cache the ROM file for persistence across sessions
-    this._cacheRomFile(bytes, targetName, type);
-  } catch (e) {
-    if (this.debugMode) console.error("Error saving ROM file:", e);
-    this._queueRomRetry(bytes, name, type);
-  }
-}
+		try {
+			const path = '/' + targetName;
+			if (FS.analyzePath(path).exists) {
+				FS.unlink(path);
+			}
+			FS.createDataFile('/', targetName, bytes, true, true);
+			if (!this._romLoaded[key]) {
+				const opts = { typeLabel: label, isRom: true };
+				if (type === 'munt') opts.isMuntRom = true;
+				this._addNoPlayableNotice(name || targetName, opts);
+				this._romLoaded[key] = true;
+			}
+			// Also cache the ROM file for persistence across sessions
+			this._cacheRomFile(bytes, targetName, type);
+		} catch (e) {
+			if (this.debugMode) console.error("Error saving ROM file:", e);
+			this._queueRomRetry(bytes, name, type);
+		}
+	}
 
 	_queueRomRetry(bytes, name, romType) {
 		if (!bytes || !bytes.buffer) return;
@@ -2773,114 +2801,114 @@ try {
 					}
 				}
 			}
-    if (this._pendingRomLoads.length) {
-      this._schedulePendingRomRetry();
-    }
-  });
-}
+			if (this._pendingRomLoads.length) {
+				this._schedulePendingRomRetry();
+			}
+		});
+	}
 
-// Cache ROM file to IndexedDB for persistence across sessions
-_cacheRomFile(bytes, name, type) {
-if (!this._cacheBridgeAvailable()) return;
-const path = '/' + name;
-// Convert to base64 to avoid ArrayBuffer serialization issues with IndexedDB
-let b64 = null;
-if (bytes instanceof Uint8Array) {
-let binary = '';
-const chunkSize = 0x8000;
-for (let i = 0; i < bytes.length; i += chunkSize) {
-const sub = bytes.subarray(i, i + chunkSize);
-binary += String.fromCharCode.apply(null, sub);
-}
-b64 = btoa(binary);
-} else if (bytes instanceof ArrayBuffer) {
-const arr = new Uint8Array(bytes);
-let binary = '';
-const chunkSize = 0x8000;
-for (let i = 0; i < arr.length; i += chunkSize) {
-const sub = arr.subarray(i, i + chunkSize);
-binary += String.fromCharCode.apply(null, sub);
-}
-b64 = btoa(binary);
-} else if (typeof bytes === 'string') {
-b64 = bytes; // already base64
-}
-if (b64) {
-this._cacheBridgeRequest('putFiles', { files: [{ path, b64 }] }).then((resp) => {
-  if (resp && resp.error) {
-    this._logWarn && this._logWarn('CACHE', 'Failed to cache ROM file:', name, resp.error);
-  } else {
-    this._log && this._log('CACHE', 'ROM file cached:', name, 'size:', bytes.length || bytes.byteLength);
-  }
-});
-} else {
-this._logWarn && this._logWarn('CACHE', 'Could not convert ROM to base64 for caching:', name);
-}
-}
+	// Cache ROM file to IndexedDB for persistence across sessions
+	_cacheRomFile(bytes, name, type) {
+		if (!this._cacheBridgeAvailable()) return;
+		const path = '/' + name;
+		// Convert to base64 to avoid ArrayBuffer serialization issues with IndexedDB
+		let b64 = null;
+		if (bytes instanceof Uint8Array) {
+			let binary = '';
+			const chunkSize = 0x8000;
+			for (let i = 0; i < bytes.length; i += chunkSize) {
+				const sub = bytes.subarray(i, i + chunkSize);
+				binary += String.fromCharCode.apply(null, sub);
+			}
+			b64 = btoa(binary);
+		} else if (bytes instanceof ArrayBuffer) {
+			const arr = new Uint8Array(bytes);
+			let binary = '';
+			const chunkSize = 0x8000;
+			for (let i = 0; i < arr.length; i += chunkSize) {
+				const sub = arr.subarray(i, i + chunkSize);
+				binary += String.fromCharCode.apply(null, sub);
+			}
+			b64 = btoa(binary);
+		} else if (typeof bytes === 'string') {
+			b64 = bytes; // already base64
+		}
+		if (b64) {
+			this._cacheBridgeRequest('putFiles', { files: [{ path, b64 }] }).then((resp) => {
+				if (resp && resp.error) {
+					this._logWarn && this._logWarn('CACHE', 'Failed to cache ROM file:', name, resp.error);
+				} else {
+					this._log && this._log('CACHE', 'ROM file cached:', name, 'size:', bytes.length || bytes.byteLength);
+				}
+			});
+		} else {
+			this._logWarn && this._logWarn('CACHE', 'Could not convert ROM to base64 for caching:', name);
+		}
+	}
 
-// Restore ROM files from cache on startup
-async _restoreRomsFromCache() {
-if (!this._cacheBridgeAvailable()) return;
-const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM'];
-this._log && this._log('CACHE', 'Requesting ROM files from cache:', romPaths);
-const resp = await this._cacheBridgeRequest('getFiles', { paths: romPaths });
-this._log && this._log('CACHE', 'ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
-if (resp && resp.files && resp.files.length) {
-for (const item of resp.files) {
-if (!item || !item.path) continue;
-const name = item.path.split('/').pop();
-const romType = this._getRomType(name);
-if (romType) {
-  // Handle both base64 and binary data formats (same as _bridgeFetchFiles)
-  let bytes = null;
-  if (item.b64) {
-    const binary = atob(item.b64);
-    const len = binary.length;
-    bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-    this._log && this._log('CACHE', 'Decoded b64, size:', bytes.byteLength);
-  } else if (item.data) {
-    bytes = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
-    this._log && this._log('CACHE', 'Using data, size:', bytes.byteLength);
-  } else {
-    this._log && this._log('CACHE', 'ROM item has no data:', name);
-    continue;
-  }
-  this._log && this._log('CACHE', 'Restoring ROM:', name, 'type:', romType, 'size:', bytes.byteLength);
-  // Write directly to FS - we're called after FS is ready in _doInit
-  if (typeof FS !== 'undefined' && FS.writeFile) {
-    const path = '/' + name;
-    try {
-      if (FS.analyzePath(path).exists) {
-        FS.unlink(path);
-      }
-      FS.writeFile(path, bytes);
-      this._romLoaded = this._romLoaded || {};
-      let key = romType === 'munt' ? ('munt:' + name.toUpperCase()) : ('opl4:yrw801.rom');
-      // Show notice that ROM was loaded from cache
-      if (!this._romLoaded[key]) {
-        const label = romType === 'munt' ? 'Munt ROM' : 'OPL4 ROM (YRW801)';
-        const opts = { typeLabel: label, isRom: true, fromCache: true };
-        if (romType === 'munt') opts.isMuntRom = true;
-        this._addNoPlayableNotice(name, opts);
-      }
-      this._romLoaded[key] = true;
-      this._log && this._log('CACHE', 'ROM restored successfully:', path, 'key:', key);
-// Verify the file was written
-const stat = FS.stat(path);
-if (this.debugMode) console.log('[VGM] ROM file size in FS:', stat.size);
-} catch (e) {
-    if (this.debugMode) console.error('[VGM] Failed to restore ROM from cache:', name, e);
-  }
-  } else {
-    if (this.debugMode) console.warn('[VGM] FS not available for ROM restoration');
-  }
-}
-}
-} else {
-if (this.debugMode) console.log('[VGM] No ROM files found in cache');
-}
-}
+	// Restore ROM files from cache on startup
+	async _restoreRomsFromCache() {
+		if (!this._cacheBridgeAvailable()) return;
+		const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM'];
+		this._log && this._log('CACHE', 'Requesting ROM files from cache:', romPaths);
+		const resp = await this._cacheBridgeRequest('getFiles', { paths: romPaths });
+		this._log && this._log('CACHE', 'ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
+		if (resp && resp.files && resp.files.length) {
+			for (const item of resp.files) {
+				if (!item || !item.path) continue;
+				const name = item.path.split('/').pop();
+				const romType = this._getRomType(name);
+				if (romType) {
+					// Handle both base64 and binary data formats (same as _bridgeFetchFiles)
+					let bytes = null;
+					if (item.b64) {
+						const binary = atob(item.b64);
+						const len = binary.length;
+						bytes = new Uint8Array(len);
+						for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+						this._log && this._log('CACHE', 'Decoded b64, size:', bytes.byteLength);
+					} else if (item.data) {
+						bytes = (item.data instanceof ArrayBuffer) ? new Uint8Array(item.data) : new Uint8Array(item.data.buffer || item.data);
+						this._log && this._log('CACHE', 'Using data, size:', bytes.byteLength);
+					} else {
+						this._log && this._log('CACHE', 'ROM item has no data:', name);
+						continue;
+					}
+					this._log && this._log('CACHE', 'Restoring ROM:', name, 'type:', romType, 'size:', bytes.byteLength);
+					// Write directly to FS - we're called after FS is ready in _doInit
+					if (typeof FS !== 'undefined' && FS.writeFile) {
+						const path = '/' + name;
+						try {
+							if (FS.analyzePath(path).exists) {
+								FS.unlink(path);
+							}
+							FS.writeFile(path, bytes);
+							this._romLoaded = this._romLoaded || {};
+							let key = romType === 'munt' ? ('munt:' + name.toUpperCase()) : ('opl4:yrw801.rom');
+							// Show notice that ROM was loaded from cache
+							if (!this._romLoaded[key]) {
+								const label = romType === 'munt' ? 'Munt ROM' : 'OPL4 ROM (YRW801)';
+								const opts = { typeLabel: label, isRom: true, fromCache: true };
+								if (romType === 'munt') opts.isMuntRom = true;
+								this._addNoPlayableNotice(name, opts);
+							}
+							this._romLoaded[key] = true;
+							this._log && this._log('CACHE', 'ROM restored successfully:', path, 'key:', key);
+							// Verify the file was written
+							const stat = FS.stat(path);
+							if (this.debugMode) console.log('[VGM] ROM file size in FS:', stat.size);
+						} catch (e) {
+							if (this.debugMode) console.error('[VGM] Failed to restore ROM from cache:', name, e);
+						}
+					} else {
+						if (this.debugMode) console.warn('[VGM] FS not available for ROM restoration');
+					}
+				}
+			}
+		} else {
+			if (this.debugMode) console.log('[VGM] No ROM files found in cache');
+		}
+	}
 
 }
 // ---- Progress bar & seek ----
@@ -2946,10 +2974,10 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 
 	const entry = this.activeGame && this.activeGame.playableList ? this.activeGame.playableList[this.currentFileKey] : null;
 	const path = String(entry && entry.filepath ? entry.filepath : (this.currentFileKey || "")).toLowerCase();
-	
+
 	if (this._isUsfFile(path)) {
-    if (this.debugMode) console.warn("[VGM] Seeking not supported for USF files.");
-    return;
+		if (this.debugMode) console.warn("[VGM] Seeking not supported for USF files.");
+		return;
 	}
 
 	var rect = this.progressContainer.getBoundingClientRect();
@@ -3059,37 +3087,37 @@ VGMPlay_js.prototype.toggleLoopMode = function () {
 		this.currentTrackSupportsLoop = this._trackSupportsLoop();
 	}
 
-  // When disabling loop on a vgmstream track: the C side plays forever so
-  // visualSamplePosition (derived from AudioContext time) may already be past
-  // totalSampleCount if the track has looped. In that case the JS fade would
-  // fire instantly. Instead, anchor a fresh 2-second fade from current position.
-  // Also apply similar logic for KSS files which can loop indefinitely.
-  if (wasLooping && this.loopMode !== 1 && this.isVGMPlaying && this.context) {
-    const isVgmStream = this.IsVGMStream && this.IsVGMStream();
-    const isKss = this.isKSSActive;
-    if (isVgmStream || isKss) {
-      const elapsed = this.context.currentTime - this.playbackStartTime;
-      const currentSample = Math.max(0, this.startSample + (elapsed * this.sampleRate));
-      const FADE_SECS = 2.0;
-      const FADE_SAMPLES = FADE_SECS * this.sampleRate;
-      if (currentSample + FADE_SAMPLES > this.totalSampleCount) {
-        // Anchor progress tracking to current position
-        this.startSample = currentSample;
-        this.playbackStartTime = this.context.currentTime;
-        this.visualSamplePosition = currentSample;
-        this.totalSampleCount = currentSample + FADE_SAMPLES;
-        // Explicitly schedule the gain fade — don't rely on _checkTrackEnd's
-        // next tick which may see inconsistent state at this boundary.
-        this.isFadingOut = true;
-        try {
-          const now = this.context.currentTime;
-          this.masterGain.gain.cancelScheduledValues(now);
-          this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-          this.masterGain.gain.linearRampToValueAtTime(0, now + FADE_SECS);
-        } catch (e) { }
-      }
-    }
-  }
+	// When disabling loop on a vgmstream track: the C side plays forever so
+	// visualSamplePosition (derived from AudioContext time) may already be past
+	// totalSampleCount if the track has looped. In that case the JS fade would
+	// fire instantly. Instead, anchor a fresh 2-second fade from current position.
+	// Also apply similar logic for KSS files which can loop indefinitely.
+	if (wasLooping && this.loopMode !== 1 && this.isVGMPlaying && this.context) {
+		const isVgmStream = this.IsVGMStream && this.IsVGMStream();
+		const isKss = this.isKSSActive;
+		if (isVgmStream || isKss) {
+			const elapsed = this.context.currentTime - this.playbackStartTime;
+			const currentSample = Math.max(0, this.startSample + (elapsed * this.sampleRate));
+			const FADE_SECS = 2.0;
+			const FADE_SAMPLES = FADE_SECS * this.sampleRate;
+			if (currentSample + FADE_SAMPLES > this.totalSampleCount) {
+				// Anchor progress tracking to current position
+				this.startSample = currentSample;
+				this.playbackStartTime = this.context.currentTime;
+				this.visualSamplePosition = currentSample;
+				this.totalSampleCount = currentSample + FADE_SAMPLES;
+				// Explicitly schedule the gain fade — don't rely on _checkTrackEnd's
+				// next tick which may see inconsistent state at this boundary.
+				this.isFadingOut = true;
+				try {
+					const now = this.context.currentTime;
+					this.masterGain.gain.cancelScheduledValues(now);
+					this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+					this.masterGain.gain.linearRampToValueAtTime(0, now + FADE_SECS);
+				} catch (e) { }
+			}
+		}
+	}
 };
 
 VGMPlay_js.prototype._changeTrackInGame = async function (action) {
@@ -3103,7 +3131,7 @@ VGMPlay_js.prototype._changeTrackInGame = async function (action) {
 	if (action === 'next') {
 		this.currentFileKey = (this.currentFileKey + 1) % list.length;
 	} else {
-			this.currentFileKey = (this.currentFileKey - 1 + list.length) % list.length;
+		this.currentFileKey = (this.currentFileKey - 1 + list.length) % list.length;
 	}
 	await this.playFileFromFS(false, list[this.currentFileKey].filepath, this.games.indexOf(this.activeGame) + 1, this.currentFileKey);
 };
@@ -3129,84 +3157,84 @@ VGMPlay_js.prototype.toggleDebugMode = function () {
 };
 
 VGMPlay_js.prototype._loadDebugPrefixSettings = function () {
-try {
-  const saved = localStorage.getItem('vgm_debug_prefixes');
-  if (saved) {
-    this._debugPrefixes = JSON.parse(saved);
-  }
-} catch (e) { }
+	try {
+		const saved = localStorage.getItem('vgm_debug_prefixes');
+		if (saved) {
+			this._debugPrefixes = JSON.parse(saved);
+		}
+	} catch (e) { }
 };
 
 VGMPlay_js.prototype._loadDebugModeSetting = function () {
-try {
-  const saved = localStorage.getItem('vgm_debug_mode');
-  return saved === 'true';
-} catch (e) {
-  return false;
-}
+	try {
+		const saved = localStorage.getItem('vgm_debug_mode');
+		return saved === 'true';
+	} catch (e) {
+		return false;
+	}
 };
 
 VGMPlay_js.prototype._saveDebugModeSetting = function () {
-try {
-  localStorage.setItem('vgm_debug_mode', String(this.debugMode));
-} catch (e) { }
+	try {
+		localStorage.setItem('vgm_debug_mode', String(this.debugMode));
+	} catch (e) { }
 };
 
 VGMPlay_js.prototype._saveDebugPrefixSettings = function () {
-try {
-  localStorage.setItem('vgm_debug_prefixes', JSON.stringify(this._debugPrefixes));
-} catch (e) { }
+	try {
+		localStorage.setItem('vgm_debug_prefixes', JSON.stringify(this._debugPrefixes));
+	} catch (e) { }
 };
 
 VGMPlay_js.prototype._log = function (prefix, ...args) {
-if (!this.debugMode) return;
-const prefixEnabled = this._debugPrefixes[prefix] !== false;
-if (!prefixEnabled) return;
-console.log(`[VGM ${prefix}]`, ...args);
+	if (!this.debugMode) return;
+	const prefixEnabled = this._debugPrefixes[prefix] !== false;
+	if (!prefixEnabled) return;
+	console.log(`[VGM ${prefix}]`, ...args);
 };
 
 VGMPlay_js.prototype._logWarn = function (prefix, ...args) {
-if (!this.debugMode) return;
-const prefixEnabled = this._debugPrefixes[prefix] !== false;
-if (!prefixEnabled) return;
-console.warn(`[VGM ${prefix}]`, ...args);
+	if (!this.debugMode) return;
+	const prefixEnabled = this._debugPrefixes[prefix] !== false;
+	if (!prefixEnabled) return;
+	console.warn(`[VGM ${prefix}]`, ...args);
 };
 
 VGMPlay_js.prototype._logError = function (prefix, ...args) {
-if (!this.debugMode) return;
-const prefixEnabled = this._debugPrefixes[prefix] !== false;
-if (!prefixEnabled) return;
-console.error(`[VGM ${prefix}]`, ...args);
+	if (!this.debugMode) return;
+	const prefixEnabled = this._debugPrefixes[prefix] !== false;
+	if (!prefixEnabled) return;
+	console.error(`[VGM ${prefix}]`, ...args);
 };
 
 VGMPlay_js.prototype._getKnownDebugPrefixes = function () {
-return [
-  'ARCHIVES',
-  'CACHE',
-  'QUEUE',
-  'AUDIO',
-  'KSS',
-  'UI',
-  'MIDI',
-  'METADATA',
-  'SPECTRUM',
-  'LIBRARY',
-  'Background',
-  'Offscreen',
-  'Worker'
-];
+	return [
+		'ARCHIVES',
+		'CACHE',
+		'QUEUE',
+		'AUDIO',
+		'KSS',
+		'UI',
+		'MIDI',
+		'METADATA',
+		'SPECTRUM',
+		'LIBRARY',
+		'Background',
+		'Offscreen',
+		'Worker'
+	];
 };
 
 VGMPlay_js.prototype._showDebugSettingsWindow = function () {
-if (this._debugSettingsWindowVisible) return;
-this._debugSettingsWindowVisible = true;
-const root = this.vgmplayContainer || document.body;
-const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
-let win = uiRoot.getElementById('vgmplay-debug-settings-window');
-if (!win) {
-win = document.createElement('div');
-win.id = 'vgmplay-debug-settings-window';
-win.style.cssText = `
+	if (this._debugSettingsWindowVisible) return;
+	this._debugSettingsWindowVisible = true;
+	const root = this.vgmplayContainer || document.body;
+	const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
+	let win = uiRoot.getElementById('vgmplay-debug-settings-window');
+	if (!win) {
+		win = document.createElement('div');
+		win.id = 'vgmplay-debug-settings-window';
+		win.style.cssText = `
 position: fixed;
 top: 50%;
 left: 50%;
@@ -3222,37 +3250,37 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 color: #e0e0e0;
 box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 `;
-const title = document.createElement('div');
-title.style.cssText = 'font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #fff;';
-title.textContent = 'Debug Settings (press D to close)';
-win.appendChild(title);
+		const title = document.createElement('div');
+		title.style.cssText = 'font-size: 16px; font-weight: bold; margin-bottom: 12px; color: #fff;';
+		title.textContent = 'Debug Settings (press D to close)';
+		win.appendChild(title);
 
-const knownPrefixes = this._getKnownDebugPrefixes();
-const container = document.createElement('div');
-container.style.cssText = 'max-height: 300px; overflow-y: auto;';
-knownPrefixes.forEach(prefix => {
-const label = document.createElement('label');
-label.style.cssText = 'display: flex; align-items: center; margin: 6px 0; cursor: pointer;';
-const checkbox = document.createElement('input');
-checkbox.type = 'checkbox';
-checkbox.checked = this._debugPrefixes[prefix] !== false;
-checkbox.style.cssText = 'margin-right: 8px; width: 16px; height: 16px;';
-checkbox.addEventListener('change', () => {
-this._debugPrefixes[prefix] = checkbox.checked;
-this._saveDebugPrefixSettings();
-});
-const text = document.createElement('span');
-text.textContent = prefix;
-text.style.cssText = 'font-size: 13px;';
-label.appendChild(checkbox);
-label.appendChild(text);
-container.appendChild(label);
-});
-win.appendChild(container);
+		const knownPrefixes = this._getKnownDebugPrefixes();
+		const container = document.createElement('div');
+		container.style.cssText = 'max-height: 300px; overflow-y: auto;';
+		knownPrefixes.forEach(prefix => {
+			const label = document.createElement('label');
+			label.style.cssText = 'display: flex; align-items: center; margin: 6px 0; cursor: pointer;';
+			const checkbox = document.createElement('input');
+			checkbox.type = 'checkbox';
+			checkbox.checked = this._debugPrefixes[prefix] !== false;
+			checkbox.style.cssText = 'margin-right: 8px; width: 16px; height: 16px;';
+			checkbox.addEventListener('change', () => {
+				this._debugPrefixes[prefix] = checkbox.checked;
+				this._saveDebugPrefixSettings();
+			});
+			const text = document.createElement('span');
+			text.textContent = prefix;
+			text.style.cssText = 'font-size: 13px;';
+			label.appendChild(checkbox);
+			label.appendChild(text);
+			container.appendChild(label);
+		});
+		win.appendChild(container);
 
-const closeBtn = document.createElement('button');
-closeBtn.textContent = 'Close';
-closeBtn.style.cssText = `
+		const closeBtn = document.createElement('button');
+		closeBtn.textContent = 'Close';
+		closeBtn.style.cssText = `
 margin-top: 12px;
 padding: 6px 16px;
 background: #4a4a6a;
@@ -3263,12 +3291,12 @@ cursor: pointer;
 font-size: 13px;
 margin-right: 8px;
 `;
-closeBtn.addEventListener('click', () => this._hideDebugSettingsWindow());
-win.appendChild(closeBtn);
+		closeBtn.addEventListener('click', () => this._hideDebugSettingsWindow());
+		win.appendChild(closeBtn);
 
-const turnOffBtn = document.createElement('button');
-turnOffBtn.textContent = 'Turn Debug OFF';
-turnOffBtn.style.cssText = `
+		const turnOffBtn = document.createElement('button');
+		turnOffBtn.textContent = 'Turn Debug OFF';
+		turnOffBtn.style.cssText = `
 margin-top: 12px;
 padding: 6px 16px;
 background: #6a4a4a;
@@ -3278,27 +3306,27 @@ color: #fff;
 cursor: pointer;
 font-size: 13px;
 `;
-	turnOffBtn.addEventListener('click', () => {
-		this._hideDebugSettingsWindow();
-		this.debugMode = false;
-		this.debugModeHasBeenToggled = true;
-		this._saveDebugModeSetting();
-		if (typeof window !== 'undefined') {
-			window.__VGM_DEBUG__ = false;
-		}
-		console.log("[VGM] Debug Mode: OFF");
-		if (this._showNotification && this._startCountdown) {
-			this._showNotification("Debug Mode: OFF", 3000);
-		}
-		if (Module._SetDebugMode) {
-			Module._SetDebugMode(0);
-		}
-	});
-win.appendChild(turnOffBtn);
+		turnOffBtn.addEventListener('click', () => {
+			this._hideDebugSettingsWindow();
+			this.debugMode = false;
+			this.debugModeHasBeenToggled = true;
+			this._saveDebugModeSetting();
+			if (typeof window !== 'undefined') {
+				window.__VGM_DEBUG__ = false;
+			}
+			console.log("[VGM] Debug Mode: OFF");
+			if (this._showNotification && this._startCountdown) {
+				this._showNotification("Debug Mode: OFF", 3000);
+			}
+			if (Module._SetDebugMode) {
+				Module._SetDebugMode(0);
+			}
+		});
+		win.appendChild(turnOffBtn);
 
-root.appendChild(win);
-}
-win.style.display = 'block';
+		root.appendChild(win);
+	}
+	win.style.display = 'block';
 };
 
 VGMPlay_js.prototype._hideDebugSettingsWindow = function () {
@@ -3330,14 +3358,14 @@ VGMPlay_js.prototype._handleEscapeKey = function () {
 };
 
 VGMPlay_js.prototype._shouldLogPrefix = function (prefix) {
-if (!this.debugMode) return false;
-if (!prefix) return true;
-return this._debugPrefixes[prefix] !== false;
+	if (!this.debugMode) return false;
+	if (!prefix) return true;
+	return this._debugPrefixes[prefix] !== false;
 };
 
 VGMPlay_js.prototype._debugLog = function (prefix, ...args) {
-if (!this._shouldLogPrefix(prefix)) return;
-console.log(prefix, ...args);
+	if (!this._shouldLogPrefix(prefix)) return;
+	console.log(prefix, ...args);
 };
 
 VGMPlay_js.prototype.playRandom = function () {
@@ -3410,10 +3438,10 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 				if (typeof fn === 'function') {
 					installers.push(fn);
 				} else {
-    if (this.debugMode) console.warn(`[VGMPlay] ${label} module missing installer`);
-  }
-  } catch (e) {
-    if (this.debugMode) console.error(`[VGMPlay] ${label} module failed to load`, e);
+					if (this.debugMode) console.warn(`[VGMPlay] ${label} module missing installer`);
+				}
+			} catch (e) {
+				if (this.debugMode) console.error(`[VGMPlay] ${label} module failed to load`, e);
 				if (label === 'spectrum') {
 					VGMPlay_js.prototype._startSpectrumAnimation = function () { };
 					VGMPlay_js.prototype._stopSpectrumAnimation = function () { };
@@ -3505,36 +3533,36 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 					window.postMessage({ type: 'VGM_DEBUG_SNAPSHOT_RESPONSE', id: data.id, payload }, '*');
 				});
 			}
-if (!window.__VGM_CACHE_BRIDGE_LISTENER__) {
-    window.__VGM_CACHE_BRIDGE_LISTENER__ = true;
-    window.addEventListener('message', async (e) => {
-      if (e.source !== window) return;
-      const data = e.data || {};
-      if (data.type !== 'VGM_CACHE_BRIDGE_REQUEST') return;
-      const vgm = window.vgmplay_js || window.vgmPlayInstance;
-      let payload = { error: 'vgmplay_js not found' };
-      try {
-        if (vgm && vgm._cacheBridgeRequest) {
-          payload = await vgm._cacheBridgeRequest(data.action, data.payload || {});
-        }
-      } catch (err) {
-        payload = { error: String(err) };
-      }
-      window.postMessage({ type: 'VGM_CACHE_BRIDGE_RESPONSE', id: data.id, payload }, '*');
-    });
-  }
-  if (!window.__VGM_ARCHIVE_EXTRACT_LISTENER__ && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
-    window.__VGM_ARCHIVE_EXTRACT_LISTENER__ = true;
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-      if (!message || message.type !== 'vgm-archive-extract-result') return false;
-      const vgm = window.vgmplay_js || window.vgmPlayInstance;
-      if (vgm && vgm._onBackgroundExtractResult) {
-        vgm._onBackgroundExtractResult(message);
-      }
-      return false;
-    });
-  }
-}
+			if (!window.__VGM_CACHE_BRIDGE_LISTENER__) {
+				window.__VGM_CACHE_BRIDGE_LISTENER__ = true;
+				window.addEventListener('message', async (e) => {
+					if (e.source !== window) return;
+					const data = e.data || {};
+					if (data.type !== 'VGM_CACHE_BRIDGE_REQUEST') return;
+					const vgm = window.vgmplay_js || window.vgmPlayInstance;
+					let payload = { error: 'vgmplay_js not found' };
+					try {
+						if (vgm && vgm._cacheBridgeRequest) {
+							payload = await vgm._cacheBridgeRequest(data.action, data.payload || {});
+						}
+					} catch (err) {
+						payload = { error: String(err) };
+					}
+					window.postMessage({ type: 'VGM_CACHE_BRIDGE_RESPONSE', id: data.id, payload }, '*');
+				});
+			}
+			if (!window.__VGM_ARCHIVE_EXTRACT_LISTENER__ && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+				window.__VGM_ARCHIVE_EXTRACT_LISTENER__ = true;
+				chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+					if (!message || message.type !== 'vgm-archive-extract-result') return false;
+					const vgm = window.vgmplay_js || window.vgmPlayInstance;
+					if (vgm && vgm._onBackgroundExtractResult) {
+						vgm._onBackgroundExtractResult(message);
+					}
+					return false;
+				});
+			}
+		}
 		if (window.__VGM_DEBUG__) {
 			console.log('[VGM] VGMPlay instance created and assigned to window.vgmPlayInstance');
 		}

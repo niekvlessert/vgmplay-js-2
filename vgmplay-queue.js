@@ -102,8 +102,10 @@ export function installQueue(VGMPlay_js) {
 
 		this.isProcessingQueue = true;
 		const job = this.zipQueue.shift();
+		this._manualUploadMode = !!job.isManualUpload;
 
 		const next = () => {
+			this._manualUploadMode = false;
 			this.isProcessingQueue = false;
 			if (this.zipQueue.length === 0) this._setInfoLoading(false);
 			if (this.zipQueue.length === 0 && this.pendingZipRender) {

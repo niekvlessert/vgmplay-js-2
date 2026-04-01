@@ -380,12 +380,13 @@ filteredFiles.sort((a, b) => {
 	const archiveNameLower = (cleanName || '').toLowerCase();
 	const existingGame = this.games.find(g => g && g.archiveName && g.archiveName.toLowerCase() === archiveNameLower);
 	if (existingGame) {
-		console.log('[DEBUG] SKIPPING duplicate in single-game path:', cleanName, 'existing:', existingGame.name);
+		if (this.debugMode) console.log('[DEBUG] SKIPPING duplicate in single-game path:', cleanName, 'existing:', existingGame.name);
 		this._log && this._log('ARCHIVES', 'Skipping duplicate game:', cleanName, '(already loaded as:', existingGame.name + ')');
 		return;
 	}
-	console.log('[DEBUG] PUSHING game:', derivedName, 'archiveName:', cleanName);
+	if (this.debugMode) console.log('[DEBUG] PUSHING game:', derivedName, 'archiveName:', cleanName);
 	this.games.push(game);
+	if (this._manualUploadMode) game.cacheHost = 'manual upload';
 			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 			const hasMidi = game.files.some((f) => {
@@ -504,15 +505,17 @@ filteredFiles.sort((a, b) => {
 
 			const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
 			game.name = name;
-			console.log('[DEBUG] PUSHING game (multi-game path):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
+			if (this.debugMode) console.log('[DEBUG] PUSHING game (multi-game path):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
 			this.games.push(game);
+			if (this._manualUploadMode) game.cacheHost = 'manual upload';
 			anyPlayable = true;
 		} else if (game.png && game.png.size > 0) {
 			// Add game even without playable files if it has a PNG cover
 			const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
 			game.name = name;
-			console.log('[DEBUG] PUSHING game (png-only):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
+			if (this.debugMode) console.log('[DEBUG] PUSHING game (png-only):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
 			this.games.push(game);
+			if (this._manualUploadMode) game.cacheHost = 'manual upload';
 		}
 		await maybeYield();
 	}
@@ -715,6 +718,7 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 			}
 
 			this.games.push(game);
+			if (this._manualUploadMode) game.cacheHost = 'manual upload';
 			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
 			if (!hasPlayable) {
 				this._addNoPlayableNotice(sourceName || 'Archive');
@@ -744,6 +748,7 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 				}
 
 				this.games.push(game);
+				if (this._manualUploadMode) game.cacheHost = 'manual upload';
 				anyPlayable = true;
 			}
 		}

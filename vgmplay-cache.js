@@ -157,7 +157,10 @@ export function installCache(VGMPlay_js) {
 			const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : 'localhost';
 			normalizedUrl = currentHost + '/' + url.split('/').pop().split('?')[0].split('#')[0];
 		}
-		return this._processedURLs.has(normalizedUrl);
+		try { normalizedUrl = decodeURIComponent(normalizedUrl); } catch (e) { }
+		const hit = this._processedURLs.has(normalizedUrl);
+		if (this.debugMode) console.log('[VGM Debug] _isUrlInCache check:', { original: url, normalized: normalizedUrl, hit: hit, _processedURLs: Array.from(this._processedURLs).slice(0, 5) });
+		return hit;
 	};
 
 	VGMPlay_js.prototype._bridgeFetchFiles = async function (paths, opts = {}) {
@@ -377,6 +380,14 @@ export function installCache(VGMPlay_js) {
 
 			// Track restored URLs - normalize to host + filename for deduplication
 			this._processedURLs = this._processedURLs || new Set();
+
+			// Load explicitly saved processedURLs if present (solves bug with unplayable archives missing from dedupedGames)
+			if (meta.processedURLs && Array.isArray(meta.processedURLs)) {
+				for (const url of meta.processedURLs) {
+					this._processedURLs.add(url);
+				}
+			}
+
 			const currentHost = (typeof window !== 'undefined' && window.location) ? window.location.host : 'localhost';
 			for (const g of dedupedGames) {
 				const rawUrl = g.sourceUrl || g.archiveName;
@@ -394,6 +405,7 @@ export function installCache(VGMPlay_js) {
 						// It's just a filename - combine with current host
 						normalizedUrl = currentHost + '/' + rawUrl.split('/').pop().split('?')[0].split('#')[0];
 					}
+					try { normalizedUrl = decodeURIComponent(normalizedUrl); } catch (e) { }
 					this._processedURLs.add(normalizedUrl);
 					this._log && this._log('CACHE', 'Added to _processedURLs:', normalizedUrl);
 				}
@@ -690,6 +702,7 @@ export function installCache(VGMPlay_js) {
 						} else {
 							normalizedUrl = currentHost + '/' + rawUrl.split('/').pop().split('?')[0].split('#')[0];
 						}
+						try { normalizedUrl = decodeURIComponent(normalizedUrl); } catch (e) { }
 						this._processedURLs.add(normalizedUrl);
 						this._log && this._log('CACHE', 'Restored URL to _processedURLs:', normalizedUrl);
 					}
@@ -856,7 +869,8 @@ export function installCache(VGMPlay_js) {
 				amountOfGamesLoaded: this.amountOfGamesLoaded,
 				fingerprints: Array.from(this._cacheFingerprints),
 				games: gamesToSave,
-				fileSizes
+				fileSizes,
+				processedURLs: Array.from(this._processedURLs || [])
 			};
 
 			FS.writeFile('/cache/meta/metadata.json', JSON.stringify(meta));
@@ -1085,6 +1099,71 @@ export function installCache(VGMPlay_js) {
 
 		} catch (e) {
 			if (this.debugMode) console.error("[VGM] Error clearing cache:", e);
+		}
+	};
+	VGMPlay_js.prototype._deleteGamesFromCache = async function (fingerprints) {
+		if (!this._cacheReady || !fingerprints || !fingerprints.length) return;
+
+		const targetSignatures = new Set(fingerprints);
+		const pathsToDelete = [];
+
+		// 1. Remove from memory arrays and gather paths
+		this.games = this.games.filter(game => {
+			const fp = game.archiveName || game.name;
+			if (!fp || !targetSignatures.has(fp)) return true;
+
+			// Game is marked for deletion: collect its files
+			if (game.files) {
+				for (const f of game.files) {
+					if (f.filepath) pathsToDelete.push(f.filepath);
+				}
+			}
+			if (game.coverPath) {
+				pathsToDelete.push(game.coverPath);
+			}
+			return false;
+		});
+
+		// 2. Remove fingerprints from zipURLLoaded and _cacheFingerprints
+		this.zipURLLoaded = this.zipURLLoaded.filter(u => !targetSignatures.has(u));
+		for (const fp of targetSignatures) {
+			this._cacheFingerprints.delete(fp);
+			// Also decrement game count
+			this.amountOfGamesLoaded = Math.max(0, this.amountOfGamesLoaded - 1);
+		}
+
+		// 3. Delete physical files from MEMFS
+		for (const path of pathsToDelete) {
+			try {
+				if (FS.analyzePath(path).exists) {
+					FS.unlink(path);
+					delete this._cacheFileSizes[path]; // Remove from tracked sizes proactively
+				}
+			} catch (e) { }
+		}
+
+		// 4. Update the bridge or IndexedDB
+		if (this._cacheBridgeAvailable()) {
+			await this._cacheBridgeRequest('deleteFiles', { paths: pathsToDelete });
+			await this._saveCache(); // This saves the updated metadata.json
+			this._log && this._log('CACHE', `Deleted ${pathsToDelete.length} files from cache bridge.`);
+		} else {
+			await this._saveCache(); // This writes meta to MEMFS
+			// For local IndexedDB, FS.syncfs will sync the local deletes
+			await new Promise(resolve => {
+				FS.syncfs(false, (err) => {
+					if (err && this.debugMode) console.error("[VGM] Failed to sync deleted cache to IDBFS:", err);
+					resolve();
+				});
+			});
+		}
+
+		// 5. Force UI update
+		if (this.vgmplayContainer && this.vgmplayContainer.getRootNode) {
+			this._scheduleZipRender();
+		}
+		if (this._updateSkippedCacheSize) {
+			this._updateSkippedCacheSize();
 		}
 	};
 

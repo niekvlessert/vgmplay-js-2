@@ -244,6 +244,17 @@ async function cacheClearAll() {
     await txComplete(tx);
 }
 
+async function cacheDeleteFiles(paths) {
+    if (!paths || !paths.length) return;
+    const db = await openCacheDb();
+    const tx = db.transaction(CACHE_FILES_STORE, 'readwrite');
+    const store = tx.objectStore(CACHE_FILES_STORE);
+    for (const path of paths) {
+        store.delete(path);
+    }
+    await txComplete(tx);
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[Background] Message received:', message.type, message.action);
     if (!message || (message.type !== 'vgm-cache' && message.type !== 'vgm-fetch')) {
@@ -277,6 +288,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (message.action === 'putFiles') {
                 const files = (message.payload && message.payload.files) ? message.payload.files : [];
                 await cachePutFiles(files);
+                sendResponse({ ok: true });
+                return;
+            }
+            if (message.action === 'deleteFiles') {
+                const paths = (message.payload && message.payload.paths) ? message.payload.paths : [];
+                await cacheDeleteFiles(paths);
                 sendResponse({ ok: true });
                 return;
             }

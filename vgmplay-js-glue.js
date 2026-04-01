@@ -844,7 +844,7 @@ class VGMPlay_js {
 					this._applyExternalGameImageToExistingGames(file.name);
 					queued++;
 				} else {
-					this.zipQueue.push({ type: 'file', data: byteArray, name: file.name });
+					this.zipQueue.push({ type: 'file', data: byteArray, name: file.name, isManualUpload: true });
 					queued++;
 				}
 				await this._yieldToUI();
@@ -2617,15 +2617,13 @@ class VGMPlay_js {
 			if (!games.length) continue;
 
 			// Add separator with label for this site
-			if (currentSiteGames.length > 0 || otherHosts.indexOf(host) > 0) {
-				const label = document.createElement('div');
-				label.className = 'vgmplayGridSeparatorLabel';
-				label.textContent = `Cached from: ${host}`;
-				this.standaloneGameGrid.appendChild(label);
-				const separator = document.createElement('div');
-				separator.className = 'vgmplayGridSeparator';
-				this.standaloneGameGrid.appendChild(separator);
-			}
+			const label = document.createElement('div');
+			label.className = 'vgmplayGridSeparatorLabel';
+			label.textContent = `Cached from: ${host}`;
+			this.standaloneGameGrid.appendChild(label);
+			const separator = document.createElement('div');
+			separator.className = 'vgmplayGridSeparator';
+			this.standaloneGameGrid.appendChild(separator);
 
 			// Render games for this site
 			for (const game of games) {

@@ -399,7 +399,7 @@ export function installUi(VGMPlay_js) {
 <div class="vgmplaySkippedAutoText">Cache: ${cacheCount} from cache, ${newCount} new.</div>
 <div class="vgmplaySkippedAutoActions">
 <button class="vgmplaySettingsClearCache">Clear cache</button>
-<button class="vgmplaySettingsCheckCache">Cache integrity check</button>
+<button class="vgmplaySettingsManageCache">Manage cache</button>
 <button class="vgmplaySettingsExportMusic">Export music</button>
 </div>
 <div class="vgmplaySettingsStatus">${this._settingsStatusText || ''}</div>
@@ -407,7 +407,7 @@ export function installUi(VGMPlay_js) {
 `;
 
 		const clearBtn = this.settingsContent.querySelector('.vgmplaySettingsClearCache');
-		const checkBtn = this.settingsContent.querySelector('.vgmplaySettingsCheckCache');
+		const manageBtn = this.settingsContent.querySelector('.vgmplaySettingsManageCache');
 		const exportBtn = this.settingsContent.querySelector('.vgmplaySettingsExportMusic');
 
 		if (clearBtn) {
@@ -415,9 +415,10 @@ export function installUi(VGMPlay_js) {
 				this._showCacheClearPrompt();
 			});
 		}
-		if (checkBtn) {
-			checkBtn.addEventListener('click', () => {
-				this._runCacheIntegrityCheck();
+		if (manageBtn) {
+			manageBtn.addEventListener('click', () => {
+				this._hideSettingsWindow();
+				if (this._showSelectiveCacheClearPrompt) this._showSelectiveCacheClearPrompt();
 			});
 		}
 		if (exportBtn) {
@@ -434,6 +435,195 @@ export function installUi(VGMPlay_js) {
 		if (this.settingsWindow) {
 			this.settingsWindow.style.display = 'none';
 		}
+	};
+
+	VGMPlay_js.prototype._hideSelectiveCacheClearPrompt = function () {
+		const root = this.vgmplayContainer || document.body;
+		const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
+		const win = uiRoot.getElementById('vgmplay-selective-cache-prompt');
+		if (win) {
+			win.style.display = 'none';
+		}
+	};
+
+	VGMPlay_js.prototype._showSelectiveCacheClearPrompt = function () {
+		if (!this.games || !this.games.length) return;
+
+		const root = this.vgmplayContainer || document.body;
+		const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
+
+		let win = uiRoot.getElementById('vgmplay-selective-cache-prompt');
+		if (!win) {
+			win = document.createElement('div');
+			win.id = 'vgmplay-selective-cache-prompt';
+			win.className = 'vgmplaySkippedWindow';
+			win.style.cssText = `
+				position: fixed !important;
+				top: 50% !important;
+				left: 50% !important;
+				transform: translate(-50%, -50%) !important;
+				display: none;
+				z-index: 100000;
+				background: #222;
+				color: white;
+				border: 1px solid #444;
+				padding: 15px;
+				border-radius: 4px;
+				width: 500px;
+				max-width: 90vw;
+				max-height: 80vh;
+				overflow: hidden;
+				display: flex;
+				flex-direction: column;
+				box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+			`;
+			if (this.vgmplayContainer && this.vgmplayContainer.appendChild) {
+				this.vgmplayContainer.appendChild(win);
+			} else {
+				document.body.appendChild(win);
+			}
+
+			// Add escape listener
+			const escapeListener = (e) => {
+				if (e.key === 'Escape' && win.style.display !== 'none') {
+					this._hideSelectiveCacheClearPrompt();
+				}
+			};
+			if (typeof window !== 'undefined') {
+				window.addEventListener('keydown', escapeListener);
+			}
+		}
+
+		// Clear and rebuild
+		win.innerHTML = '';
+		win.style.display = 'flex';
+
+		const header = document.createElement('div');
+		header.className = 'vgmplaySkippedTitle';
+		header.innerHTML = `<span>Manage Cached Games</span><span class="vgmplaySkippedClose" style="cursor:pointer;">&times;</span>`;
+		win.appendChild(header);
+
+		header.querySelector('.vgmplaySkippedClose').onclick = () => {
+			this._hideSelectiveCacheClearPrompt();
+		};
+
+		const listContainer = document.createElement('div');
+		listContainer.className = 'vgmplaySkippedList';
+		listContainer.style.display = 'block';
+		listContainer.style.flex = '1';
+		listContainer.style.overflowY = 'auto';
+		listContainer.style.marginTop = '10px';
+		listContainer.style.marginBottom = '10px';
+		listContainer.style.border = '1px solid #333';
+		listContainer.style.padding = '5px';
+
+		// Group games by cacheHost
+		const groups = new Map();
+		for (const game of this.games) {
+			if (!game._fromCache) continue;
+			const host = game.cacheHost || 'Other';
+			if (!groups.has(host)) groups.set(host, []);
+			groups.get(host).push(game);
+		}
+
+		const hosts = Array.from(groups.keys()).sort();
+		for (const host of hosts) {
+			const games = groups.get(host);
+			if (!games.length) continue;
+
+			// Group Header
+			const hostHeader = document.createElement('div');
+			hostHeader.style.cssText = 'padding: 5px; background: #333; font-weight: bold; font-size: 13px; margin: 5px 0; color: #ccc; border-radius: 2px; display: flex; align-items: center; justify-content: space-between;';
+
+			const titleSpan = document.createElement('span');
+			titleSpan.textContent = `Cached from: ${host} (${games.length} games)`;
+			hostHeader.appendChild(titleSpan);
+
+			const selectAllBtn = document.createElement('button');
+			selectAllBtn.textContent = 'Select All';
+			selectAllBtn.style.cssText = 'background: #555; border: none; color: white; border-radius: 2px; padding: 2px 6px; cursor: pointer; font-size: 11px;';
+			hostHeader.appendChild(selectAllBtn);
+
+			listContainer.appendChild(hostHeader);
+
+			// Render games
+			const hostCheckboxes = [];
+			for (const game of games) {
+				const item = document.createElement('div');
+				item.className = 'vgmplaySkippedRow';
+				item.style.cursor = 'pointer';
+				item.style.padding = '4px';
+
+				const firstCol = document.createElement('div');
+				firstCol.style.display = 'flex';
+				firstCol.style.alignItems = 'center';
+				firstCol.style.overflow = 'hidden';
+
+				const cb = document.createElement('input');
+				cb.type = 'checkbox';
+				cb.className = 'vgmplay-cache-cb';
+				cb.dataset.fingerprint = game.archiveName || game.name;
+				cb.style.marginRight = '8px';
+				cb.style.flexShrink = '0';
+				hostCheckboxes.push(cb);
+				firstCol.appendChild(cb);
+
+				const text = document.createElement('div');
+				text.className = 'vgmplaySkippedName';
+				text.textContent = game.name || game.archiveName || 'Unknown Game';
+				text.onclick = (e) => { e.preventDefault(); cb.checked = !cb.checked; };
+				firstCol.appendChild(text);
+
+				item.appendChild(firstCol);
+				listContainer.appendChild(item);
+			}
+
+			selectAllBtn.onclick = () => {
+				const allChecked = hostCheckboxes.every(cb => cb.checked);
+				hostCheckboxes.forEach(cb => cb.checked = !allChecked);
+				selectAllBtn.textContent = !allChecked ? 'Deselect All' : 'Select All';
+			};
+		}
+
+		win.appendChild(listContainer);
+
+		const footer = document.createElement('div');
+		footer.style.cssText = 'display: flex; justify-content: flex-end; margin-top: 10px; gap: 10px;';
+
+		const cancelBtn = document.createElement('button');
+		cancelBtn.className = 'vgmplaySettingsCheckCache';
+		cancelBtn.textContent = 'Cancel';
+		cancelBtn.onclick = () => this._hideSelectiveCacheClearPrompt();
+		footer.appendChild(cancelBtn);
+
+		const deleteBtn = document.createElement('button');
+		deleteBtn.className = 'vgmplaySettingsClearCache';
+		deleteBtn.textContent = 'Delete Selected';
+		deleteBtn.style.background = '#aa3333';
+		deleteBtn.onclick = async () => {
+			const cbs = win.querySelectorAll('.vgmplay-cache-cb:checked');
+			const fingerprints = Array.from(cbs).map(cb => cb.dataset.fingerprint);
+			if (!fingerprints.length) return;
+
+			deleteBtn.textContent = 'Deleting...';
+			deleteBtn.disabled = true;
+
+			if (this._deleteGamesFromCache) {
+				await this._deleteGamesFromCache(fingerprints);
+			}
+
+			this._hideSelectiveCacheClearPrompt();
+			// Re-open if there are still games left, else keep closed
+			if (this.games && this.games.length && this.games.some(g => g._fromCache)) {
+				this._showSelectiveCacheClearPrompt();
+			} else {
+				// if cache is now empty, just refresh the skipped downloads area
+				if (this._renderSkippedDownloads) this._renderSkippedDownloads();
+			}
+		};
+		footer.appendChild(deleteBtn);
+
+		win.appendChild(footer);
 	};
 
 	VGMPlay_js.prototype._showCacheClearPrompt = function () {
@@ -576,62 +766,6 @@ export function installUi(VGMPlay_js) {
 		this._log && this._log('UI', 'Debug snapshot:', snapshot);
 		this._settingsStatusText = 'Debug snapshot dumped to console.';
 		this._renderSkippedDownloads();
-	};
-
-	VGMPlay_js.prototype._runCacheIntegrityCheck = async function () {
-		const games = Array.isArray(this.games) ? this.games : [];
-		const filePaths = [];
-		const coverPaths = [];
-		for (const g of games) {
-			if (!g) continue;
-			if (g.coverPath) coverPaths.push(g.coverPath);
-			const files = Array.isArray(g.files) ? g.files : [];
-			for (const f of files) {
-				if (f && f.filepath) filePaths.push(f.filepath);
-			}
-		}
-		const allPaths = Array.from(new Set([...filePaths, ...coverPaths]));
-		let missingLocal = [];
-		let zeroLocal = [];
-		for (const p of allPaths) {
-			try {
-				const info = FS.analyzePath(p);
-				if (!info.exists) {
-					missingLocal.push(p);
-				} else if (info.object && info.object.contents && info.object.contents.byteLength === 0) {
-					zeroLocal.push(p);
-				} else if (info.object && info.object.usedBytes === 0) {
-					zeroLocal.push(p);
-				}
-			} catch (e) {
-				missingLocal.push(p);
-			}
-		}
-		let missingShared = [];
-		if (this._cacheBridgeAvailable && this._cacheBridgeAvailable()) {
-			try {
-				missingShared = await this._cacheBridgeMissing(allPaths);
-			} catch (e) {
-				missingShared = [];
-			}
-		}
-		const summary = {
-			games: games.length,
-			files: filePaths.length,
-			covers: coverPaths.length,
-			missingLocal: missingLocal.length,
-			zeroLocal: zeroLocal.length,
-			missingShared: missingShared.length
-		};
-		this._log && this._log('CACHE', 'Cache integrity check:', summary, {
-			sampleMissingLocal: missingLocal.slice(0, 10),
-			sampleZeroLocal: zeroLocal.slice(0, 10),
-			sampleMissingShared: missingShared.slice(0, 10)
-		});
-		this._settingsStatusText = `Integrity: ${summary.files + summary.covers} items, local missing ${summary.missingLocal}, shared missing ${summary.missingShared}.`;
-		if (this.settingsWindow && this.settingsWindow.style.display !== 'none') {
-			this._showSettingsWindow();
-		}
 	};
 
 	VGMPlay_js.prototype._applyGameSearchFilter = function () {
@@ -901,6 +1035,17 @@ export function installUi(VGMPlay_js) {
 		this.noPlayableNotices.push(msg);
 		this._showSkippedWindow();
 		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._removeInfoNotice = function (msg) {
+		if (!msg) return;
+		const idx = this.noPlayableNotices.indexOf(msg);
+		if (idx === -1) return;
+		this.noPlayableNotices.splice(idx, 1);
+		this._renderSkippedDownloads();
+		if (this.noPlayableNotices.length === 0 && this.games.length === 0) {
+			this._hideSkippedWindow && this._hideSkippedWindow();
+		}
 	};
 
 	VGMPlay_js.prototype._addNoPlayableNotice = function (name, opts = null) {

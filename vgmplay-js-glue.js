@@ -925,6 +925,10 @@ class VGMPlay_js {
 			}
 
 			const filteredFiles = entries.filter(e => e && e.filepath);
+			const hasMbm = filteredFiles.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mbm');
+			});
 			const hasMusLmp = filteredFiles.some(f => {
 				const l = (f.filepath || "").toLowerCase();
 				return l.endsWith('.mus') || l.endsWith('.lmp');
@@ -937,7 +941,17 @@ class VGMPlay_js {
 				});
 			}
 
-			const derivedName = this._deriveVgmGameName(filteredFiles, sourceName || "Archive");
+			const fallbackName = sourceName || "Archive";
+			let derivedName = fallbackName;
+			if (hasMbm) {
+				if (this._normalizeGameTitle) {
+					derivedName = this._normalizeGameTitle(fallbackName) || fallbackName;
+				} else {
+					derivedName = fallbackName;
+				}
+			} else {
+				derivedName = this._deriveVgmGameName(filteredFiles, fallbackName);
+			}
 			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName, sourceUrl: sourceName };
 			const key = this._baseNameNoExt(sourceName).toLowerCase();
 			this._log && this._log('ARCHIVES', 'PUSHING game:', derivedName, 'archiveName:', sourceName, 'key:', key, 'games.length:', this.games.length);

@@ -357,6 +357,10 @@ await maybeYield();
 }
 
 const filteredFiles = entries.filter(e => e && e.filepath);
+const hasMbm = filteredFiles.some(f => {
+	const l = (f.filepath || "").toLowerCase();
+	return l.endsWith('.mbm');
+});
 const hasMusLmp = filteredFiles.some(f => {
 const l = (f.filepath || "").toLowerCase();
 return l.endsWith('.mus') || l.endsWith('.lmp');
@@ -369,7 +373,17 @@ filteredFiles.sort((a, b) => {
 });
 }
 
-	const derivedName = this._deriveVgmGameName(filteredFiles, cleanName || "Archive");
+	const fallbackName = cleanName || "Archive";
+	let derivedName = fallbackName;
+	if (hasMbm) {
+		if (this._normalizeGameTitle) {
+			derivedName = this._normalizeGameTitle(fallbackName) || fallbackName;
+		} else {
+			derivedName = fallbackName;
+		}
+	} else {
+		derivedName = this._deriveVgmGameName(filteredFiles, fallbackName);
+	}
 	var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: cleanName, _fromCache: false };
 	if (this.debugMode) console.log('[VGM-ARCHIVES] Game created:', derivedName, 'hasPNG:', !!game.png, 'pngSize:', game.png ? game.png.size : 0);
 	if (this._applyExternalGameImage && sourceName) {
@@ -707,7 +721,20 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 			}
 
 			const parsedName = parseArchiveTitle(sourceName);
-			const derivedName = this._deriveVgmGameName(fileList, parsedName);
+			const hasMbm = fileList.some(f => {
+				const l = (f.filepath || "").toLowerCase();
+				return l.endsWith('.mbm');
+			});
+			let derivedName = parsedName;
+			if (hasMbm) {
+				if (this._normalizeGameTitle) {
+					derivedName = this._normalizeGameTitle(parsedName) || parsedName;
+				} else {
+					derivedName = parsedName;
+				}
+			} else {
+				derivedName = this._deriveVgmGameName(fileList, parsedName);
+			}
 			const game = { files: fileList, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, archiveName: sourceName, name: derivedName, _fromCache: false };
 
 			// Alphabetical sorting for DOOM MUS/LMP archives

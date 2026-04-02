@@ -269,9 +269,11 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 		this._log && this._log('ARCHIVES', 'Worker path for:', cleanName, 'byteArray.size:', byteArray.byteLength);
 		const workerResult = await this._extractArchiveWithWorker(byteArray, 'zip', sourceName);
 		this._log && this._log('ARCHIVES', 'Worker result for:', cleanName, 'entries:', workerResult.entries.length, 'hasKss:', workerResult.hasKss);
-		await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
-		if (this._markCached) this._markCached(fingerprint);
-		if (this._saveCache) this._saveCache();
+		const processResult = await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+		if (processResult && processResult.anyPlayable) {
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
+		}
 		this._log && this._log('ARCHIVES', 'Worker path COMPLETE for:', cleanName, 'games.length:', this.games.length);
 		return;
 	} catch (e) {
@@ -399,27 +401,33 @@ filteredFiles.sort((a, b) => {
 		this._log && this._log('ARCHIVES', 'Skipping duplicate game:', cleanName, '(already loaded as:', existingGame.name + ')');
 		return;
 	}
+	const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+	const hasMidi = game.files.some((f) => {
+		const p = (f.filepath || "").toLowerCase();
+		return (this._isMidiFile && this._isMidiFile(p)) || (this._isMidiExt && this._isMidiExt(p));
+	});
+	if (!hasPlayable) {
+		if (hasMidi) {
+			this._addNoPlayableNotice(cleanName || 'Archive', { isMidiArchive: true });
+		} else {
+			this._addNoPlayableNotice(cleanName || 'Archive');
+		}
+		if (this._rmRecursive) {
+			try { this._rmRecursive(gamePath); } catch (e) { }
+		}
+		await this.checkEverythingReady();
+		this._scheduleZipRender();
+		return;
+	}
 	if (this.debugMode) console.log('[DEBUG] PUSHING game:', derivedName, 'archiveName:', cleanName);
 	this.games.push(game);
 	if (this._manualUploadMode) game.cacheHost = 'manual upload';
-			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
-			const hasMidi = game.files.some((f) => {
-				const p = (f.filepath || "").toLowerCase();
-				return (this._isMidiFile && this._isMidiFile(p)) || (this._isMidiExt && this._isMidiExt(p));
-			});
-			if (!hasPlayable) {
-				if (hasMidi) {
-					this._addNoPlayableNotice(cleanName || 'Archive', { isMidiArchive: true });
-				} else {
-					this._addNoPlayableNotice(cleanName || 'Archive');
-				}
-			}
-			await this.checkEverythingReady();
-			this._scheduleZipRender();
-			if (this._markCached) this._markCached(fingerprint);
-			if (this._saveCache) this._saveCache();
-			return;
+	this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+	await this.checkEverythingReady();
+	this._scheduleZipRender();
+	if (this._markCached) this._markCached(fingerprint);
+	if (this._saveCache) this._saveCache();
+	return;
 		}
 
 		const gamesInOrder = [];
@@ -503,9 +511,12 @@ filteredFiles.sort((a, b) => {
 		}
 
 	let anyPlayable = false;
+	let anyMidi = false;
 	for (const game of gamesInOrder) {
 		const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+		game._hasPlayable = hasPlayable;
 		if (hasPlayable) {
+			anyPlayable = true;
 			// Alphabetical sorting for DOOM MUS/LMP archives
 			const hasMusLmp = game.files.some(f => {
 				const l = (f.filepath || "").toLowerCase();
@@ -518,36 +529,52 @@ filteredFiles.sort((a, b) => {
 					return nameA.localeCompare(nameB);
 				});
 			}
-
-			const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-			game.name = name;
-			if (this.debugMode) console.log('[DEBUG] PUSHING game (multi-game path):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
-			this.games.push(game);
-			if (this._manualUploadMode) game.cacheHost = 'manual upload';
-			anyPlayable = true;
-		} else if (game.png && game.png.size > 0) {
-			// Add game even without playable files if it has a PNG cover
-			const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-			game.name = name;
-			if (this.debugMode) console.log('[DEBUG] PUSHING game (png-only):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
-			this.games.push(game);
-			if (this._manualUploadMode) game.cacheHost = 'manual upload';
+		}
+		if (!anyMidi) {
+			anyMidi = game.files.some((f) => {
+				const p = (f.filepath || "").toLowerCase();
+				return (this._isMidiFile && this._isMidiFile(p)) || (this._isMidiExt && this._isMidiExt(p));
+			});
 		}
 		await maybeYield();
+	}
+
+	if (anyPlayable) {
+		for (const game of gamesInOrder) {
+			if (game._hasPlayable || (game.png && game.png.size > 0)) {
+				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+				game.name = name;
+				if (this.debugMode) console.log('[DEBUG] PUSHING game (multi-game path):', name, 'archiveName:', game.archiveName, 'cleanName:', cleanName);
+				this.games.push(game);
+				if (this._manualUploadMode) game.cacheHost = 'manual upload';
+			}
+			await maybeYield();
+		}
 	}
 
 		// Sort games alphabetically
 		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
 		if (!anyPlayable) {
-			this._addNoPlayableNotice(cleanName || 'Archive');
+			if (anyMidi) {
+				this._addNoPlayableNotice(cleanName || 'Archive', { isMidiArchive: true });
+			} else {
+				this._addNoPlayableNotice(cleanName || 'Archive');
+			}
+			if (this._rmRecursive) {
+				for (const game of gamesInOrder) {
+					try { this._rmRecursive(game.path); } catch (e) { }
+				}
+			}
 		}
 
 		await this.checkEverythingReady();
 		// Clear and re-render all games to maintain sort order
 		this._scheduleZipRender();
-		if (this._markCached) this._markCached(fingerprint);
-		if (this._saveCache) this._saveCache();
+		if (anyPlayable) {
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
+		}
 	};
 
 VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '') {
@@ -571,9 +598,11 @@ try {
 if (this.debugMode) console.log(`[VGM] Starting 7z extraction with worker for ${cleanName}`);
 const workerResult = await this._extractArchiveWithWorker(byteArray, '7z', sourceName);
 if (this.debugMode) console.log(`[VGM] 7z Extraction done, processing ${workerResult.fileDataByPath.size} entries for ${cleanName}`);
-await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+const processResult = await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
+if (processResult && processResult.anyPlayable) {
 if (this._markCached) this._markCached(fingerprint);
 if (this._saveCache) this._saveCache();
+}
 return;
 } catch (e) {
 if (byteArray.byteLength === 0) {
@@ -750,12 +779,26 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 				});
 			}
 
+			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
+			const hasMidi = fileList.some((f) => {
+				const p = (f.filepath || "").toLowerCase();
+				return (this._isMidiFile && this._isMidiFile(p)) || (this._isMidiExt && this._isMidiExt(p));
+			});
+			if (!hasPlayable) {
+				if (hasMidi) {
+					this._addNoPlayableNotice(sourceName || 'Archive', { isMidiArchive: true });
+				} else {
+					this._addNoPlayableNotice(sourceName || 'Archive');
+				}
+				if (this._rmRecursive) {
+					try { this._rmRecursive(gamePath); } catch (e) { }
+				}
+				await this.checkEverythingReady();
+				this._scheduleZipRender();
+				return;
+			}
 			this.games.push(game);
 			if (this._manualUploadMode) game.cacheHost = 'manual upload';
-			const hasPlayable = fileList.some((f) => this.isPlayable(f.filepath));
-			if (!hasPlayable) {
-				this._addNoPlayableNotice(sourceName || 'Archive');
-			}
 			await this.checkEverythingReady();
 			this.showVGMFromZip(game);
 			if (this._markCached) this._markCached(fingerprint);
@@ -764,8 +807,10 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 		}
 
 		let anyPlayable = false;
+		let anyMidi = false;
 		for (const game of gamesInOrder) {
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			game._hasPlayable = hasPlayable;
 			if (hasPlayable) {
 				// Alphabetical sorting for DOOM MUS/LMP archives
 				const hasMusLmp = game.files.some(f => {
@@ -779,19 +824,41 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 						return nameA.localeCompare(nameB);
 					});
 				}
-
-				this.games.push(game);
-				if (this._manualUploadMode) game.cacheHost = 'manual upload';
 				anyPlayable = true;
+			}
+			if (!anyMidi) {
+				anyMidi = game.files.some((f) => {
+					const p = (f.filepath || "").toLowerCase();
+					return (this._isMidiFile && this._isMidiFile(p)) || (this._isMidiExt && this._isMidiExt(p));
+				});
+			}
+		}
+		if (anyPlayable) {
+			for (const game of gamesInOrder) {
+				if (game._hasPlayable || (game.png && game.png.size > 0)) {
+					this.games.push(game);
+					if (this._manualUploadMode) game.cacheHost = 'manual upload';
+				}
 			}
 		}
 		if (!anyPlayable) {
-			this._addNoPlayableNotice(sourceName || 'Archive');
+			if (anyMidi) {
+				this._addNoPlayableNotice(sourceName || 'Archive', { isMidiArchive: true });
+			} else {
+				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
+			if (this._rmRecursive) {
+				for (const game of gamesInOrder) {
+					try { this._rmRecursive(game.path); } catch (e) { }
+				}
+			}
 		}
 		await this.checkEverythingReady();
 		this._scheduleZipRender();
-		if (this._markCached) this._markCached(fingerprint);
-		if (this._saveCache) this._saveCache();
+		if (anyPlayable) {
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) this._saveCache();
+		}
 	};
 
 	VGMPlay_js.prototype.processRarBuffer = async function (byteArray, sourceName = '') {
@@ -804,9 +871,11 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 
 		try {
 			const workerResult = await this._extractArchiveWithWorker(byteArray, 'rar');
-			await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			const processResult = await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, sourceName, workerResult.hasKss);
+			if (processResult && processResult.anyPlayable) {
 if (this._markCached) this._markCached(fingerprint);
 if (this._saveCache) this._saveCache();
+			}
 return;
 } catch (e) {
 if (byteArray.byteLength === 0) {

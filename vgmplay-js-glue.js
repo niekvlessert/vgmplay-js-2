@@ -954,14 +954,6 @@ class VGMPlay_js {
 			}
 			var game = { files: filteredFiles, m3u: m3uFile, txt: txtFile, png: pngFile, path: gamePath, name: derivedName, gameinfo: this.tempGameInfo, archiveName: sourceName, sourceUrl: sourceName };
 			const key = this._baseNameNoExt(sourceName).toLowerCase();
-			this._log && this._log('ARCHIVES', 'PUSHING game:', derivedName, 'archiveName:', sourceName, 'key:', key, 'games.length:', this.games.length);
-			if (this._applyExternalGameImage && sourceName) {
-				this._applyExternalGameImage(game, sourceName, false);
-				this._log && this._log('ARCHIVES', 'After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
-			}
-			this.tempGameInfo = null;
-			this.games.push(game);
-			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
 			const hasMidi = game.files.some((f) => {
 				const p = (f.filepath || "").toLowerCase();
@@ -973,10 +965,26 @@ class VGMPlay_js {
 				} else {
 					this._addNoPlayableNotice(sourceName || 'Archive');
 				}
+				if (this._rmRecursive) {
+					try { this._rmRecursive(gamePath); } catch (e) { }
+				}
 			}
+			if (!hasPlayable) {
+				await this.checkEverythingReady();
+				this._scheduleZipRender();
+				return { anyPlayable: false, hasMidi };
+			}
+			this._log && this._log('ARCHIVES', 'PUSHING game:', derivedName, 'archiveName:', sourceName, 'key:', key, 'games.length:', this.games.length);
+			if (this._applyExternalGameImage && sourceName) {
+				this._applyExternalGameImage(game, sourceName, false);
+				this._log && this._log('ARCHIVES', 'After _applyExternalGameImage for', derivedName, ': game.png:', !!game.png);
+			}
+			this.tempGameInfo = null;
+			this.games.push(game);
+			this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 			await this.checkEverythingReady();
 			this._scheduleZipRender();
-			return;
+			return { anyPlayable: true, hasMidi };
 		}
 
 		const gamesInOrder = [];
@@ -1071,9 +1079,12 @@ class VGMPlay_js {
 		}
 
 		let anyPlayable = false;
+		let anyMidi = false;
 		for (const game of gamesInOrder) {
 			const hasPlayable = game.files.some((f) => this.isPlayable(f.filepath));
+			game._hasPlayable = hasPlayable;
 			if (hasPlayable) {
+				anyPlayable = true;
 				const hasMusLmp = game.files.some(f => {
 					const l = (f.filepath || "").toLowerCase();
 					return l.endsWith('.mus') || l.endsWith('.lmp');
@@ -1085,38 +1096,43 @@ class VGMPlay_js {
 						return nameA.localeCompare(nameB);
 					});
 				}
-
-				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-				game.name = name;
-				if (this._applyExternalGameImage) {
-					this._applyExternalGameImage(game, name, true);
-				}
-				this._log && this._log('ARCHIVES', 'MULTI-GAME PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
-				this.games.push(game);
-				anyPlayable = true;
-			} else if (game.png && game.png.size > 0) {
-				// Add game even without playable files if it has a PNG cover
-				const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
-				game.name = name;
-				if (this._applyExternalGameImage) {
-					this._applyExternalGameImage(game, name, true);
-				}
-				this._log && this._log('ARCHIVES', 'MULTI-GAME PNG-ONLY PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
-				this.games.push(game);
+			}
+			if (!anyMidi) {
+				anyMidi = game.files.some((f) => {
+					const p = (f.filepath || "").toLowerCase();
+					return (this._isMidiFile && this._isMidiFile(p)) || this._isMidiExt(p);
+				});
 			}
 			await maybeYield();
+		}
+
+		if (anyPlayable) {
+			for (const game of gamesInOrder) {
+				if (game._hasPlayable || (game.png && game.png.size > 0)) {
+					const name = game.name || (game.files[0] ? game.files[0].filepath.split('/').pop().split('.')[0] : "Unknown");
+					game.name = name;
+					if (this._applyExternalGameImage) {
+						this._applyExternalGameImage(game, name, true);
+					}
+					this._log && this._log('ARCHIVES', game._hasPlayable ? 'MULTI-GAME PUSH:' : 'MULTI-GAME PNG-ONLY PUSH:', name, 'archiveName:', game.archiveName, 'games.length:', this.games.length);
+					this.games.push(game);
+				}
+				await maybeYield();
+			}
 		}
 
 		this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
 		if (!anyPlayable) {
-			if (gamesInOrder.some((g) => g.files && g.files.some((f) => {
-				const p = (f.filepath || "").toLowerCase();
-				return (this._isMidiFile && this._isMidiFile(p)) || this._isMidiExt(p);
-			}))) {
+			if (anyMidi) {
 				this._addNoPlayableNotice(sourceName || 'Archive', { isMidiArchive: true });
 			} else {
 				this._addNoPlayableNotice(sourceName || 'Archive');
+			}
+			if (this._rmRecursive) {
+				for (const game of gamesInOrder) {
+					try { this._rmRecursive(game.path); } catch (e) { }
+				}
 			}
 		}
 
@@ -1128,6 +1144,7 @@ class VGMPlay_js {
 			this.showVGMFromZip(game);
 			await maybeYield();
 		}
+		return { anyPlayable, hasMidi: anyMidi };
 	}
 
 	_makedirs(path) {

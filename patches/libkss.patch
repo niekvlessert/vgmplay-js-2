@@ -1,15 +1,21 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 2f57bb9..9148ce4 100644
+index 2f57bb9..e19bfcd 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1,4 +1,4 @@
+@@ -1,4 +1,5 @@
 -cmake_minimum_required(VERSION 3.0)
 +cmake_minimum_required(VERSION 3.5)
++set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
  project(libkss)
  
  # add_compile_definitions(EXCLUDE_DRIVER_ALL)
+@@ -46,4 +47,3 @@ if(NOT CMAKE_COMPILER_IS_GNUCC)
+ else()
+ 	target_link_libraries(kss2wav kss m)
+ endif()
+-
 diff --git a/src/kssplay.c b/src/kssplay.c
-index eaa2a34..1a20aaf 100644
+index eaa2a34..2a75ae9 100644
 --- a/src/kssplay.c
 +++ b/src/kssplay.c
 @@ -1,7 +1,8 @@
@@ -179,25 +185,20 @@ index eaa2a34..1a20aaf 100644
    uint32_t i;
    for (i = 0; i < length; i++) {
      process_vm(kssplay);
-@@ -686,11 +788,17 @@ void KSSPLAY_set_opll_patch(KSSPLAY *kssplay, uint8_t *data) {
- 
+@@ -687,10 +789,14 @@ void KSSPLAY_set_opll_patch(KSSPLAY *kssplay, uint8_t *data) {
  void KSSPLAY_set_channel_mask(KSSPLAY *kssplay, uint32_t device, uint32_t mask) {
    switch (device) {
--  case KSS_DEVICE_PSG:
+   case KSS_DEVICE_PSG:
 -    if (kssplay->vm->psg) {
 -      PSG_setMask(kssplay->vm->psg, mask);
--    }
--    break;
-+  case KSS_DEVICE_PSG:
 +    if (kssplay->kss && kssplay->kss->sn76489) {
-+      if (kssplay->vm->sng) {
-+        SNG_setMask(kssplay->vm->sng, mask);
-+      }
++      /* SNG (SN76489) does not support channel masking */
 +    } else {
 +      if (kssplay->vm->psg) {
 +        PSG_setMask(kssplay->vm->psg, mask);
 +      }
-+    }
+     }
+-    break;
 +    break;
    case KSS_DEVICE_SCC:
      if (kssplay->vm->scc) {
@@ -236,126 +237,3 @@ index 32c31e8..c0467e2 100644
  
  /* Delete KSSPLAY object */
  void KSSPLAY_delete(KSSPLAY *);
-diff --git a/modules/emu2149/CMakeLists.txt b/modules/emu2149/CMakeLists.txt
-index 42b0add..f13bf52 100644
---- a/modules/emu2149/CMakeLists.txt
-+++ b/modules/emu2149/CMakeLists.txt
-@@ -1,4 +1,4 @@
--cmake_minimum_required(VERSION 3.0)
-+cmake_minimum_required(VERSION 3.5)
- 
- if(MSVC)
-   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
-diff --git a/modules/emu2212/CMakeLists.txt b/modules/emu2212/CMakeLists.txt
-index 560a2fb..3209e3c 100644
---- a/modules/emu2212/CMakeLists.txt
-+++ b/modules/emu2212/CMakeLists.txt
-@@ -1,4 +1,4 @@
--cmake_minimum_required(VERSION 3.0)
-+cmake_minimum_required(VERSION 3.5)
- 
- if(MSVC)
-   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
-diff --git a/modules/emu2413/CMakeLists.txt b/modules/emu2413/CMakeLists.txt
-index 83e154a..599bb58 100644
---- a/modules/emu2413/CMakeLists.txt
-+++ b/modules/emu2413/CMakeLists.txt
-@@ -1,4 +1,4 @@
--cmake_minimum_required(VERSION 3.0)
-+cmake_minimum_required(VERSION 3.5)
- project(emu2413)
- 
- if(MSVC)
-diff --git a/modules/emu8950/CMakeLists.txt b/modules/emu8950/CMakeLists.txt
-index 1ebf69e..d986494 100644
---- a/modules/emu8950/CMakeLists.txt
-+++ b/modules/emu8950/CMakeLists.txt
-@@ -1,4 +1,4 @@
--cmake_minimum_required(VERSION 3.0)
-+cmake_minimum_required(VERSION 3.5)
- 
- if(MSVC)
-   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
-diff --git a/modules/kmz80/CMakeLists.txt b/modules/kmz80/CMakeLists.txt
-index 342824b..ccf513c 100644
---- a/modules/kmz80/CMakeLists.txt
-+++ b/modules/kmz80/CMakeLists.txt
-@@ -1,4 +1,4 @@
--cmake_minimum_required(VERSION 3.0)
-+cmake_minimum_required(VERSION 3.5)
- 
- if(MSVC)
-   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
-diff --git a/modules/emu76489/CMakeLists.txt b/modules/emu76489/CMakeLists.txt
-index 205903f..ace1cec 100644
---- a/modules/emu76489/CMakeLists.txt
-+++ b/modules/emu76489/CMakeLists.txt
-@@ -1,4 +1,4 @@
--cmake_minimum_required(VERSION 3.0)
-+cmake_minimum_required(VERSION 3.5)
- 
- if(MSVC)
-   set(CMAKE_C_FLAGS "/Ox /W3 /wd4996")
-diff --git a/modules/emu76489/emu76489.c b/modules/emu76489/emu76489.c
-index 640b3cc..6747eb0 100644
---- a/modules/emu76489/emu76489.c
-+++ b/modules/emu76489/emu76489.c
-@@ -56,6 +56,21 @@ SNG_set_quality (SNG * sng, uint32_t q)
-   internal_refresh (sng);
- }
- 
-+uint32_t
-+SNG_setMask (SNG * sng, uint32_t mask)
-+{
-+  uint32_t ret = 0;
-+  if (sng)
-+  {
-+    ret = sng->mask;
-+    sng->mask = mask;
-+    sng->mute[0] = (mask & 0x01) ? 1 : 0;
-+    sng->mute[1] = (mask & 0x02) ? 1 : 0;
-+    sng->mute[2] = (mask & 0x04) ? 1 : 0;
-+  }
-+  return ret;
-+}
-+
- SNG *
- SNG_new (uint32_t c, uint32_t r)
- {
-@@ -87,6 +102,7 @@ SNG_reset (SNG * sng)
-     sng->volume[i] = 0x0f;
-     sng->mute[i] = 0;
-   }
-+  sng->mask = 0;
- 
-   sng->adr = 0;
- 
-@@ -191,7 +207,7 @@ update_output (SNG * sng)
-       sng->noise_count -= sng->noise_freq;
-   }
- 
--  if (sng->noise_seed & 1) 
-+  if ((sng->noise_seed & 1) && !(sng->mask & (1u << 3)))
-   {
-     sng->ch_out[3] += voltbl[sng->noise_volume] << 4;
-   }
-diff --git a/modules/emu76489/emu76489.h b/modules/emu76489/emu76489.h
-index 883079d..f74dd60 100644
---- a/modules/emu76489/emu76489.h
-+++ b/modules/emu76489/emu76489.h
-@@ -17,6 +17,7 @@ typedef struct __SNG {
-   uint32_t freq[3] ;
-   uint32_t edge[3] ;
-   uint32_t mute[3] ;
-+  uint32_t mask ;
- 
-   uint32_t noise_seed ;
-   uint32_t noise_count ;
-@@ -50,6 +51,7 @@ uint8_t SNG_readReg(SNG *, uint32_t reg) ;
- uint8_t SNG_readIO(SNG *SNG) ;
- int16_t SNG_calc(SNG *) ;
- void SNG_setVolumeMode(SNG *SNG, int type) ;
-+uint32_t SNG_setMask(SNG *SNG, uint32_t mask) ;
- void SNG_calc_stereo(SNG *, int32_t out[2]) ;
- void SNG_writeGGIO(SNG *SNG, uint32_t val) ;
- 

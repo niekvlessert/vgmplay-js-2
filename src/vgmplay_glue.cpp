@@ -813,6 +813,30 @@ static std::string getMuntGroupIdFromPath(const std::string &path) {
   return path.substr(0, slash);
 }
 
+static std::string getDirPathOrDot(const std::string &path) {
+  size_t slash = path.find_last_of('/');
+  if (slash == std::string::npos)
+    return ".";
+  if (slash == 0)
+    return "/";
+  return path.substr(0, slash);
+}
+
+static bool isMbmPath(const std::string &lowerPath) {
+  return (lowerPath.size() > 4 &&
+          lowerPath.substr(lowerPath.size() - 4) == ".mbm");
+}
+
+static void maybeAutoloadMbk(const std::string &basePath,
+                             const std::string &lowerPath) {
+  if (!isMbmPath(lowerPath))
+    return;
+  std::string dir = getDirPathOrDot(basePath);
+  if (dir.empty())
+    dir = ".";
+  KSS_autoload_mbk(basePath.c_str(), dir.c_str(), "");
+}
+
 static bool isKssFormatPath(const std::string &lowerPath) {
   return (lowerPath.find(".kss") != std::string::npos ||
           lowerPath.find(".kssx") != std::string::npos ||
@@ -1064,6 +1088,7 @@ int OpenVGMFile(const char *path) {
   }
 
   if (isKssFormatPath(lowerPath)) {
+    maybeAutoloadMbk(basePath, lowerPath);
     DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
     if (!kssLoader) {
       return 0;
@@ -1821,6 +1846,7 @@ int GetTrackLengthDirect(const char *path) {
   }
 
   if (isKssFormatPath(lowerPath)) {
+    maybeAutoloadMbk(basePath, lowerPath);
     DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
     if (!kssLoader)
       return 0;
@@ -1981,6 +2007,7 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
   }
 
   if (isKssFormatPath(lowerPath)) {
+    maybeAutoloadMbk(basePath, lowerPath);
     DATA_LOADER *kssLoader = FileLoader_Init(path);
     if (!kssLoader)
       return "";
@@ -3019,6 +3046,7 @@ int GetKSSTrackCountDirect(const char *path) {
     c = tolower(c);
   if (!isKssFormatPath(lowerPath))
     return 0;
+  maybeAutoloadMbk(basePath, lowerPath);
   DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
   if (!kssLoader)
     return 0;
@@ -3057,6 +3085,7 @@ int GetKSSTrackMinDirect(const char *path) {
     c = tolower(c);
   if (!isKssFormatPath(lowerPath))
     return 0;
+  maybeAutoloadMbk(basePath, lowerPath);
   DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
   if (!kssLoader)
     return 0;
@@ -3093,6 +3122,7 @@ int GetKSSTrackMaxDirect(const char *path) {
     c = tolower(c);
   if (!isKssFormatPath(lowerPath))
     return 0;
+  maybeAutoloadMbk(basePath, lowerPath);
   DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
   if (!kssLoader)
     return 0;
@@ -3129,6 +3159,7 @@ const char *GetKSSTrackNameDirect(const char *path, int trackIndex) {
     c = tolower(c);
   if (!isKssFormatPath(lowerPath))
     return "";
+  maybeAutoloadMbk(basePath, lowerPath);
   DATA_LOADER *kssLoader = FileLoader_Init(basePath.c_str());
   if (!kssLoader)
     return "";

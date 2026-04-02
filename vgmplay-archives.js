@@ -304,7 +304,7 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 		for (const entry of entries) {
 			if (!entry || !entry.filepath) continue;
 			const lower = entry.filepath.toLowerCase();
-			if (this._isKssFile(lower)) {
+			if (this._isKssMultiTrackFile(lower)) {
 				hasKss = true;
 				break;
 			}
@@ -348,9 +348,10 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 					txtFile = txt;
 }
 }
-if (lower.endsWith(".png")) {
-  pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-  if (this.debugMode) console.log('[VGM-ARCHIVES] Found PNG in archive:', relPath, 'size:', pngFile.size);
+if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+  const mime = lower.endsWith(".png") ? "image/png" : "image/jpeg";
+  pngFile = new Blob([FS.readFile(fullPath)], { type: mime });
+  if (this.debugMode) console.log('[VGM-ARCHIVES] Found image in archive:', relPath, 'size:', pngFile.size);
 }
 await maybeYield();
 }
@@ -480,8 +481,9 @@ filteredFiles.sort((a, b) => {
 				if (this.debugMode) console.error("Failed to read info file:", fullPath, e);
 			}
 			}
-			if (lower.endsWith('.png') && !game.png) {
-				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
+			if ((lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) && !game.png) {
+				const mime = lower.endsWith('.png') ? "image/png" : "image/jpeg";
+				game.png = new Blob([FS.readFile(fullPath)], { type: mime });
 			}
 			await maybeYield();
 		}
@@ -642,7 +644,7 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 					recurseFS(fullSZPath, fullRelPath);
 				} else {
 					allEntries.push(fullRelPath);
-					if (!hasKss && this._isKssFile(fullRelPath.toLowerCase())) {
+					if (!hasKss && this._isKssMultiTrackFile(fullRelPath.toLowerCase())) {
 						hasKss = true;
 					}
 					const data = sz.FS.readFile(fullSZPath);
@@ -666,8 +668,9 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 						game.kssTxtByBase[base] = txt;
 						game.kssTxtOrder.push(base);
 					}
-					if (lower.endsWith('.png') && !game.png) {
-						game.png = new Blob([FS.readFile(fsPath)], { type: "image/png" });
+					if ((lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) && !game.png) {
+						const mime = lower.endsWith('.png') ? "image/png" : "image/jpeg";
+						game.png = new Blob([FS.readFile(fsPath)], { type: mime });
 					}
 				}
 			}
@@ -697,7 +700,10 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 				const lower = relPath.toLowerCase();
 				if (lower.includes("m3u")) m3uFile = FS.readFile(fsPath, { encoding: "utf8" });
 				if (lower.endsWith(".txt") || lower.endsWith(".trackinfo")) txtFile = FS.readFile(fsPath, { encoding: "utf8" });
-				if (lower.endsWith(".png")) pngFile = new Blob([FS.readFile(fsPath)], { type: "image/png" });
+				if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+					const mime = lower.endsWith(".png") ? "image/png" : "image/jpeg";
+					pngFile = new Blob([FS.readFile(fsPath)], { type: mime });
+				}
 			}
 
 			const parsedName = parseArchiveTitle(sourceName);

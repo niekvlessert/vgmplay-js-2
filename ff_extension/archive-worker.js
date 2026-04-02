@@ -49,7 +49,7 @@ function _collectZipEntries(fileList) {
 		if (filepath.endsWith('/')) continue;
 		const lower = filepath.toLowerCase();
 		paths.push(filepath);
-		if (!hasKss && _isKssFile(lower)) {
+		if (!hasKss && _isKssMultiTrackFile(lower)) {
 			hasKss = true;
 		}
 	}
@@ -61,6 +61,13 @@ function _isKssFile(path) {
 	return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
 		p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
 		p.endsWith('.mpk') || p.endsWith('.mbm');
+}
+
+function _isKssMultiTrackFile(path) {
+	const p = String(path).toLowerCase().split('|track=')[0];
+	return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
+		p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
+		p.endsWith('.mpk');
 }
 
 function _recurse7zFS(sz, path, relativePath, outList) {
@@ -110,7 +117,7 @@ async function _handle7z(id, buffer, debugMode) {
 	let hasKss = false;
 	for (const relPath of paths) {
 		const lower = relPath.toLowerCase();
-		if (_isKssFile(lower)) {
+		if (_isKssMultiTrackFile(lower)) {
 			hasKss = true;
 			break;
 		}
@@ -142,7 +149,7 @@ async function _handleRar(id, buffer) {
 		const name = entry.name || '';
 		if (!name) continue;
 		paths.push(name);
-		if (!hasKss && _isKssFile(name.toLowerCase())) {
+		if (!hasKss && _isKssMultiTrackFile(name.toLowerCase())) {
 			hasKss = true;
 		}
 	}

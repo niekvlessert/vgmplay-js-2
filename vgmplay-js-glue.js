@@ -885,8 +885,8 @@ class VGMPlay_js {
 					continue;
 				}
 				const lowerRel = relPath.toLowerCase();
-				if (lowerRel.endsWith('.png')) {
-					if (this.debugMode) console.log("[VGM] PNG file found in archive entries:", relPath, "size:", fileArray.length);
+				if (lowerRel.endsWith('.png') || lowerRel.endsWith('.jpg') || lowerRel.endsWith('.jpeg')) {
+					if (this.debugMode) console.log("[VGM] Image file found in archive entries:", relPath, "size:", fileArray.length);
 				}
 				const isImage = lowerRel.endsWith('.png') || lowerRel.endsWith('.jpg') || lowerRel.endsWith('.jpeg') || lowerRel.endsWith('.gif') || lowerRel.endsWith('.bmp') || lowerRel.endsWith('.webp');
 				const fullPath = gamePath + "/" + relPath;
@@ -914,12 +914,12 @@ class VGMPlay_js {
 						txtFile = txt;
 					}
 				}
-				if (lower.endsWith(".png")) {
-					pngFile = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-					if (this.debugMode) console.log("[VGM] Found PNG in archive:", relPath);
-				}
-				if (isImage && !lower.endsWith(".png")) {
-					if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
+				if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+					const mime = lower.endsWith(".png") ? "image/png" : "image/jpeg";
+					pngFile = new Blob([FS.readFile(fullPath)], { type: mime });
+					if (this.debugMode) console.log("[VGM] Found image in archive:", relPath);
+				} else if (isImage) {
+					if (this.debugMode) console.warn("[VGM] Image found but not used (unsupported type):", relPath);
 				}
 				await maybeYield();
 			}
@@ -1047,10 +1047,11 @@ class VGMPlay_js {
 					if (this.debugMode) console.error("Failed to read info file:", fullPath, e);
 				}
 			}
-			if (lower.endsWith('.png') && !game.png) {
-				game.png = new Blob([FS.readFile(fullPath)], { type: "image/png" });
-			} else if (isImage && !lower.endsWith('.png')) {
-				if (this.debugMode) console.warn("[VGM] Image found but not used (only .png supported):", relPath);
+			if ((lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) && !game.png) {
+				const mime = lower.endsWith('.png') ? "image/png" : "image/jpeg";
+				game.png = new Blob([FS.readFile(fullPath)], { type: mime });
+			} else if (isImage && !(lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg'))) {
+				if (this.debugMode) console.warn("[VGM] Image found but not used (unsupported type):", relPath);
 			}
 			await maybeYield();
 		}
@@ -1691,6 +1692,13 @@ class VGMPlay_js {
 		return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
 			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
 			p.endsWith('.mpk') || p.endsWith('.mbm');
+	}
+
+	_isKssMultiTrackFile(path) {
+		const p = String(path || "").toLowerCase().split('|track=')[0];
+		return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
+			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
+			p.endsWith('.mpk');
 	}
 
 	_isArchiveUrl(lower) {

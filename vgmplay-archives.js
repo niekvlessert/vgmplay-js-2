@@ -359,9 +359,9 @@ await maybeYield();
 }
 
 const filteredFiles = entries.filter(e => e && e.filepath);
-const hasMbm = filteredFiles.some(f => {
+const hasMbmOrMgs = filteredFiles.some(f => {
 	const l = (f.filepath || "").toLowerCase();
-	return l.endsWith('.mbm');
+	return l.endsWith('.mbm') || l.endsWith('.mgs');
 });
 const hasMusLmp = filteredFiles.some(f => {
 const l = (f.filepath || "").toLowerCase();
@@ -377,7 +377,7 @@ filteredFiles.sort((a, b) => {
 
 	const fallbackName = cleanName || "Archive";
 	let derivedName = fallbackName;
-	if (hasMbm) {
+	if (hasMbmOrMgs) {
 		if (this._normalizeGameTitle) {
 			derivedName = this._normalizeGameTitle(fallbackName) || fallbackName;
 		} else {
@@ -750,12 +750,12 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 			}
 
 			const parsedName = parseArchiveTitle(sourceName);
-			const hasMbm = fileList.some(f => {
+			const hasMbmOrMgs = fileList.some(f => {
 				const l = (f.filepath || "").toLowerCase();
-				return l.endsWith('.mbm');
+				return l.endsWith('.mbm') || l.endsWith('.mgs');
 			});
 			let derivedName = parsedName;
-			if (hasMbm) {
+			if (hasMbmOrMgs) {
 				if (this._normalizeGameTitle) {
 					derivedName = this._normalizeGameTitle(parsedName) || parsedName;
 				} else {

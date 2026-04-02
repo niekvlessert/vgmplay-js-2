@@ -925,9 +925,9 @@ class VGMPlay_js {
 			}
 
 			const filteredFiles = entries.filter(e => e && e.filepath);
-			const hasMbm = filteredFiles.some(f => {
+			const hasMbmOrMgs = filteredFiles.some(f => {
 				const l = (f.filepath || "").toLowerCase();
-				return l.endsWith('.mbm');
+				return l.endsWith('.mbm') || l.endsWith('.mgs');
 			});
 			const hasMusLmp = filteredFiles.some(f => {
 				const l = (f.filepath || "").toLowerCase();
@@ -943,7 +943,7 @@ class VGMPlay_js {
 
 			const fallbackName = sourceName || "Archive";
 			let derivedName = fallbackName;
-			if (hasMbm) {
+			if (hasMbmOrMgs) {
 				if (this._normalizeGameTitle) {
 					derivedName = this._normalizeGameTitle(fallbackName) || fallbackName;
 				} else {
@@ -1728,7 +1728,7 @@ class VGMPlay_js {
 	_isKssMultiTrackFile(path) {
 		const p = String(path || "").toLowerCase().split('|track=')[0];
 		return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
-			p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
+			p.endsWith('.bgm') || p.endsWith('.opx') ||
 			p.endsWith('.mpk');
 	}
 

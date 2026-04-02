@@ -66,7 +66,7 @@ function _isKssFile(path) {
 function _isKssMultiTrackFile(path) {
 	const p = String(path).toLowerCase().split('|track=')[0];
 	return p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||
-		p.endsWith('.mgs') || p.endsWith('.bgm') || p.endsWith('.opx') ||
+		p.endsWith('.bgm') || p.endsWith('.opx') ||
 		p.endsWith('.mpk');
 }
 

@@ -416,7 +416,7 @@ export function installLibrary(VGMPlay_js) {
 								continue;
 							}
 						}
-						if (this._isKssFile(lower) && this.GetKSSTrackCountDirect) {
+						if (this._isKssFile(lower) && this._isKssMultiTrackFile && this._isKssMultiTrackFile(lower) && this.GetKSSTrackCountDirect) {
 							const kssMeta = this._getKssMetaForFile(game, fileName);
 							if (kssMeta && kssMeta.entries && kssMeta.entries.length > 0) {
 								const trkMin = this.GetKSSTrackMinDirect ? this.GetKSSTrackMinDirect(fullPath) : 0;

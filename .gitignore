@@ -33,7 +33,9 @@ build_minimal/
 node_modules/
 
 # Music files...
-dist/
+dist/*.ROM
+dist/NiGHTS*
+dist/Ys*
 
 # Mac stuff
 .DS_Store

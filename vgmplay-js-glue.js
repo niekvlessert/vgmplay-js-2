@@ -118,7 +118,7 @@ class VGMPlay_js {
 		this.autoOverflowSizes = new Map();
 		this.noPlayableNotices = [];
 		this.autoScanDist = (typeof options.autoScanDist === 'undefined') ? this.standalone : !!options.autoScanDist;
-		this.autoScanDistBase = options.autoScanDistBase || '/dist/';
+		this.autoScanDistBase = options.autoScanDistBase || 'dist/';
 		this._autoScanDistDone = false;
 		this._pendingRomLoads = [];
 		this._pendingRomRetryScheduled = false;
@@ -2034,6 +2034,7 @@ class VGMPlay_js {
 
 	async _getDistFilesFromManifest(distBase) {
 		try {
+			const distPath = new URL('.', distBase).pathname;
 			const url = new URL('manifest.json', distBase);
 			const resp = await fetch(url.toString(), { cache: 'no-store' });
 			if (!resp.ok) {
@@ -2043,7 +2044,9 @@ class VGMPlay_js {
 			if (!Array.isArray(data)) return [];
 			return data
 				.map((p) => new URL(p, distBase).toString())
-				.filter((u) => u.includes('/dist/'));
+				.filter((u) => {
+					try { return new URL(u).pathname.startsWith(distPath); } catch (e) { return false; }
+				});
 		} catch (e) {
 			return [];
 		}
@@ -2051,6 +2054,7 @@ class VGMPlay_js {
 
 	async _getDistFilesFromListing(distBase) {
 		try {
+			const distPath = new URL('.', distBase).pathname;
 			const resp = await fetch(distBase, { cache: 'no-store' });
 			if (!resp.ok) return [];
 			const html = await resp.text();
@@ -2059,7 +2063,7 @@ class VGMPlay_js {
 			for (const href of links) {
 				if (!href || href === '../') continue;
 				const url = new URL(href, distBase);
-				if (!url.pathname.startsWith('/dist/')) continue;
+				if (!url.pathname.startsWith(distPath)) continue;
 				if (url.pathname.endsWith('/')) continue;
 				out.push(url.toString());
 			}
@@ -2100,7 +2104,7 @@ class VGMPlay_js {
 				await this._initCache();
 			} catch (e) { }
 		}
-		let distBase = this.autoScanDistBase || '/dist/';
+		let distBase = this.autoScanDistBase || 'dist/';
 		try {
 			distBase = new URL(distBase, window.location.href).toString();
 		} catch (e) { }

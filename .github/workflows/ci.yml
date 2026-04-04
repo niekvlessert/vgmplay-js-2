@@ -96,18 +96,18 @@ jobs:
         run: |
           if [ -d dist ]; then
             python3 - <<'PY'
-            import json
-            from pathlib import Path
+import json
+from pathlib import Path
 
-            dist = Path("dist")
-            files = []
-            for path in dist.rglob("*"):
-              if path.is_file():
-                files.append(path.relative_to(dist).as_posix())
-            files.sort()
-            (dist / "manifest.json").write_text(json.dumps(files, indent=2))
-            print(f"Wrote dist/manifest.json with {len(files)} files")
-            PY
+dist = Path("dist")
+files = []
+for path in dist.rglob("*"):
+  if path.is_file():
+    files.append(path.relative_to(dist).as_posix())
+files.sort()
+(dist / "manifest.json").write_text(json.dumps(files, indent=2))
+print(f"Wrote dist/manifest.json with {len(files)} files")
+PY
           else
             echo "dist folder missing; skipping manifest generation"
           fi

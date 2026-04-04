@@ -146,17 +146,36 @@ export function installHarvester(VGMPlay_js) {
 
     VGMPlay_js.prototype._fetchUrlSize = function (url) {
         return new Promise((resolve) => {
-            if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+            const canUseExtension = typeof chrome !== 'undefined'
+                && chrome.runtime
+                && chrome.runtime.sendMessage
+                && chrome.runtime.id;
+
+            if (canUseExtension) {
+                chrome.runtime.sendMessage({ type: 'vgm-fetch', action: 'getSize', payload: { url } }, (resp) => {
+                    if (chrome.runtime.lastError || !resp || typeof resp.size !== 'number') {
+                        resolve(null);
+                    } else {
+                        resolve(resp.size);
+                    }
+                });
+                return;
+            }
+
+            if (typeof fetch === 'undefined') {
                 resolve(null);
                 return;
             }
-            chrome.runtime.sendMessage({ type: 'vgm-fetch', action: 'getSize', payload: { url } }, (resp) => {
-                if (chrome.runtime.lastError || !resp || typeof resp.size !== 'number') {
-                    resolve(null);
-                } else {
-                    resolve(resp.size);
-                }
-            });
+
+            fetch(url, { method: 'HEAD', cache: 'no-store' })
+                .then((resp) => {
+                    if (!resp.ok) return null;
+                    const len = resp.headers.get('content-length');
+                    const size = len ? Number(len) : null;
+                    return Number.isFinite(size) ? size : null;
+                })
+                .then((size) => resolve(size))
+                .catch(() => resolve(null));
         });
     };
 

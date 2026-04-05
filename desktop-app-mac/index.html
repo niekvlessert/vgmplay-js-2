@@ -18,10 +18,10 @@
 </head>
 
 <body>
-    <script src="vgmplay-js-glue.js"></script>
     <script>
-        window.vgmPlayInstance = new VGMPlay_js({ standalone: true });
+        window.VGMPLAY_EXTENSION_OPTIONS = { standalone: true, baseURL: 'vgmplay:///' };
     </script>
+    <script src="vgmplay-js-glue.js"></script>
 </body>
 
 </html>

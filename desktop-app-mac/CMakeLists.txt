@@ -42,13 +42,21 @@ set(ASSET_FILES
     vgmplay-spectrum.js
     vgmplay-ui.js
     vgmplay-js.wasm
-    vgmplay-js.data
     vgmplay-audio-processor.js
     minizip-asm.min.js
     7zz.umd.js
     7zz.wasm
     unrar.min.js
     audiomotion-analyzer.js
+    vgmplay-cache.js
+    vgmplay-harvester.js
+    vgmplay-layout.js
+    vgmplay-metadata.js
+    vgmplay-midi.js
+    vgmplay-queue.js
+    vgmplay-standalone-ui.js
+    archive-worker.js
+    background.js
 )
 
 # Copy index.html and symlink extension assets next to the binary
@@ -74,4 +82,12 @@ add_custom_command(TARGET VGMPlay POST_BUILD
         ${ROOT_DIR}/css
         $<TARGET_FILE_DIR:VGMPlay>/css
     COMMENT "Symlinking css/"
+)
+
+# Dist assets (music packs)
+add_custom_command(TARGET VGMPlay POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+        ${ROOT_DIR}/dist
+        $<TARGET_FILE_DIR:VGMPlay>/dist
+    COMMENT "Symlinking dist/"
 )

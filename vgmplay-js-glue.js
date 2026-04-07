@@ -740,6 +740,18 @@ class VGMPlay_js {
 		if (window.__VGM_DEBUG__) console.log('[VGM] loadWhenReady placeholder called (waiting for modules)');
 	}
 
+	_queueURL(url, forceLarge = false) {
+		// Placeholder - will be replaced by vgmplay-queue.js
+		console.warn('[VGM] _queueURL called before queue module loaded, queuing for later');
+		if (!this._pendingQueueURLs) this._pendingQueueURLs = [];
+		this._pendingQueueURLs.push({ url, forceLarge });
+	}
+
+	_processQueue() {
+		// Placeholder - will be replaced by vgmplay-queue.js
+		this._processQueuePending = true;
+	}
+
 	_defaultLoadWhenReady() {
 		const scanNames = new Set();
 		this.elms = document.getElementsByTagName("a");
@@ -848,6 +860,20 @@ class VGMPlay_js {
 					queued++;
 				}
 				await this._yieldToUI();
+			}
+		}
+		// Wait for _processQueue to be available if it's not yet
+		if (typeof this._processQueue !== 'function') {
+			console.warn('[VGM] _processQueue not available yet, waiting for queue module...');
+			let retries = 0;
+			while (typeof this._processQueue !== 'function' && retries < 50) {
+				await new Promise(resolve => setTimeout(resolve, 100));
+				retries++;
+			}
+			if (typeof this._processQueue !== 'function') {
+				console.error('[VGM] _processQueue still not available after waiting. Queue module may not be loaded.');
+				this._setInfoLoading(false);
+				return;
 			}
 		}
 		this._processQueue();
@@ -1733,7 +1759,7 @@ class VGMPlay_js {
 	}
 
 	_isArchiveUrl(lower) {
-		return lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.rar') || lower.endsWith('.vigamup');
+		return lower.endsWith('.zip') || lower.endsWith('.7z') || lower.endsWith('.rar') || lower.endsWith('.rsn') || lower.endsWith('.cbr') || lower.endsWith('.vigamup');
 	}
 
 	_isMidiExt(lower) {
@@ -2152,7 +2178,11 @@ class VGMPlay_js {
 			if (this.lastHarvestedCandidates && this.lastHarvestedCandidates.some(c => c.url === url)) continue;
 
 			if (this._isArchiveUrl(lower)) {
-				this._queueURL(url, false);
+				if (typeof this._queueURL === 'function') {
+					this._queueURL(url, false);
+				} else {
+					console.warn('[VGM] _queueURL not available yet, skipping:', url);
+				}
 			} else {
 				const rawName = url.split('/').pop().split('?')[0].split('#')[0];
 				let name = rawName;
@@ -3511,11 +3541,23 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 		await loadModule('./vgmplay-cache.js', 'installCache', 'cache');
 
 		installers.forEach((fn) => fn(VGMPlay_js));
-		if (window.__VGM_DEBUG__) {
-			console.log('[VGM] All modules loaded, creating VGMPlay instance');
-		}
+		console.log('[VGM] All modules loaded, creating VGMPlay instance, installers count:', installers.length);
 		var vgmplay_js = new VGMPlay_js(options);
 		window.vgmPlayInstance = vgmplay_js;
+
+		// Process any URLs that were queued before the queue module was loaded
+		if (vgmplay_js._pendingQueueURLs && vgmplay_js._pendingQueueURLs.length > 0) {
+			console.log('[VGM] Processing', vgmplay_js._pendingQueueURLs.length, 'pending URLs queued before module load');
+			for (const pending of vgmplay_js._pendingQueueURLs) {
+				vgmplay_js._queueURL(pending.url, pending.forceLarge);
+			}
+			vgmplay_js._pendingQueueURLs = [];
+		}
+		if (vgmplay_js._processQueuePending) {
+			console.log('[VGM] Processing pending queue from manual upload');
+			vgmplay_js._processQueuePending = false;
+			setTimeout(() => vgmplay_js._processQueue(), 0);
+		}
 		if (typeof window !== 'undefined') {
 			if (window.Module && !window.Module.__vgmplayPrintErrWrapped) {
 				const original = window.Module.printErr ? window.Module.printErr.bind(window.Module) : console.error.bind(console);

@@ -50,12 +50,13 @@ FILES_TO_REMOVE=(
     "vgmplay-js.wasm"
     "vgmplay-js.data"
     "vgmplay-js-glue.js"
-    "minizip-asm.min.js"
     "vgmplay-audio-processor.js"
     "audiomotion-analyzer.js"
-    "7zz.umd.js"
-    "7zz.wasm"
-    "unrar.min.js"
+    "libarchive.js"
+    "libarchive.wasm"
+    "unrar-worker.js"
+    "unrar.js"
+    "unrar.wasm"
 )
 
 # Remove extra VGMPlay modules (vgmplay-*.js) except core files already listed

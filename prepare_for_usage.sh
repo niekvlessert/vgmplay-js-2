@@ -16,13 +16,14 @@ FILES_TO_COPY=(
     "vgmplay-js.js"
     "vgmplay-js.wasm"
     "vgmplay-js-glue.js"
-    "minizip-asm.min.js"
     "vgmplay-audio-processor.js"
-    "7zz.umd.js"
-    "7zz.wasm"
-    "unrar.min.js"
+    "libarchive.js"
+    "libarchive.wasm"
     "audiomotion-analyzer.js"
     "archive-worker.js"
+    "unrar-worker.js"
+    "unrar.js"
+    "unrar.wasm"
 )
 
 # Include extra VGMPlay modules (vgmplay-*.js) without duplicating core files

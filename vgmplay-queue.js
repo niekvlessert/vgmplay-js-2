@@ -19,6 +19,9 @@ export function installQueue(VGMPlay_js) {
 		return (rounded % 1 === 0) ? String(rounded.toFixed(0)) : String(rounded);
 	};
 
+	// Mark queue module as ready on prototype so instance can process pending URLs
+	VGMPlay_js.prototype._queueModuleReady = true;
+
 	VGMPlay_js.prototype._shouldDownload = async function (url, forceLarge) {
 		if (forceLarge) return true;
 		if (this.standalone) return true;
@@ -135,8 +138,13 @@ export function installQueue(VGMPlay_js) {
 								const lower = job.data.toLowerCase();
 								if (lower.endsWith('.7z')) {
 									classContext.process7zBuffer(byteArray, job.data).then(next);
-								} else if (lower.endsWith('.rar')) {
-									classContext.processRarBuffer(byteArray, job.data).then(next);
+								} else if (lower.endsWith('.rar') || lower.endsWith('.rsn') || lower.endsWith('.cbr')) {
+									if (typeof classContext.processRarBuffer === 'function') {
+										classContext.processRarBuffer(byteArray, job.data).then(next);
+									} else {
+										console.error('[VGM] processRarBuffer is not available. Archive modules may not be loaded yet.');
+										next();
+									}
 								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 									classContext.processPSFBuffer(byteArray, job.data).then(next);
 								} else if (lower.endsWith('.zip')) {
@@ -159,8 +167,13 @@ export function installQueue(VGMPlay_js) {
 				const lower = (job.name || '').toLowerCase();
 				if (lower.endsWith('.7z')) {
 					classContext.process7zBuffer(job.data, job.name).then(next);
-				} else if (lower.endsWith('.rar')) {
-					classContext.processRarBuffer(job.data, job.name).then(next);
+				} else if (lower.endsWith('.rar') || lower.endsWith('.rsn') || lower.endsWith('.cbr')) {
+					if (typeof classContext.processRarBuffer === 'function') {
+						classContext.processRarBuffer(job.data, job.name).then(next);
+					} else {
+						console.error('[VGM] processRarBuffer is not available. Archive modules may not be loaded yet.');
+						next();
+					}
 				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 					classContext.processPSFBuffer(job.data, job.name).then(next);
 				} else if (lower.endsWith('.zip')) {

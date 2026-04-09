@@ -1055,15 +1055,20 @@ export function installUi(VGMPlay_js) {
 			msg = opts.fromCache
 				? `Munt ROM file ${safeName} loaded from cache.`
 				: `Munt ROM file ${safeName} uploaded and saved to root.`;
+		} else if (opts && opts.isMoonsoundSample) {
+			msg = `MWK sample library ${safeName} loaded for MWM playback.`;
 		} else if (opts && opts.isRom) {
 			const lower = String(safeName).toLowerCase();
 			if (lower === 'yrw801.rom') {
 				msg = opts.fromCache
 					? `yrw801.rom loaded from cache, playback of VGM files using YMF278B will work now.`
 					: `yrw801.rom loaded, playback of VGM files using YMF278B will work now.`;
+			} else if (lower === 'waves.dat') {
+				msg = opts.fromCache
+					? `waves.dat loaded from cache, playback of MWM files using MoonSound will work now.`
+					: `waves.dat loaded, playback of MWM files using MoonSound will work now.`;
 			}
 		} else if (opts && opts.isMidiArchive) {
-			msg = `${safeName} contains MIDI only. Playback not supported yet.`;
 		} else if ((opts && opts.isMidi) || (this._isMidiFile && this._isMidiFile(safeName))) {
 			const typeLabel = (opts && opts.typeLabel) ? opts.typeLabel : 'MIDI';
 			msg = `${safeName} is ${typeLabel}. Playback not supported yet.`;
@@ -1127,6 +1132,24 @@ export function installUi(VGMPlay_js) {
 
 	VGMPlay_js.prototype._showOpl4RomError = function () {
 		const msg = "YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPlease upload it by dragging the file onto the 'Insert music files/archives here!' field.";
+		if (!this.noPlayableNotices.includes(msg)) {
+			this.noPlayableNotices.push(msg);
+		}
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._showWavesDatError = function () {
+		const msg = "MoonSound playback requires the file waves.dat.\n\nPlease upload it by dragging the file onto the 'Insert music files/archives here!' field.";
+		if (!this.noPlayableNotices.includes(msg)) {
+			this.noPlayableNotices.push(msg);
+		}
+		this._showSkippedWindow();
+		this._renderSkippedDownloads();
+	};
+
+	VGMPlay_js.prototype._showMoonsoundSampleError = function () {
+		const msg = "This MWM track requires a MWK sample library that is not loaded.\n\nPlease upload the matching .mwk file by dragging it onto the 'Insert music files/archives here!' field.";
 		if (!this.noPlayableNotices.includes(msg)) {
 			this.noPlayableNotices.push(msg);
 		}

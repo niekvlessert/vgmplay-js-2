@@ -846,7 +846,7 @@ class VGMPlay_js {
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
 			const romType = this._getRomType ? this._getRomType(file.name) : null;
 			const isExtImage = this._isExternalGameImage ? this._isExternalGameImage(file.name) : false;
-			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi || romType || isExtImage) {
+			if (this._isArchiveUrl(lower) || this.isPlayable(lower) || isMidi || romType || isExtImage || lower.endsWith('.mwk')) {
 				const byteArray = await this._readFileAsUint8(file);
 				if (romType) {
 					this.saveRomFile(byteArray, file.name, romType);
@@ -1020,7 +1020,7 @@ class VGMPlay_js {
 			const parts = relPath.split('/');
 			if (parts.length > 1) return parts[0];
 			const lower = relPath.toLowerCase();
-			if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo')) {
+			if (this.isPlayable(lower) || lower.endsWith('.png') || lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo') || lower.endsWith('.mwk')) {
 				const dot = relPath.lastIndexOf('.');
 				return dot > 0 ? relPath.substring(0, dot) : relPath;
 			}
@@ -1302,8 +1302,11 @@ class VGMPlay_js {
 			const isPlayable = this.isPlayable(fsPath);
 			if (!isPlayable) {
 				const lower = fsPath.toLowerCase();
+				const isMwk = lower.endsWith('.mwk');
 				const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
-				if (isMidi) {
+				if (isMwk) {
+					this._addNoPlayableNotice(sourceName || 'MWK', { isMoonsoundSample: true });
+				} else if (isMidi) {
 					const typeLabel = this._getMidiTypeLabel ? this._getMidiTypeLabel(fsPath) : 'MIDI';
 					this._addNoPlayableNotice(sourceName || 'File', { isMidi: true, typeLabel });
 				} else {
@@ -1497,11 +1500,57 @@ class VGMPlay_js {
 				try { this.SetMidiEngine(this.midiEngineChoice); } catch (e) { }
 			}
 
+			const isMwmFile = lowerFile.endsWith('.mwm');
+			if (isMwmFile) {
+				if (this.SetMoonsoundMwkPath) {
+					const mwkPath = this._findMwkForMwm(file, game);
+					try { this.SetMoonsoundMwkPath(mwkPath || ''); } catch (e) { }
+				}
+				if (this._hasOpl4RomLoaded && !this._hasOpl4RomLoaded()) {
+					if (this._showOpl4RomError) {
+						this._showOpl4RomError();
+					} else {
+						this._addNoPlayableNotice('yrw801.rom missing');
+					}
+					return;
+				}
+				if (this._hasWavesDatLoaded && !this._hasWavesDatLoaded()) {
+					if (this._showWavesDatError) {
+						this._showWavesDatError();
+					} else {
+						this._addNoPlayableNotice('waves.dat missing');
+					}
+					return;
+				}
+			}
+
 			this._isLoadingFile = true;
 			try {
 				const ok = this.load(file);
 				if (!ok) {
-					this._addNoPlayableNotice(file);
+					let handled = false;
+					if (this.GetLastLoadErrorCode) {
+						try {
+							const code = this.GetLastLoadErrorCode();
+							if (code === 1 && this._showOpl4RomError) {
+								this._showOpl4RomError();
+								handled = true;
+							} else if (code === 3 && this._showMoonsoundSampleError) {
+								this._showMoonsoundSampleError();
+								handled = true;
+							} else if (code === 2) {
+								if (this._showWavesDatError) {
+									this._showWavesDatError();
+								} else {
+									this._addNoPlayableNotice('waves.dat missing');
+								}
+								handled = true;
+							}
+						} catch (e) { }
+					}
+					if (!handled) {
+						this._addNoPlayableNotice(file);
+					}
 					return;
 				}
 				const isVgmFile = lowerFile.endsWith('.vgm') || lowerFile.endsWith('.vgz');
@@ -1579,6 +1628,62 @@ class VGMPlay_js {
 		return p.endsWith('.usf') || p.endsWith('.miniusf') || p.endsWith('.usflib');
 	}
 
+	_findMwkForMwm(mwmPath, gameIndex) {
+		const clean = String(mwmPath || "").split('|track=')[0];
+		const lower = clean.toLowerCase();
+		if (!lower.endsWith('.mwm')) return '';
+		const baseName = clean.split('/').pop() || clean;
+		const baseStem = baseName.replace(/\.[^.]+$/, '').toLowerCase();
+		const dir = clean.includes('/') ? clean.substring(0, clean.lastIndexOf('/')) : '';
+
+		const matchInFiles = (files, requireSameDir) => {
+			if (!files || !files.length) return '';
+			for (const f of files) {
+				const p = String(f && f.filepath ? f.filepath : '');
+				if (!p) continue;
+				const pl = p.toLowerCase();
+				if (!pl.endsWith('.mwk')) continue;
+				const pDir = p.includes('/') ? p.substring(0, p.lastIndexOf('/')) : '';
+				const pBase = p.split('/').pop() || p;
+				const pStem = pBase.replace(/\.[^.]+$/, '').toLowerCase();
+				if (requireSameDir) {
+					if (pDir === dir && pStem === baseStem) return p;
+				} else {
+					if (pStem === baseStem) return p;
+				}
+			}
+			return '';
+		};
+
+		if (Number.isFinite(gameIndex) && this.games && this.games[gameIndex - 1]) {
+			const inGame = matchInFiles(this.games[gameIndex - 1].files, true);
+			if (inGame) return inGame;
+		}
+
+		for (const g of (this.games || [])) {
+			const candidate = matchInFiles(g && g.files, false);
+			if (candidate) return candidate;
+		}
+
+		// Fallback: Check root of virtual filesystem
+		if (typeof FS !== 'undefined') {
+			try {
+				const files = FS.readdir('/');
+				for (const f of files) {
+					if (!f.toLowerCase().endsWith('.mwk')) continue;
+					const fStem = f.replace(/\.[^.]+$/, '').toLowerCase();
+					if (fStem === baseStem) {
+						const found = '/' + f;
+						this._log && this._log('MOONSOUND', 'Found MWK in root FS fallback:', found);
+						return found;
+					}
+				}
+			} catch (e) { }
+		}
+
+		return '';
+	}
+
 	isPlayable(path) {
 		const p = path.toLowerCase().split('|track=')[0];
 		return p.endsWith('.vgm') || p.endsWith('.vgz') ||
@@ -1597,6 +1702,7 @@ class VGMPlay_js {
 			p.endsWith('.imf') || p.endsWith('.med') || p.endsWith('.okt') ||
 			p.endsWith('.ptm') || p.endsWith('.ult') || p.endsWith('.umx') ||
 			p.endsWith('.mp3') || p.endsWith('.flac') || p.endsWith('.ogg') || p.endsWith('.wav') || p.endsWith('.ape') ||
+			p.endsWith('.mwm') ||
 			p.endsWith('.mus') || (p.endsWith('.lmp') && !p.endsWith('genmidi.lmp')) ||
 			p.endsWith('.mid') || p.endsWith('.midi') || p.endsWith('.rmi') ||
 			p.endsWith('.bfstm') || p.endsWith('.bcstm') || p.endsWith('.brstm') ||
@@ -2765,6 +2871,8 @@ class VGMPlay_js {
 		const n = String(name || '').toUpperCase();
 		if (n === 'MT32_CONTROL.ROM' || n === 'MT32_PCM.ROM') return 'munt';
 		if (n === 'YRW801.ROM') return 'opl4';
+		if (n === 'WAVES.DAT') return 'waves';
+		if (n.endsWith('.MWK')) return 'moonsound_sample';
 		return null;
 	}
 
@@ -2772,6 +2880,15 @@ class VGMPlay_js {
 		if (typeof FS === 'undefined') return false;
 		try {
 			return !!FS.analyzePath('/yrw801.rom').exists;
+		} catch (e) {
+			return false;
+		}
+	}
+
+	_hasWavesDatLoaded() {
+		if (typeof FS === 'undefined') return false;
+		try {
+			return !!FS.analyzePath('/waves.dat').exists;
 		} catch (e) {
 			return false;
 		}
@@ -2827,6 +2944,14 @@ class VGMPlay_js {
 			targetName = 'yrw801.rom';
 			label = 'OPL4 ROM (YRW801)';
 			key = 'opl4:yrw801.rom';
+		} else if (type === 'waves') {
+			targetName = 'waves.dat';
+			label = 'Moonsound Waves';
+			key = 'waves:waves.dat';
+		} else if (type === 'moonsound_sample') {
+			targetName = String(name || '').split('/').pop() || 'samples.mwk';
+			label = 'Moonsound Sample Library';
+			key = 'moonsound_sample:' + targetName.toLowerCase();
 		} else {
 			return;
 		}
@@ -2840,6 +2965,7 @@ class VGMPlay_js {
 			if (!this._romLoaded[key]) {
 				const opts = { typeLabel: label, isRom: true };
 				if (type === 'munt') opts.isMuntRom = true;
+				if (type === 'moonsound_sample') opts.isMoonsoundSample = true;
 				this._addNoPlayableNotice(name || targetName, opts);
 				this._romLoaded[key] = true;
 			}
@@ -2925,7 +3051,7 @@ class VGMPlay_js {
 	// Restore ROM files from cache on startup
 	async _restoreRomsFromCache() {
 		if (!this._cacheBridgeAvailable()) return;
-		const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM'];
+		const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM', '/waves.dat'];
 		this._log && this._log('CACHE', 'Requesting ROM files from cache:', romPaths);
 		const resp = await this._cacheBridgeRequest('getFiles', { paths: romPaths });
 		this._log && this._log('CACHE', 'ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
@@ -2960,10 +3086,10 @@ class VGMPlay_js {
 							}
 							FS.writeFile(path, bytes);
 							this._romLoaded = this._romLoaded || {};
-							let key = romType === 'munt' ? ('munt:' + name.toUpperCase()) : ('opl4:yrw801.rom');
+							let key = romType === 'munt' ? ('munt:' + name.toUpperCase()) : (romType === 'waves' ? 'waves:waves.dat' : 'opl4:yrw801.rom');
 							// Show notice that ROM was loaded from cache
 							if (!this._romLoaded[key]) {
-								const label = romType === 'munt' ? 'Munt ROM' : 'OPL4 ROM (YRW801)';
+								const label = romType === 'munt' ? 'Munt ROM' : (romType === 'waves' ? 'Moonsound Waves' : 'OPL4 ROM (YRW801)');
 								const opts = { typeLabel: label, isRom: true, fromCache: true };
 								if (romType === 'munt') opts.isMuntRom = true;
 								this._addNoPlayableNotice(name, opts);

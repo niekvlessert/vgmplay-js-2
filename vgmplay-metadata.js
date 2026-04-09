@@ -107,6 +107,9 @@ export function installMetadata(VGMPlay_js) {
 				if (lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
 					titleTarget.innerHTML += "System: Nintendo 64<br/>";
 				}
+				if (lower.endsWith('.mwm')) {
+					titleTarget.innerHTML += "System: MSX Moonsound<br/>";
+				}
 			}
 
 			// Show file format as last info line

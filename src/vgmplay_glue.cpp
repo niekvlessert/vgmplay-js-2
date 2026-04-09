@@ -29,6 +29,7 @@
 #include "../modules/adlmidi/src/midi_sequencer.hpp"
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
+#include "../modules/libmoonsound/src/libmoonsound.h"
 
 extern "C" {
 #ifdef INLINE
@@ -101,6 +102,24 @@ static double openmptDurationSec = 0.0;
 static std::string currentOpenMptPath;
 static bool debugMode = false;
 static bool vgmstreamLoopEnabled = false;
+static bool isMoonsound = false;
+static MSContext *msCtx = nullptr;
+static uint32_t msTotalSamples = 0;
+static uint32_t msRenderedSamples = 0;
+static bool msEnded = false;
+static bool msSupportsLoop = false;
+static bool msRequiresMwk = false;
+static bool msMwkLoaded = false;
+static std::string pendingMwkPath;
+static int lastLoadErrorCode = 0;
+
+enum {
+  LOADERR_NONE = 0,
+  LOADERR_MOONSOUND_MISSING_ROM = 1,
+  LOADERR_MOONSOUND_MISSING_WAVES = 2,
+  LOADERR_MOONSOUND_MISSING_MWK = 3,
+  LOADERR_MOONSOUND_LOAD_FAIL = 4
+};
 
 static bool isMUS = false;
 static musdoom_emulator_t *musEmu = nullptr;
@@ -634,6 +653,19 @@ static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
 }
 
 static void cleanup(bool keepVGMPlayer) {
+  if (isMoonsound) {
+    if (msCtx) {
+      ms_destroy(msCtx);
+      msCtx = nullptr;
+    }
+    isMoonsound = false;
+    msTotalSamples = 0;
+    msRenderedSamples = 0;
+    msEnded = false;
+    msSupportsLoop = false;
+    msRequiresMwk = false;
+    msMwkLoaded = false;
+  }
   if (isADLMIDI) {
     if (adlPlayer) {
       adl_close(adlPlayer);
@@ -822,6 +854,33 @@ static std::string getDirPathOrDot(const std::string &path) {
   return path.substr(0, slash);
 }
 
+static bool fileExists(const std::string &path) {
+  if (path.empty())
+    return false;
+  FILE *f = fopen(path.c_str(), "rb");
+  if (f) {
+    fclose(f);
+    return true;
+  }
+  return false;
+}
+
+static std::string findMwkForMwm(const std::string &basePath) {
+  if (!pendingMwkPath.empty() && fileExists(pendingMwkPath))
+    return pendingMwkPath;
+  std::string stem = basePath;
+  size_t dot = stem.find_last_of('.');
+  if (dot != std::string::npos)
+    stem = stem.substr(0, dot);
+  std::string lower = stem + ".mwk";
+  if (fileExists(lower))
+    return lower;
+  std::string upper = stem + ".MWK";
+  if (fileExists(upper))
+    return upper;
+  return "";
+}
+
 static bool isMbmPath(const std::string &lowerPath) {
   return (lowerPath.size() > 4 &&
           lowerPath.substr(lowerPath.size() - 4) == ".mbm");
@@ -927,6 +986,18 @@ void SetMidiEngine(const char* engine) {
   currentMidiEngine = newEngine;
 }
 
+void SetMoonsoundMwkPath(const char* path) {
+  pendingMwkPath = path ? path : "";
+}
+
+int GetLastLoadErrorCode(void) {
+  return lastLoadErrorCode;
+}
+
+int MoonsoundSupportsLoop(void) {
+  return (isMoonsound && msSupportsLoop) ? 1 : 0;
+}
+
 void SetLoopCount(unsigned int loops) {
   /* libvgm VGMPlayer doesn't expose a simple loop-count setter;
      the higher-level PlayerA does, but we use VGMPlayer directly.
@@ -1023,6 +1094,7 @@ void Seek(unsigned int sec, unsigned int ms) {
 }
 
 int OpenVGMFile(const char *path) {
+  lastLoadErrorCode = LOADERR_NONE;
   /* Detect PSF by extension */
   std::string basePath;
   int trackIndex = parseTrackSuffix(path, basePath);
@@ -1141,6 +1213,75 @@ int OpenVGMFile(const char *path) {
     gKssSamplePos = 0;
     isKSS = true;
     DataLoader_Deinit(kssLoader);
+    return 1;
+  }
+
+  if (lowerPath.size() > 4 &&
+      lowerPath.substr(lowerPath.size() - 4) == ".mwm") {
+    msCtx = ms_create();
+    if (!msCtx) {
+      lastLoadErrorCode = LOADERR_MOONSOUND_LOAD_FAIL;
+      return 0;
+    }
+    if (!ms_load_mwm_file(msCtx, basePath.c_str())) {
+      ms_destroy(msCtx);
+      msCtx = nullptr;
+      lastLoadErrorCode = LOADERR_MOONSOUND_LOAD_FAIL;
+      return 0;
+    }
+
+    msSupportsLoop = ms_supports_loop(msCtx);
+    msRequiresMwk = ms_requires_mwk(msCtx);
+
+    const std::string romPath = "/yrw801.rom";
+    if (!fileExists(romPath) || !ms_load_rom_file(msCtx, romPath.c_str())) {
+      ms_destroy(msCtx);
+      msCtx = nullptr;
+      lastLoadErrorCode = LOADERR_MOONSOUND_MISSING_ROM;
+      return 0;
+    }
+
+    const std::string wavesPath = "/waves.dat";
+    if (!fileExists(wavesPath) || !ms_load_waves_file(msCtx, wavesPath.c_str())) {
+      ms_destroy(msCtx);
+      msCtx = nullptr;
+      lastLoadErrorCode = LOADERR_MOONSOUND_MISSING_WAVES;
+      return 0;
+    }
+
+    const std::string mwkPath = findMwkForMwm(basePath);
+    if (msRequiresMwk && mwkPath.empty()) {
+      ms_destroy(msCtx);
+      msCtx = nullptr;
+      lastLoadErrorCode = LOADERR_MOONSOUND_MISSING_MWK;
+      return 0;
+    }
+    if (!mwkPath.empty()) {
+      if (!ms_load_mwk_file(msCtx, mwkPath.c_str())) {
+        if (msRequiresMwk) {
+          ms_destroy(msCtx);
+          msCtx = nullptr;
+          lastLoadErrorCode = LOADERR_MOONSOUND_MISSING_MWK;
+          return 0;
+        }
+      } else {
+        msMwkLoaded = true;
+      }
+    }
+
+    if (!ms_prepare(msCtx)) {
+      ms_destroy(msCtx);
+      msCtx = nullptr;
+      lastLoadErrorCode = msRequiresMwk ? LOADERR_MOONSOUND_MISSING_MWK
+                                        : LOADERR_MOONSOUND_LOAD_FAIL;
+      return 0;
+    }
+
+    msTotalSamples = ms_get_total_samples(msCtx);
+    msRenderedSamples = 0;
+    msEnded = false;
+    isMoonsound = true;
+    pendingMwkPath.clear();
     return 1;
   }
 
@@ -1569,6 +1710,11 @@ int VGMEnded(void) {
   if (isMUS) {
     return musEmu ? (musdoom_is_playing(musEmu) ? 0 : 1) : 1;
   }
+  if (isMoonsound) {
+    if (msEnded) return 1;
+    if (msTotalSamples > 0 && msRenderedSamples >= msTotalSamples) return 1;
+    return 0;
+  }
   if (isVGMStream) {
     if (!vgmstreamContext) return 1;
     return vgmstreamContext->decoder->done ? 1 : 0;
@@ -1619,6 +1765,9 @@ int GetTrackLength(void) {
   }
   if (isUSF) {
     return usfInfo ? (int)(usfInfo->length * 44.1) : 0;
+  }
+  if (isMoonsound) {
+    return msTotalSamples > 0 ? (int)msTotalSamples : 0;
   }
   if (isAPE) {
     if (!apeDecompress || apeSampleRate <= 0) return 0;
@@ -1760,6 +1909,19 @@ int GetTrackLengthDirect(const char *path) {
     if (dur <= 0.0)
       return 0;
     return (int)(dur * 44100.0);
+  }
+
+  if (lowerPath.size() > 4 && lowerPath.substr(lowerPath.size() - 4) == ".mwm") {
+    MSContext *tmp = ms_create();
+    if (!tmp)
+      return 0;
+    if (!ms_load_mwm_file(tmp, basePath.c_str())) {
+      ms_destroy(tmp);
+      return 0;
+    }
+    uint32_t samples = ms_calculate_length_samples(tmp, 1);
+    ms_destroy(tmp);
+    return (int)samples;
   }
 
   // Try vgmstream for various game audio formats
@@ -2270,6 +2432,34 @@ void FillBuffer2(float *left, float *right, int n) {
       memset(left, 0, n * sizeof(float));
       memset(right, 0, n * sizeof(float));
     }
+    return;
+  }
+
+  if (isMoonsound) {
+    if (!msCtx) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    std::vector<int16_t> msBuf(n * 2);
+    uint32_t frames = ms_render(msCtx, msBuf.data(), (uint32_t)n);
+    if (frames == 0) {
+      msEnded = true;
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    msRenderedSamples += frames;
+    for (uint32_t i = 0; i < frames; i++) {
+      left[i] = (float)msBuf[i * 2] / 32768.0f;
+      right[i] = (float)msBuf[i * 2 + 1] / 32768.0f;
+    }
+    for (uint32_t i = frames; i < (uint32_t)n; i++) {
+      left[i] = 0.0f;
+      right[i] = 0.0f;
+    }
+    if (frames < (uint32_t)n)
+      msEnded = true;
     return;
   }
 

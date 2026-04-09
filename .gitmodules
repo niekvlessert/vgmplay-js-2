@@ -34,3 +34,6 @@
 [submodule "modules/monkeys-audio"]
 	path = modules/monkeys-audio
 	url = https://github.com/fernandotcl/monkeys-audio.git
+[submodule "modules/libmoonsound"]
+	path = modules/libmoonsound
+	url = https://github.com/niekvlessert/libmoonsound.git

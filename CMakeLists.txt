@@ -28,6 +28,9 @@ set(BUILD_VGM2WAV OFF CACHE BOOL "build sample vgm2wav application" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "build test programs" FORCE)
 set(USE_SANITIZERS OFF CACHE BOOL "use sanitizers" FORCE)
 add_subdirectory(modules/libvgm)
+set(MOONSOUND_USE_SYSTEM_LIBVGM ON CACHE BOOL "Use external libvgm for libmoonsound" FORCE)
+set(MOONSOUND_BUILD_CLI OFF CACHE BOOL "Disable libmoonsound CLI" FORCE)
+add_subdirectory(modules/libmoonsound)
 add_subdirectory(modules/sexypsf)
 set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
 set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
@@ -122,6 +125,7 @@ target_link_libraries(vgmplay-js gme::gme)
 target_link_libraries(vgmplay-js kss)
 target_link_libraries(vgmplay-js musdoom)
 target_link_libraries(vgmplay-js libvgmstream)
+target_link_libraries(vgmplay-js moonsound)
 
 # vgmstream dependencies
 if(EMSCRIPTEN)
@@ -218,6 +222,7 @@ target_include_directories(vgmplay-js PRIVATE
     modules/lazyusf/rsp
     modules/lazyusf/rsp_hle
     modules/libMusDoom/src
+    modules/libmoonsound/src
     modules/vgmstream/src
     modules/adlmidi/include
     modules/monkeys-audio/src/Shared
@@ -282,6 +287,9 @@ list(APPEND VGMPLAY_EXPORTS
     "'_GetVgmstreamLoop'"
     "'_SetVgmstreamLoop'"
     "'_HasVgmstreamNativeLoop'"
+    "'_SetMoonsoundMwkPath'"
+    "'_GetLastLoadErrorCode'"
+    "'_MoonsoundSupportsLoop'"
 )
 string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")
 

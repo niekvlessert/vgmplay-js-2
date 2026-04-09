@@ -130,6 +130,9 @@ export function installAudio(VGMPlay_js) {
 			this.GetVgmstreamLoop = Module.cwrap('GetVgmstreamLoop', 'number');
 			this.SetVgmstreamLoop = Module.cwrap('SetVgmstreamLoop', 'void', ['number']);
 			this.HasVgmstreamNativeLoop = Module.cwrap('HasVgmstreamNativeLoop', 'number');
+			this.SetMoonsoundMwkPath = Module.cwrap('SetMoonsoundMwkPath', 'void', ['string']);
+			this.GetLastLoadErrorCode = Module.cwrap('GetLastLoadErrorCode', 'number');
+			this.MoonsoundSupportsLoop = Module.cwrap('MoonsoundSupportsLoop', 'number');
 
 			this.dataPtrs = [];
 			this.dataPtrs[0] = Module._malloc(16384 * 2);
@@ -590,6 +593,13 @@ if (this._initCache && !this._cacheReady) {
 				const clean = path.toLowerCase().split('|track=')[0];
 				return clean.endsWith('.psf') || clean.endsWith('.minipsf') || clean.endsWith('.usf') || clean.endsWith('.miniusf') || clean.endsWith('.mus') || clean.endsWith('.lmp');
 			};
+			const isMwm = () => {
+				if (!this.activeGame || !this.activeGame.playableList || this.currentFileKey == null) return false;
+				const path = this.activeGame.playableList[this.currentFileKey] && this.activeGame.playableList[this.currentFileKey].filepath;
+				if (!path) return false;
+				const clean = path.toLowerCase().split('|track=')[0];
+				return clean.endsWith('.mwm');
+			};
 			if (this.GetLoopPoint) {
 				try {
 					if (this.GetLoopPoint() > 0) return true;
@@ -601,6 +611,11 @@ if (this._initCache && !this._cacheReady) {
 				return false;
 			}
 			// KSS and PSF/USF don't always expose loop points; allow software looping
+			if (isMwm()) {
+				try {
+					return this.MoonsoundSupportsLoop ? !!this.MoonsoundSupportsLoop() : false;
+				} catch (e) { return false; }
+			}
 			return isKss() || isPsfUsf();
 		})();
 

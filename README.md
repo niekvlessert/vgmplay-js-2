@@ -83,6 +83,7 @@ The full build of `vgmplay-js` includes the following libraries and supports the
 | **lazyusf** | `.usf`, `.miniusf` (Nintendo 64) |
 | **miniaudio** | `.mp3`, `.flac`, `.ogg`, `.wav` (Modern Audio Formats) |
 | **libmusdoom** | `.mus`, `.lmp` (Doom) |
+| **libmoonsound** | `.mwm` (MSX Moonsound) with optional `.mwk` sample libraries (some tracks require MWK) |
 | **Archives** | `.zip`, `.7z`, `.rar`, `.vigamup` (via 7zz, unrar, minizip) |
 | **Adlmidi** | OPL3 midi files |
 | **Munt** | MT32 midi (support is not that good) |

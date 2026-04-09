@@ -227,14 +227,8 @@ class VGMPlay_js {
 			}
 			var script = document.createElement("script");
 			script.src = this.baseURL + "vgmplay-js.js" + cacheSuffix;
-			var script3 = document.createElement("script");
-			script3.src = this.baseURL + "minizip-asm.min.js" + cacheSuffix;
-			var script4 = document.createElement("script");
-			script4.src = this.baseURL + "7zz.umd.js" + cacheSuffix;
 
 			document.head.appendChild(script);
-			document.head.appendChild(script3);
-			document.head.appendChild(script4);
 		}
 
 		// Handle UI initialization

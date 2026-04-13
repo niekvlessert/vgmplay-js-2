@@ -1038,6 +1038,24 @@ void Seek(unsigned int sec, unsigned int ms) {
     musdoom_seek_ms(musEmu, (uint32_t)totalMs);
     return;
   }
+  if (isMoonsound && msCtx) {
+    ms_reset(msCtx);
+    const UINT32 CHUNK = 4096;
+    int16_t dummy[CHUNK * 2];
+    // MoonSound internal renderer always runs at 44100Hz
+    UINT32 seekSample = (UINT32)((totalMs * 44100) / 1000);
+    UINT32 remaining = seekSample;
+    while (remaining > 0) {
+      UINT32 toCalc = (remaining > CHUNK) ? CHUNK : remaining;
+      if (ms_render(msCtx, dummy, toCalc) < toCalc) {
+        // Song ended prematurely
+        break;
+      }
+      remaining -= toCalc;
+    }
+    msRenderedSamples = (UINT32)((UINT64)seekSample * gSampleRate / 44100);
+    return;
+  }
   if (isADLMIDI) {
     if (adlPlayer) {
       adl_positionSeek(adlPlayer, (double)totalMs / 1000.0);
@@ -2310,6 +2328,25 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     DataLoader_Deinit(locLoader);
     return tagResult;
   }
+  
+  if (lowerPath.find(".mwm") != std::string::npos) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return "";
+    fseek(f, 220, SEEK_SET); // Offset of song_name in MWM header
+    static char tagResult[256];
+    memset(tagResult, 0, sizeof(tagResult));
+    size_t read = fread(tagResult, 1, 50, f);
+    fclose(f);
+    if (read == 0) return "";
+    // Clean up title (it's null-terminated but might have trailing junk if not correctly authored)
+    for (int i = 0; i < 50; i++) {
+        if (tagResult[i] < 32 && tagResult[i] != 0) tagResult[i] = ' ';
+    }
+    if (tagIndex == 0) return tagResult;
+    if (tagIndex == 2) return "MoonSound Song";
+    if (tagIndex == 4 || tagIndex == 8) return "MSX Moonsound";
+    return "";
+  }
 
   // For other formats, we'd need to load the file and use player->GetTags.
   // This is heavier but possible. For now, keep it opt-in.
@@ -2922,6 +2959,22 @@ char *ShowTitle(void) {
     titleBuf = strdup(s.c_str());
     return titleBuf;
   }
+  if (isMoonsound && msCtx) {
+    const char *title = ms_get_song_name(msCtx);
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      if (i == 0) s += (title ? title : "");
+      else if (i == 2) s += "MoonSound Song";
+      else if (i == 4) s += "MSX Moonsound";
+      else s += "";
+      s += "|||";
+    }
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
   if (isOpenMPT) {
     if (!gOpenMpt)
       return nullptr;
@@ -3130,6 +3183,11 @@ char *ShowTitle(void) {
 }
 
 const char *GetChipInfoString(void) {
+  if (isMoonsound) {
+    free(chipBuf);
+    chipBuf = strdup("MoonSound (YMF278B)");
+    return chipBuf;
+  }
   if (!player)
     return "";
 

@@ -658,24 +658,41 @@ export function installUi(VGMPlay_js) {
 		this._positionSettingsWindow();
 	};
 
-	VGMPlay_js.prototype._positionSettingsWindow = function () {
-		if (!this.settingsWindow || !this.playerWindow) return;
-		if (this.settingsWindow.style.display === 'none') return;
+VGMPlay_js.prototype._positionSettingsWindow = function () {
+	if (!this.settingsWindow || !this.playerWindow) return;
+	if (this.settingsWindow.style.display === 'none') return;
 
-		const playerRect = this.playerWindow.getBoundingClientRect();
-		const skippedVisible = this.skippedWindowVisible && this.skippedWindow && this.skippedWindow.style.display !== 'none';
+	const playerRect = this.playerWindow.getBoundingClientRect();
+	const skippedVisible = this.skippedWindowVisible && this.skippedWindow && this.skippedWindow.style.display !== 'none';
+	const isMobile = window.innerWidth <= 600;
+	const settingsWidth = this.settingsWindow.offsetWidth || 360;
+	const settingsHeight = this.settingsWindow.offsetHeight || 400;
 
-		if (skippedVisible) {
-			const skippedRect = this.skippedWindow.getBoundingClientRect();
-			this.settingsWindow.style.position = 'fixed';
-			this.settingsWindow.style.left = skippedRect.left + 'px';
-			this.settingsWindow.style.top = (skippedRect.bottom + 10) + 'px';
-		} else {
-			this.settingsWindow.style.position = 'fixed';
-			this.settingsWindow.style.left = playerRect.right + 10 + 'px';
-			this.settingsWindow.style.top = playerRect.top + 'px';
-		}
-	};
+	if (isMobile) {
+		this.settingsWindow.style.position = 'fixed';
+		this.settingsWindow.style.left = '10px';
+		const desiredTop = playerRect.bottom + 10;
+		const maxTop = Math.max(10, window.innerHeight - settingsHeight - 20);
+		this.settingsWindow.style.top = Math.max(10, Math.min(desiredTop, maxTop)) + 'px';
+	} else if (skippedVisible) {
+		const skippedRect = this.skippedWindow.getBoundingClientRect();
+		this.settingsWindow.style.position = 'fixed';
+		const desiredLeft = skippedRect.left;
+		const maxLeft = Math.max(0, window.innerWidth - settingsWidth - 10);
+		this.settingsWindow.style.left = Math.min(desiredLeft, maxLeft) + 'px';
+		const desiredTop = skippedRect.bottom + 10;
+		const maxTop = Math.max(10, window.innerHeight - settingsHeight - 20);
+		this.settingsWindow.style.top = Math.max(10, Math.min(desiredTop, maxTop)) + 'px';
+	} else {
+		this.settingsWindow.style.position = 'fixed';
+		const desiredLeft = playerRect.right + 10;
+		const maxLeft = Math.max(0, window.innerWidth - settingsWidth - 10);
+		this.settingsWindow.style.left = Math.min(desiredLeft, maxLeft) + 'px';
+		const desiredTop = playerRect.top;
+		const maxTop = Math.max(10, window.innerHeight - settingsHeight - 20);
+		this.settingsWindow.style.top = Math.max(10, Math.min(desiredTop, maxTop)) + 'px';
+	}
+};
 
 	VGMPlay_js.prototype._setupTooltips = function () {
 		const buttons = this.playerWindow.querySelectorAll('button');
@@ -1260,11 +1277,12 @@ export function installUi(VGMPlay_js) {
 				return;
 			}
 
-			if (isMobile) {
-				this.skippedWindow.style.left = playerLeft + "px";
-				const desiredTop = playerTop - this.skippedWindow.offsetHeight - gap;
-				this.skippedWindow.style.top = Math.max(0, desiredTop) + "px";
-			} else {
+		if (isMobile) {
+			this.skippedWindow.style.left = playerLeft + "px";
+			const desiredTop = playerTop - this.skippedWindow.offsetHeight - gap;
+			const maxTop = Math.max(10, window.innerHeight - this.skippedWindow.offsetHeight - 20);
+			this.skippedWindow.style.top = Math.max(10, Math.min(desiredTop, maxTop)) + "px";
+		} else {
 				const desiredLeft = playerLeft + playerWidth + gap;
 				this.skippedWindow.style.right = "auto";
 				this.skippedWindow.style.left = desiredLeft + "px";

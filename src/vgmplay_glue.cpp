@@ -1688,14 +1688,14 @@ int OpenVGMFile(const char *path) {
   if (player->LoadFile(loader)) {
     return 0;
   }
-  if (missingOpl4RomRequested) {
-    lastLoadErrorCode = LOADERR_MISSING_OPL4_ROM;
-    return 0;
-  }
 
   /* 5. set sample rate again and start (matches PlayerA::Start pattern) */
   player->SetSampleRate(gSampleRate);
   player->Start();
+  if (missingOpl4RomRequested) {
+    lastLoadErrorCode = LOADERR_MISSING_OPL4_ROM;
+    return 0;
+  }
   return 1;
 }
 

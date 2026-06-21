@@ -127,28 +127,30 @@ jobs:
           name: wasm-artifacts
           path: .
 
-      - name: Generate dist manifest
+      - name: Prepare Pages artifact
         run: |
-          if [ -d dist ]; then
-            python3 -c "import json; from pathlib import Path; dist = Path('dist'); files = [p.relative_to(dist).as_posix() for p in dist.rglob('*') if p.is_file()]; files.sort(); (dist / 'manifest.json').write_text(json.dumps(files, indent=2)); print(f'Wrote dist/manifest.json with {len(files)} files')"
-          else
-            echo "dist folder missing; skipping manifest generation"
+          rm -rf pages
+          mkdir -p pages
+          ./scripts/sync_web_assets.sh copy pages
+          ./scripts/sync_web_assets.sh --manifest web-desktop-assets.txt copy pages
+          if [ ! -d pages/dist ]; then
+            echo "Error: pages/dist is missing"
+            exit 1
           fi
+          python3 -c "import json; from pathlib import Path; dist = Path('pages/dist'); files = [p.relative_to(dist).as_posix() for p in dist.rglob('*') if p.is_file() and p.name != 'manifest.json' and not p.name.startswith('.')]; files.sort(); (dist / 'manifest.json').write_text(json.dumps(files, indent=2)); print(f'Wrote pages/dist/manifest.json with {len(files)} files')"
+          touch pages/.nojekyll
 
       - name: Verify Deployment Artifacts
         run: |
-          if [ ! -f vgmplay-js.js ] || [ ! -f vgmplay-js.wasm ]; then
+          if [ ! -f pages/vgmplay-js.js ] || [ ! -f pages/vgmplay-js.wasm ] || [ ! -f pages/dist/manifest.json ]; then
             echo "Error: Essential WASM files missing before deployment"
             exit 1
           fi
 
-      - name: Disable Jekyll
-        run: touch .nojekyll
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: pages
 
       - name: Deploy to GitHub Pages
         id: deployment

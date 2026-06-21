@@ -45,6 +45,7 @@ add_subdirectory(modules/lazyusf)
 set(BUILD_EXAMPLES OFF CACHE BOOL "Build example programs" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "Build test programs" FORCE)
 set(BUILD_TOOLS OFF CACHE BOOL "Build tools" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries for wasm" FORCE)
 add_subdirectory(modules/libMusDoom)
 
 # Monkey's Audio (APE)

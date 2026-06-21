@@ -113,10 +113,11 @@ static bool msMwkLoaded = false;
 static std::string currentMoonsoundPath;
 static std::string pendingMwkPath;
 static int lastLoadErrorCode = 0;
+static bool missingOpl4RomRequested = false;
 
 enum {
   LOADERR_NONE = 0,
-  LOADERR_MOONSOUND_MISSING_ROM = 1,
+  LOADERR_MISSING_OPL4_ROM = 1,
   LOADERR_MOONSOUND_MISSING_WAVES = 2,
   LOADERR_MOONSOUND_MISSING_MWK = 3,
   LOADERR_MOONSOUND_LOAD_FAIL = 4
@@ -141,6 +142,18 @@ static std::vector<int16_t> apeInputBuffer;
 static std::vector<float> apeOutputBuffer;
 
 extern "C" int OpenVGMFile(const char *path);
+
+static bool equalsIgnoreCase(const char *a, const char *b) {
+  if (!a || !b)
+    return false;
+  while (*a && *b) {
+    if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
+      return false;
+    ++a;
+    ++b;
+  }
+  return *a == '\0' && *b == '\0';
+}
 
 static bool isADLMIDI = false;
 static ADL_MIDIPlayer* adlPlayer = nullptr;
@@ -648,10 +661,17 @@ void sexyd_update(unsigned char *p, long l) {
 static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
                                         const char *fileName) {
   DATA_LOADER *dLoad = FileLoader_Init(fileName);
+  if (dLoad == NULL) {
+    if (equalsIgnoreCase(fileName, "yrw801.rom"))
+      missingOpl4RomRequested = true;
+    return NULL;
+  }
   UINT8 retVal = DataLoader_Load(dLoad);
   if (!retVal)
     return dLoad;
   DataLoader_Deinit(dLoad);
+  if (equalsIgnoreCase(fileName, "yrw801.rom"))
+    missingOpl4RomRequested = true;
   return NULL;
 }
 
@@ -1120,6 +1140,7 @@ void Seek(unsigned int sec, unsigned int ms) {
 
 int OpenVGMFile(const char *path) {
   lastLoadErrorCode = LOADERR_NONE;
+  missingOpl4RomRequested = false;
   /* Detect PSF by extension */
   std::string basePath;
   int trackIndex = parseTrackSuffix(path, basePath);
@@ -1262,7 +1283,7 @@ int OpenVGMFile(const char *path) {
     if (!fileExists(romPath) || !ms_load_rom_file(msCtx, romPath.c_str())) {
       ms_destroy(msCtx);
       msCtx = nullptr;
-      lastLoadErrorCode = LOADERR_MOONSOUND_MISSING_ROM;
+      lastLoadErrorCode = LOADERR_MISSING_OPL4_ROM;
       return 0;
     }
 
@@ -1665,6 +1686,10 @@ int OpenVGMFile(const char *path) {
 
   /* 4. load */
   if (player->LoadFile(loader)) {
+    return 0;
+  }
+  if (missingOpl4RomRequested) {
+    lastLoadErrorCode = LOADERR_MISSING_OPL4_ROM;
     return 0;
   }
 

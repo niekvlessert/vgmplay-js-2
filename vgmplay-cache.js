@@ -892,7 +892,9 @@ export function installCache(VGMPlay_js) {
 
 				// We can't save Blobs nicely, so extract to a file and save path
 				if (g.png && g.png instanceof Blob) {
-					const coverPath = `/cache/meta/cover_${i}.png`;
+					const coverMime = g.png.type || 'image/jpeg';
+					const coverExt = this._coverExtForMime ? this._coverExtForMime(coverMime) : 'jpg';
+					const coverPath = `/cache/meta/cover_${i}.${coverExt}`;
 
 					const convertPromise = new Promise((resolve) => {
 						const reader = new FileReader();
@@ -914,6 +916,7 @@ export function installCache(VGMPlay_js) {
 
 					conversionPromises.push(convertPromise);
 					gCopy.coverPath = coverPath;
+					gCopy.coverMime = coverMime;
 				}
 
 				delete gCopy.png; // Remove Blob
@@ -1060,6 +1063,31 @@ export function installCache(VGMPlay_js) {
 		this.zipURLLoaded.push(fingerprint);
 	};
 
+	VGMPlay_js.prototype._coverExtForMime = function (mime) {
+		const type = String(mime || '').toLowerCase();
+		if (type.includes('png')) return 'png';
+		if (type.includes('webp')) return 'webp';
+		if (type.includes('gif')) return 'gif';
+		if (type.includes('bmp')) return 'bmp';
+		return 'jpg';
+	};
+
+	VGMPlay_js.prototype._detectCoverMime = function (bytes, fallbackPath = '') {
+		const arr = bytes || [];
+		if (arr.length >= 8 && arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4E && arr[3] === 0x47 && arr[4] === 0x0D && arr[5] === 0x0A && arr[6] === 0x1A && arr[7] === 0x0A) return 'image/png';
+		if (arr.length >= 3 && arr[0] === 0xFF && arr[1] === 0xD8 && arr[2] === 0xFF) return 'image/jpeg';
+		if (arr.length >= 12 && arr[0] === 0x52 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x46 && arr[8] === 0x57 && arr[9] === 0x45 && arr[10] === 0x42 && arr[11] === 0x50) return 'image/webp';
+		if (arr.length >= 6 && arr[0] === 0x47 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x38) return 'image/gif';
+		if (arr.length >= 2 && arr[0] === 0x42 && arr[1] === 0x4D) return 'image/bmp';
+		const lower = String(fallbackPath || '').toLowerCase();
+		if (lower.endsWith('.png')) return 'image/png';
+		if (lower.endsWith('.webp')) return 'image/webp';
+		if (lower.endsWith('.gif')) return 'image/gif';
+		if (lower.endsWith('.bmp')) return 'image/bmp';
+		if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+		return '';
+	};
+
 	VGMPlay_js.prototype._rebuildGameFromMeta = function (metaGame, debugMode) {
 		const game = { ...metaGame };
 		game._fromCache = true;
@@ -1081,10 +1109,11 @@ export function installCache(VGMPlay_js) {
 					const arr = FS.readFile(game.coverPath);
 					if (debugMode) console.log('[VGM] Restoring cover from path:', game.coverPath, 'size:', arr.length);
 					if (arr.length > 0) {
-						if (arr.length >= 8 && arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4E && arr[3] === 0x47 && arr[4] === 0x0D && arr[5] === 0x0A && arr[6] === 0x1A && arr[7] === 0x0A) {
-							game.png = new Blob([arr], { type: "image/png" });
+						const mime = game.coverMime || (this._detectCoverMime && this._detectCoverMime(arr, game.coverPath)) || '';
+						if (mime) {
+							game.png = new Blob([arr], { type: mime });
 						} else {
-							this._logWarn && this._logWarn('CACHE', 'Cover file PNG signature mismatch:', game.coverPath, 'first bytes:', Array.from(arr.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+							this._logWarn && this._logWarn('CACHE', 'Cover file image signature mismatch:', game.coverPath, 'first bytes:', Array.from(arr.slice(0, 12)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 							game.png = null;
 						}
 					} else {

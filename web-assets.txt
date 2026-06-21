@@ -1,0 +1,27 @@
+# Shared web/runtime assets staged into extensions and desktop app bundles.
+vgmplay-js-glue.js
+vgmplay-js.js
+vgmplay-js.wasm
+vgmplay-js.data
+vgmplay-audio.js
+vgmplay-archives.js
+vgmplay-kss.js
+vgmplay-library.js
+vgmplay-spectrum.js
+vgmplay-ui.js
+vgmplay-audio-processor.js
+libarchive.js
+libarchive.wasm
+unrar-worker.js
+unrar.js
+unrar.wasm
+audiomotion-analyzer.js
+vgmplay-cache.js
+vgmplay-harvester.js
+vgmplay-layout.js
+vgmplay-metadata.js
+vgmplay-midi.js
+vgmplay-queue.js
+vgmplay-standalone-ui.js
+archive-worker.js
+css/

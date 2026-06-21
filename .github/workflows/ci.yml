@@ -39,7 +39,7 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          emcmake cmake .. -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9"
+          emcmake cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_HAVE_LIBC_PTHREAD=1 -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9"
           emmake make -j4
 
       - name: Verify Build Output
@@ -144,8 +144,86 @@ jobs:
           name: VGMPlay-macOS.dmg
           path: desktop-app-mac/VGMPlay-macOS.dmg
 
+  build-linux:
+    needs: build-wasm
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev zip
+
+      - name: Download WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: .
+
+      - name: Build Linux app
+        run: |
+          cmake -S desktop-app-lin -B desktop-app-lin/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build desktop-app-lin/build --config Release --parallel 4
+
+      - name: Package Linux app
+        run: |
+          mkdir -p desktop-app-lin/package
+          cp -a desktop-app-lin/build/VGMPlay desktop-app-lin/package/
+          ./scripts/sync_web_assets.sh copy desktop-app-lin/package
+          ./scripts/sync_web_assets.sh --manifest web-desktop-assets.txt copy desktop-app-lin/package
+          cd desktop-app-lin/package
+          zip -r ../VGMPlay-linux.zip .
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VGMPlay-linux.zip
+          if-no-files-found: error
+          path: desktop-app-lin/VGMPlay-linux.zip
+
+  build-windows:
+    needs: build-wasm
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: .
+
+      - name: Install WebView2 SDK
+        shell: pwsh
+        run: |
+          nuget install Microsoft.Web.WebView2 -OutputDirectory desktop-app-win/packages -ExcludeVersion
+          "WEBVIEW2_SDK_DIR=$PWD\desktop-app-win\packages\Microsoft.Web.WebView2" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build Windows app
+        shell: pwsh
+        run: |
+          cmake -S desktop-app-win -B desktop-app-win/build -A x64 -DCMAKE_BUILD_TYPE=Release
+          cmake --build desktop-app-win/build --config Release --parallel 4
+
+      - name: Package Windows app
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force desktop-app-win/package | Out-Null
+          Copy-Item desktop-app-win/build/Release/* desktop-app-win/package -Recurse
+          Compress-Archive -Path desktop-app-win/package/* -DestinationPath desktop-app-win/VGMPlay-windows.zip -Force
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VGMPlay-windows.zip
+          if-no-files-found: error
+          path: desktop-app-win/VGMPlay-windows.zip
+
   release:
-    needs: [build-wasm, build-mac]
+    needs: [build-wasm, build-mac, build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download Extension Artifacts
@@ -158,6 +236,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: VGMPlay-macOS.dmg
+          path: .
+
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VGMPlay-linux.zip
+          path: .
+
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VGMPlay-windows.zip
           path: .
 
       - name: Release Note Payload
@@ -173,6 +263,8 @@ jobs:
           body_path: release_notes.txt
           files: |
             VGMPlay-macOS.dmg
+            VGMPlay-linux.zip
+            VGMPlay-windows.zip
             extension.zip
             ff_extension.zip
           draft: false

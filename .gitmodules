@@ -1,6 +1,7 @@
 [submodule "modules/libvgm"]
 	path = modules/libvgm
-	url = https://github.com/ValleyBell/libvgm.git
+	url = https://github.com/niekvlessert/libvgm.git
+	branch = codex/device-volume-opl4-psx
 [submodule "modules/game-music-emu"]
 	path = modules/game-music-emu
 	url = https://github.com/libgme/game-music-emu.git

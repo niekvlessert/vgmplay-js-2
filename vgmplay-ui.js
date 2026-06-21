@@ -1137,6 +1137,56 @@ VGMPlay_js.prototype._positionSettingsWindow = function () {
 		this._renderSkippedDownloads();
 	};
 
+	VGMPlay_js.prototype._confirmSingleFileOverwrite = function (name) {
+		return new Promise((resolve) => {
+			const root = this.vgmplayContainer || document.body;
+			const uiRoot = (root && root.getRootNode) ? root.getRootNode() : document;
+			const previous = uiRoot.getElementById('vgmplay-overwrite-prompt');
+			if (previous) previous.remove();
+
+			const prompt = document.createElement('div');
+			prompt.id = 'vgmplay-overwrite-prompt';
+			prompt.className = 'vgmplaySettingsWindow';
+			prompt.style.cssText = 'display:block;position:fixed;z-index:100001;top:50%;left:50%;transform:translate(-50%,-50%);';
+
+			const text = document.createElement('div');
+			text.className = 'vgmplaySettingsContent';
+			text.textContent = `${name || 'File'} already exists. Overwrite it?`;
+			prompt.appendChild(text);
+
+			const actions = document.createElement('div');
+			actions.className = 'vgmplaySkippedAutoActions';
+			const yesBtn = document.createElement('button');
+			yesBtn.className = 'vgmplaySettingsClearCache';
+			yesBtn.textContent = 'Yes';
+			const noBtn = document.createElement('button');
+			noBtn.className = 'vgmplaySettingsCheckCache';
+			noBtn.textContent = 'No';
+			actions.appendChild(yesBtn);
+			actions.appendChild(noBtn);
+			text.appendChild(actions);
+
+			const finish = (overwrite) => {
+				if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeyDown);
+				prompt.remove();
+				resolve(overwrite);
+			};
+			const onKeyDown = (event) => {
+				if (event.key === 'Escape') finish(false);
+			};
+			yesBtn.onclick = () => finish(true);
+			noBtn.onclick = () => finish(false);
+			if (typeof window !== 'undefined') window.addEventListener('keydown', onKeyDown);
+
+			if (this.vgmplayContainer && this.vgmplayContainer.appendChild) {
+				this.vgmplayContainer.appendChild(prompt);
+			} else {
+				document.body.appendChild(prompt);
+			}
+			noBtn.focus();
+		});
+	};
+
 	VGMPlay_js.prototype._showMuntRomError = function () {
 		const msg = `Munt MT-32 emulation requires 2 ROM files: <b>MT32_CONTROL.ROM</b> and <b>MT32_PCM.ROM</b>.<br/><br/>
 		Please upload these files by dragging them onto the 'Insert music files/archives here!' field.`;

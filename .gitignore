@@ -10,9 +10,30 @@ extension/vgmplay-js.js
 extension/vgmplay-js.wasm
 extension/vgmplay-js.data
 extension/vgmplay-js-glue.js
-extension/minizip-asm.min.js
+extension/vgmplay-audio.js
+extension/vgmplay-archives.js
+extension/vgmplay-kss.js
+extension/vgmplay-library.js
+extension/vgmplay-spectrum.js
+extension/vgmplay-ui.js
 extension/vgmplay-audio-processor.js
+extension/libarchive.js
+extension/libarchive.wasm
+extension/unrar-worker.js
+extension/unrar.js
+extension/unrar.wasm
+extension/audiomotion-analyzer.js
+extension/vgmplay-cache.js
+extension/vgmplay-harvester.js
+extension/vgmplay-layout.js
+extension/vgmplay-metadata.js
+extension/vgmplay-midi.js
+extension/vgmplay-queue.js
+extension/vgmplay-standalone-ui.js
+extension/archive-worker.js
 extension/css/style.css
+# Legacy extension artifacts from older archive packaging.
+extension/minizip-asm.min.js
 extension/7zz.umd.js
 extension/7zz.wasm
 
@@ -20,14 +41,36 @@ ff_extension/vgmplay-js.js
 ff_extension/vgmplay-js.wasm
 ff_extension/vgmplay-js.data
 ff_extension/vgmplay-js-glue.js
-ff_extension/minizip-asm.min.js
+ff_extension/vgmplay-audio.js
+ff_extension/vgmplay-archives.js
+ff_extension/vgmplay-kss.js
+ff_extension/vgmplay-library.js
+ff_extension/vgmplay-spectrum.js
+ff_extension/vgmplay-ui.js
 ff_extension/vgmplay-audio-processor.js
+ff_extension/libarchive.js
+ff_extension/libarchive.wasm
+ff_extension/unrar-worker.js
+ff_extension/unrar.js
+ff_extension/unrar.wasm
+ff_extension/audiomotion-analyzer.js
+ff_extension/vgmplay-cache.js
+ff_extension/vgmplay-harvester.js
+ff_extension/vgmplay-layout.js
+ff_extension/vgmplay-metadata.js
+ff_extension/vgmplay-midi.js
+ff_extension/vgmplay-queue.js
+ff_extension/vgmplay-standalone-ui.js
+ff_extension/archive-worker.js
 ff_extension/css/style.css
+# Legacy extension artifacts from older archive packaging.
+ff_extension/minizip-asm.min.js
 ff_extension/7zz.umd.js
 ff_extension/7zz.wasm
 
 # Build & Dist
 build/
+build-*/
 build_full/
 build_minimal/
 node_modules/
@@ -42,4 +85,17 @@ dist/Ys*
 
 # Mac desktop app stuff
 desktop-app-mac/VGMPlay-macOS.dmg
+desktop-app-mac/build/
 desktop-app-mac/build_standalone/
+
+# Native desktop app outputs
+desktop-app-lin/build/
+desktop-app-lin/package/
+desktop-app-lin/VGMPlay-linux.zip
+desktop-app-win/build/
+desktop-app-win/package/
+desktop-app-win/packages/
+desktop-app-win/VGMPlay-windows.zip
+
+# Local tool state
+.kilo/package-lock.json

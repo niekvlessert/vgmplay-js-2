@@ -32,62 +32,7 @@ target_compile_options(VGMPlay PRIVATE -Os)
 
 # ---- Extension assets to symlink into bundle ----
 set(ROOT_DIR "${CMAKE_SOURCE_DIR}/..")
-set(ASSET_FILES
-    vgmplay-js-glue.js
-    vgmplay-js.js
-    vgmplay-audio.js
-    vgmplay-archives.js
-    vgmplay-kss.js
-    vgmplay-library.js
-    vgmplay-spectrum.js
-    vgmplay-ui.js
-    vgmplay-js.wasm
-    vgmplay-audio-processor.js
-    minizip-asm.min.js
-    7zz.umd.js
-    7zz.wasm
-    unrar.min.js
-    audiomotion-analyzer.js
-    vgmplay-cache.js
-    vgmplay-harvester.js
-    vgmplay-layout.js
-    vgmplay-metadata.js
-    vgmplay-midi.js
-    vgmplay-queue.js
-    vgmplay-standalone-ui.js
-    archive-worker.js
-    background.js
-)
+include("${ROOT_DIR}/cmake/WebAssets.cmake")
 
-# Copy index.html and symlink extension assets next to the binary
-add_custom_command(TARGET VGMPlay POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${CMAKE_SOURCE_DIR}/index.html
-        $<TARGET_FILE_DIR:VGMPlay>/index.html
-    COMMENT "Copying index.html"
-)
-
-foreach(asset ${ASSET_FILES})
-    add_custom_command(TARGET VGMPlay POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${ROOT_DIR}/${asset}
-            $<TARGET_FILE_DIR:VGMPlay>/${asset}
-        COMMENT "Symlinking ${asset}"
-    )
-endforeach()
-
-# CSS directory
-add_custom_command(TARGET VGMPlay POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${ROOT_DIR}/css
-        $<TARGET_FILE_DIR:VGMPlay>/css
-    COMMENT "Symlinking css/"
-)
-
-# Dist assets (music packs)
-add_custom_command(TARGET VGMPlay POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink
-        ${ROOT_DIR}/dist
-        $<TARGET_FILE_DIR:VGMPlay>/dist
-    COMMENT "Symlinking dist/"
-)
+stage_web_assets(VGMPlay "${ROOT_DIR}")
+stage_web_assets(VGMPlay "${ROOT_DIR}" "web-desktop-assets.txt")

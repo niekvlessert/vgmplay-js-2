@@ -1,37 +1,119 @@
 export function installCache(VGMPlay_js) {
-	VGMPlay_js.prototype._now = function () {
-		if (typeof performance !== 'undefined' && performance.now) return performance.now();
-		return Date.now();
-	};
-	VGMPlay_js.prototype._cacheBridgeAvailable = function () {
-		return !!(this.sharedCache && this.isExtension && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage);
-	};
+  VGMPlay_js.prototype._now = function () {
+    if (typeof performance !== 'undefined' && performance.now) return performance.now();
+    return Date.now();
+  };
+  VGMPlay_js.prototype._cacheBridgeAvailable = function () {
+    if (this.isExtension) {
+      return !!(this.sharedCache && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage);
+    }
+    return !!(this._storage && typeof this._storage.putFiles === 'function' && typeof this._storage.getFiles === 'function');
+  };
 
-	VGMPlay_js.prototype._cacheBridgeRequest = function (action, payload = {}) {
-		return new Promise((resolve) => {
-			if (!this._cacheBridgeAvailable()) {
-				resolve({ error: 'cache bridge unavailable' });
-				return;
-			}
-			try {
-				chrome.runtime.sendMessage({ type: 'vgm-cache', action, payload }, (resp) => {
-					if (chrome.runtime.lastError) {
-						const msg = chrome.runtime.lastError.message;
-						this._logWarn && this._logWarn('CACHE', 'Cache bridge error:', action, msg);
-						resolve({ error: msg });
-						return;
-					}
-					if (resp && resp.error) {
-						this._logWarn && this._logWarn('CACHE', 'Cache bridge error:', action, resp.error);
-					}
-					resolve(resp || {});
-				});
-			} catch (e) {
-				this._logWarn && this._logWarn('CACHE', 'Cache bridge exception:', action, e);
-				resolve({ error: String(e) });
-			}
-		});
-	};
+  VGMPlay_js.prototype._initStorageIfNeeded = async function () {
+    if (this._storage && typeof this._storage.putFiles === 'function' && typeof this._storage.getFiles === 'function') {
+      return this._storage;
+    }
+    if (this._selectStorageBackend) {
+      try {
+        const storage = await this._selectStorageBackend();
+        if (storage && typeof storage.putFiles === 'function' && typeof storage.getFiles === 'function') {
+          this._storage = storage;
+          return storage;
+        }
+      } catch (e) {
+        this._logWarn && this._logWarn('CACHE', 'Failed to initialize storage:', e);
+      }
+    }
+    return null;
+  };
+
+  VGMPlay_js.prototype._cacheBridgeRequest = function (action, payload = {}) {
+    return new Promise((resolve) => {
+      if (this.isExtension && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+        try {
+          chrome.runtime.sendMessage({ type: 'vgm-cache', action, payload }, (resp) => {
+            if (chrome.runtime.lastError) {
+              const msg = chrome.runtime.lastError.message;
+              this._logWarn && this._logWarn('CACHE', 'Cache bridge error:', action, msg);
+              resolve({ error: msg });
+              return;
+            }
+            if (resp && resp.error) {
+              this._logWarn && this._logWarn('CACHE', 'Cache bridge error:', action, resp.error);
+            }
+            resolve(resp || {});
+          });
+        } catch (e) {
+          this._logWarn && this._logWarn('CACHE', 'Cache bridge exception:', action, e);
+          resolve({ error: String(e) });
+        }
+        return;
+      }
+      if (this._storage && typeof this._storage.putFiles === 'function' && typeof this._storage.getFiles === 'function') {
+        if (action === 'putFiles') {
+          this._storage.putFiles(payload.files || []).then(() => {
+            resolve({ ok: true });
+          }).catch((e) => {
+            this._logWarn && this._logWarn('CACHE', 'Storage putFiles error:', e);
+            resolve({ error: String(e) });
+          });
+        } else if (action === 'getFiles') {
+          this._storage.getFiles(payload.paths || []).then((result) => {
+            resolve(result || { files: [], missing: [] });
+          }).catch((e) => {
+            this._logWarn && this._logWarn('CACHE', 'Storage getFiles error:', e);
+            resolve({ error: String(e) });
+          });
+        } else {
+          resolve({ error: `Unsupported action: ${action}` });
+        }
+        return;
+      }
+      resolve({ error: 'cache bridge unavailable' });
+    });
+  };
+
+  VGMPlay_js.prototype._cacheBridgeRequestAsync = async function (action, payload = {}) {
+    if (this.isExtension && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+      return new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: 'vgm-cache', action, payload }, (resp) => {
+            if (chrome.runtime.lastError) {
+              const msg = chrome.runtime.lastError.message;
+              this._logWarn && this._logWarn('CACHE', 'Cache bridge error:', action, msg);
+              resolve({ error: msg });
+              return;
+            }
+            if (resp && resp.error) {
+              this._logWarn && this._logWarn('CACHE', 'Cache bridge error:', action, resp.error);
+            }
+            resolve(resp || {});
+          });
+        } catch (e) {
+          this._logWarn && this._logWarn('CACHE', 'Cache bridge exception:', action, e);
+          resolve({ error: String(e) });
+        }
+      });
+    }
+    if (!this._storage || typeof this._storage.putFiles !== 'function' || typeof this._storage.getFiles !== 'function') {
+      await this._initStorageIfNeeded();
+    }
+    if (this._storage && typeof this._storage.putFiles === 'function' && typeof this._storage.getFiles === 'function') {
+      if (action === 'putFiles') {
+        return this._storage.putFiles(payload.files || []).then(() => ({ ok: true })).catch((e) => {
+          this._logWarn && this._logWarn('CACHE', 'Storage putFiles error:', e);
+          return { error: String(e) };
+        });
+      } else if (action === 'getFiles') {
+        return this._storage.getFiles(payload.paths || []).catch((e) => {
+          this._logWarn && this._logWarn('CACHE', 'Storage getFiles error:', e);
+          return { files: [], missing: [] };
+        });
+      }
+    }
+    return { error: 'cache bridge unavailable' };
+  };
 
 	VGMPlay_js.prototype._cacheBridgeMissing = async function (paths) {
 		if (!paths || !paths.length) return [];
@@ -1106,6 +1188,7 @@ export function installCache(VGMPlay_js) {
 
 		const targetSignatures = new Set(fingerprints);
 		const pathsToDelete = [];
+		const fingerprintsToDelete = new Set(targetSignatures);
 
 		// 1. Remove from memory arrays and gather paths
 		this.games = this.games.filter(game => {
@@ -1115,7 +1198,18 @@ export function installCache(VGMPlay_js) {
 			// Game is marked for deletion: collect its files
 			if (game.files) {
 				for (const f of game.files) {
-					if (f.filepath) pathsToDelete.push(f.filepath);
+					if (f.cacheFingerprint) fingerprintsToDelete.add(f.cacheFingerprint);
+					if (f.filepath) {
+						pathsToDelete.push(f.filepath);
+						const fileName = f.filepath.split('/').pop();
+						if (fileName) {
+							for (const cachedFingerprint of this._cacheFingerprints) {
+								if (String(cachedFingerprint).startsWith(`${fileName}:`)) {
+									fingerprintsToDelete.add(cachedFingerprint);
+								}
+							}
+						}
+					}
 				}
 			}
 			if (game.coverPath) {
@@ -1125,9 +1219,11 @@ export function installCache(VGMPlay_js) {
 		});
 
 		// 2. Remove fingerprints from zipURLLoaded and _cacheFingerprints
-		this.zipURLLoaded = this.zipURLLoaded.filter(u => !targetSignatures.has(u));
-		for (const fp of targetSignatures) {
+		this.zipURLLoaded = this.zipURLLoaded.filter(u => !fingerprintsToDelete.has(u));
+		for (const fp of fingerprintsToDelete) {
 			this._cacheFingerprints.delete(fp);
+		}
+		for (const fp of targetSignatures) {
 			// Also decrement game count
 			this.amountOfGamesLoaded = Math.max(0, this.amountOfGamesLoaded - 1);
 		}

@@ -1,10 +1,10 @@
 #include "WebView2.h"
 #include <algorithm>
+#include <cwctype>
 #include <shlobj.h>
 #include <stdlib.h>
 #include <string>
 #include <vector>
-#include <wil/com.h>
 #include <windows.h>
 #include <wrl.h>
 
@@ -12,8 +12,8 @@ using namespace Microsoft::WRL;
 
 // Global variables
 HWND hWnd;
-wil::com_ptr<ICoreWebView2Controller> webviewController;
-wil::com_ptr<ICoreWebView2> webviewWindow;
+ComPtr<ICoreWebView2Controller> webviewController;
+ComPtr<ICoreWebView2> webviewWindow;
 
 // Helper to get executable directory
 std::wstring GetExecutableDir() {
@@ -151,7 +151,7 @@ void OpenFolderDialog() {
             if (dotPos != std::wstring::npos) {
               std::wstring ext = filename.substr(dotPos);
               // Simple lower case conversion
-              std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+              std::transform(ext.begin(), ext.end(), ext.begin(), towlower);
 
               if (std::find(extensions.begin(), extensions.end(), ext) !=
                   extensions.end()) {

@@ -1,7 +1,9 @@
 #include <dirent.h>
 #include <gtk/gtk.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <webkit2/webkit2.h>
 
 WebKitWebView *web_view;
@@ -69,6 +71,20 @@ static void destroy_window_callback(GtkWidget *widget, gpointer data) {
   gtk_main_quit();
 }
 
+static int get_executable_dir(char *buffer, size_t buffer_size) {
+  ssize_t len = readlink("/proc/self/exe", buffer, buffer_size - 1);
+  if (len <= 0 || (size_t)len >= buffer_size)
+    return 0;
+
+  buffer[len] = '\0';
+  char *slash = strrchr(buffer, '/');
+  if (!slash)
+    return 0;
+
+  *slash = '\0';
+  return 1;
+}
+
 int main(int argc, char *argv[]) {
   gtk_init(&argc, &argv);
 
@@ -111,11 +127,14 @@ int main(int argc, char *argv[]) {
   gtk_box_pack_start(GTK_BOX(vbox), GTK_WIDGET(web_view), TRUE, TRUE, 0);
 
   // Load local index.html
-  char cwd[PAGESIZE];
-  if (getcwd(cwd, sizeof(cwd)) != NULL) {
-    char *url = g_strdup_printf("file://%s/index.html", cwd);
-    webkit_web_view_load_uri(web_view, url);
+  char app_dir[PATH_MAX];
+  if (get_executable_dir(app_dir, sizeof(app_dir))) {
+    char *index_path = g_build_filename(app_dir, "index.html", NULL);
+    char *url = g_filename_to_uri(index_path, NULL, NULL);
+    if (url)
+      webkit_web_view_load_uri(web_view, url);
     g_free(url);
+    g_free(index_path);
   }
 
   gtk_widget_show_all(window);

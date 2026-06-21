@@ -1236,13 +1236,37 @@ class VGMPlay_js {
 		}
 	}
 
-	processSingleBuffer(byteArray, sourceName = '') {
+	_getSingleFileFingerprint(fileName, byteArray) {
+		const bytes = byteArray instanceof Uint8Array ? byteArray : new Uint8Array(byteArray);
+		let hash = 0x811c9dc5;
+		for (let i = 0; i < bytes.length; i++) {
+			hash ^= bytes[i];
+			hash = Math.imul(hash, 0x01000193);
+		}
+		return `${fileName}:${bytes.byteLength}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+	}
+
+	async processSingleBuffer(byteArray, sourceName = '') {
 		const fileName = sourceName || "track_" + Date.now();
-		const fingerprint = fileName + ':' + byteArray.byteLength;
-		if (this._isCached && this._isCached(fingerprint)) {
-			if (this.debugMode) console.log(`[VGM] File ${fileName} already cached, skipping processing.`);
-			if (this._addDuplicateNotice) this._addDuplicateNotice(fileName);
-			return Promise.resolve();
+		const fingerprint = this._getSingleFileFingerprint(fileName, byteArray);
+		const existingTrack = this.games.some(game => (game.files || []).some((track) => {
+			const path = track && track.filepath ? String(track.filepath) : '';
+			return path.substring(path.lastIndexOf('/') + 1) === fileName;
+		}));
+		const alreadyCached = this._isCached && this._isCached(fingerprint);
+		if (existingTrack || alreadyCached) {
+			const overwrite = this._confirmSingleFileOverwrite
+				? await this._confirmSingleFileOverwrite(fileName)
+				: (typeof window !== 'undefined' && window.confirm ? window.confirm(`${fileName} already exists. Overwrite it?`) : false);
+			if (!overwrite) {
+				if (this.debugMode) console.log(`[VGM] File ${fileName} already exists, skipping processing.`);
+				if (this._addDuplicateNotice) this._addDuplicateNotice(fileName);
+				return;
+			}
+			if (alreadyCached && this._cacheFingerprints) {
+				this._cacheFingerprints.delete(fingerprint);
+				this.zipURLLoaded = this.zipURLLoaded.filter(value => value !== fingerprint);
+			}
 		}
 
 		return new Promise((resolve) => {
@@ -1252,15 +1276,21 @@ class VGMPlay_js {
 			const isNsf = lowerName.endsWith('.nsf') || lowerName.endsWith('.nsfe');
 
 			if (isNsf) {
-				this.amountOfGamesLoaded++;
-				const gamePath = this._getGamePath(this.amountOfGamesLoaded);
-				this._makedirs(gamePath);
-				const displayName = this._normalizeGameTitle ? (this._normalizeGameTitle(fileName) || fileName) : fileName;
-				game = { files: [], path: gamePath, name: displayName };
-				if (this._applyExternalGameImage) {
-					this._applyExternalGameImage(game, fileName, false);
+				game = this.games.find(existingGame => (existingGame.files || []).some((track) => {
+					const path = track && track.filepath ? String(track.filepath) : '';
+					return path.substring(path.lastIndexOf('/') + 1) === fileName;
+				}));
+				if (!game) {
+					this.amountOfGamesLoaded++;
+					const gamePath = this._getGamePath(this.amountOfGamesLoaded);
+					this._makedirs(gamePath);
+					const displayName = this._normalizeGameTitle ? (this._normalizeGameTitle(fileName) || fileName) : fileName;
+					game = { files: [], path: gamePath, name: displayName };
+					if (this._applyExternalGameImage) {
+						this._applyExternalGameImage(game, fileName, false);
+					}
+					this.games.push(game);
 				}
-				this.games.push(game);
 			} else {
 				// Find existing "Misc" game or create new one
 				game = this.games.find(g => g.name === miscGameName);
@@ -1279,7 +1309,22 @@ class VGMPlay_js {
 
 			const fsPath = game.path + "/" + fileName;
 
-			// Overwrite if exists, but we use timestamps/unique names mostly
+			// A changed upload with the same filename replaces the previous track.
+			const replacedTracks = game.files.filter(f => f && f.filepath === fsPath);
+			const replacedFingerprints = new Set();
+			if (replacedTracks.length && this._cacheFingerprints) {
+				for (const cachedFingerprint of this._cacheFingerprints) {
+					if (String(cachedFingerprint).startsWith(`${fileName}:`)) {
+						replacedFingerprints.add(cachedFingerprint);
+						this._cacheFingerprints.delete(cachedFingerprint);
+					}
+				}
+			}
+			if (replacedTracks.length) {
+				this.zipURLLoaded = this.zipURLLoaded.filter(value => !replacedFingerprints.has(value));
+				game.files = game.files.filter(f => !f || f.filepath !== fsPath);
+			}
+
 			try {
 				FS.createDataFile(game.path, fileName, byteArray, true, true);
 			} catch (e) {
@@ -1290,7 +1335,7 @@ class VGMPlay_js {
 				}
 			}
 
-			const track = { filepath: fsPath };
+			const track = { filepath: fsPath, cacheFingerprint: fingerprint };
 			game.files.push(track);
 
 			const isPlayable = this.isPlayable(fsPath);
@@ -1312,8 +1357,8 @@ class VGMPlay_js {
 				this.showVGMFromZip(game);
 				if (isNsf) {
 					this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-					this._renderZipGamesNow();
 				}
+				this._renderZipGamesNow();
 				if (this._markCached) this._markCached(fingerprint);
 				if (this._saveCache) this._saveCache();
 				resolve();
@@ -1545,19 +1590,6 @@ class VGMPlay_js {
 					if (!handled) {
 						this._addNoPlayableNotice(file);
 					}
-					return;
-				}
-				const isVgmFile = lowerFile.endsWith('.vgm') || lowerFile.endsWith('.vgz');
-				if (isVgmFile && this._trackUsesOpl4 && this._trackUsesOpl4() && !this._hasOpl4RomLoaded()) {
-					if (this._showOpl4RomError) {
-						this._showOpl4RomError();
-					} else {
-						this._addNoPlayableNotice('yrw801.rom missing');
-					}
-					if (this.CloseVGMFile) {
-						this.CloseVGMFile();
-					}
-					this.isVGMLoaded = false;
 					return;
 				}
 				if (href_object && href_object.dataset && href_object.dataset.playableIndex) {
@@ -3003,53 +3035,58 @@ class VGMPlay_js {
 		});
 	}
 
-	// Cache ROM file to IndexedDB for persistence across sessions
-	_cacheRomFile(bytes, name, type) {
-		if (!this._cacheBridgeAvailable()) return;
-		const path = '/' + name;
-		// Convert to base64 to avoid ArrayBuffer serialization issues with IndexedDB
-		let b64 = null;
-		if (bytes instanceof Uint8Array) {
-			let binary = '';
-			const chunkSize = 0x8000;
-			for (let i = 0; i < bytes.length; i += chunkSize) {
-				const sub = bytes.subarray(i, i + chunkSize);
-				binary += String.fromCharCode.apply(null, sub);
-			}
-			b64 = btoa(binary);
-		} else if (bytes instanceof ArrayBuffer) {
-			const arr = new Uint8Array(bytes);
-			let binary = '';
-			const chunkSize = 0x8000;
-			for (let i = 0; i < arr.length; i += chunkSize) {
-				const sub = arr.subarray(i, i + chunkSize);
-				binary += String.fromCharCode.apply(null, sub);
-			}
-			b64 = btoa(binary);
-		} else if (typeof bytes === 'string') {
-			b64 = bytes; // already base64
-		}
-		if (b64) {
-			this._cacheBridgeRequest('putFiles', { files: [{ path, b64 }] }).then((resp) => {
-				if (resp && resp.error) {
-					this._logWarn && this._logWarn('CACHE', 'Failed to cache ROM file:', name, resp.error);
-				} else {
-					this._log && this._log('CACHE', 'ROM file cached:', name, 'size:', bytes.length || bytes.byteLength);
-				}
-			});
-		} else {
-			this._logWarn && this._logWarn('CACHE', 'Could not convert ROM to base64 for caching:', name);
-		}
-	}
+// Cache ROM file to IndexedDB for persistence across sessions
+  async _cacheRomFile(bytes, name, type) {
+    if (!this._cacheBridgeAvailable()) {
+      await this._initStorageIfNeeded();
+    }
+    if (!this._cacheBridgeAvailable()) return;
+    const path = '/' + name;
+    // Convert to base64 to avoid ArrayBuffer serialization issues with IndexedDB
+    let b64 = null;
+    if (bytes instanceof Uint8Array) {
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const sub = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, sub);
+      }
+      b64 = btoa(binary);
+    } else if (bytes instanceof ArrayBuffer) {
+      const arr = new Uint8Array(bytes);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < arr.length; i += chunkSize) {
+        const sub = arr.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, sub);
+      }
+      b64 = btoa(binary);
+    } else if (typeof bytes === 'string') {
+      b64 = bytes; // already base64
+    }
+    if (b64) {
+      const resp = await this._cacheBridgeRequestAsync('putFiles', { files: [{ path, b64 }] });
+      if (resp && resp.error) {
+        this._logWarn && this._logWarn('CACHE', 'Failed to cache ROM file:', name, resp.error);
+      } else {
+        this._log && this._log('CACHE', 'ROM file cached:', name, 'size:', bytes.length || bytes.byteLength);
+      }
+    } else {
+      this._logWarn && this._logWarn('CACHE', 'Could not convert ROM to base64 for caching:', name);
+    }
+  }
 
-	// Restore ROM files from cache on startup
-	async _restoreRomsFromCache() {
-		if (!this._cacheBridgeAvailable()) return;
-		const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM', '/waves.dat'];
-		this._log && this._log('CACHE', 'Requesting ROM files from cache:', romPaths);
-		const resp = await this._cacheBridgeRequest('getFiles', { paths: romPaths });
-		this._log && this._log('CACHE', 'ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
-		if (resp && resp.files && resp.files.length) {
+  // Restore ROM files from cache on startup
+  async _restoreRomsFromCache() {
+    if (!this._cacheBridgeAvailable()) {
+      await this._initStorageIfNeeded();
+    }
+    if (!this._cacheBridgeAvailable()) return;
+    const romPaths = ['/yrw801.rom', '/MT32_CONTROL.ROM', '/MT32_PCM.ROM', '/waves.dat'];
+    this._log && this._log('CACHE', 'Requesting ROM files from cache:', romPaths);
+    const resp = await this._cacheBridgeRequestAsync('getFiles', { paths: romPaths });
+    this._log && this._log('CACHE', 'ROM cache response:', resp ? 'got response' : 'no response', resp?.files?.length || 0, 'files');
+    if (resp && resp.files && resp.files.length) {
 			for (const item of resp.files) {
 				if (!item || !item.path) continue;
 				const name = item.path.split('/').pop();

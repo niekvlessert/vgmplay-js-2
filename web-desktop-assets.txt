@@ -1,0 +1,4 @@
+# Extra assets staged only into desktop app bundles.
+index.html
+background.js
+dist/

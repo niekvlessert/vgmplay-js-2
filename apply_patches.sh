@@ -39,7 +39,6 @@ apply_patch() {
 
 echo "--- Applying Library Patches ---"
 
-apply_patch "libvgm" "libvgm.patch"
 apply_patch "sexypsf" "sexypsf.patch"
 apply_patch "libkss" "libkss.patch" "--ignore-whitespace"
 apply_patch "lazyusf" "lazyusf.patch"

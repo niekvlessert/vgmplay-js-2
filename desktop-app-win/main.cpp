@@ -23,6 +23,14 @@ std::wstring GetExecutableDir() {
   return path.substr(0, path.find_last_of(L"\\/"));
 }
 
+std::wstring PathToFileUrl(const std::wstring &path) {
+  std::wstring url = L"file:///";
+  for (wchar_t c : path) {
+    url += (c == L'\\') ? L'/' : c;
+  }
+  return url;
+}
+
 // Forward declarations
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void OpenFolderDialog();
@@ -72,16 +80,19 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                       GetClientRect(hWnd, &bounds);
                       webviewController->put_Bounds(bounds);
 
-                      // Set up virtual host for local files (mimicking Mac's
-                      // vgmplay://)
                       std::wstring exeDir = GetExecutableDir();
-                      webviewWindow->SetVirtualHostNameToFolderMapping(
-                          L"vgmplay.local", exeDir.c_str(),
-                          COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
-
-                      // Navigation
-                      webviewWindow->Navigate(
-                          L"https://vgmplay.local/index.html");
+                      ComPtr<ICoreWebView2_3> webview3;
+                      if (SUCCEEDED(webviewWindow.As(&webview3)) && webview3) {
+                        webview3->SetVirtualHostNameToFolderMapping(
+                            L"vgmplay.local", exeDir.c_str(),
+                            COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
+                        webviewWindow->Navigate(
+                            L"https://vgmplay.local/index.html");
+                      } else {
+                        std::wstring indexUrl =
+                            PathToFileUrl(exeDir + L"\\index.html");
+                        webviewWindow->Navigate(indexUrl.c_str());
+                      }
 
                       return S_OK;
                     })

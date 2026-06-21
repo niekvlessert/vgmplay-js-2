@@ -23,19 +23,44 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Compute WASM cache key
+        id: wasm-cache-key
+        run: |
+          {
+            git ls-files -s \
+              CMakeLists.txt FindZLIB.cmake \
+              src patches modules \
+              | grep -v '^160000' || true
+            git submodule status --recursive
+          } | sha256sum | awk '{print "key=wasm-linux-" $1}' >> "$GITHUB_OUTPUT"
+
+      - name: Restore WASM cache
+        id: wasm-cache
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.wasm-cache-key.outputs.key }}
+          path: |
+            vgmplay-js.js
+            vgmplay-js.wasm
+            vgmplay-js.data
+
       - name: Setup Emscripten
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         uses: mymindstorm/setup-emsdk@v14
 
       - name: Pre-build Cleanup
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: rm -f vgmplay-js.js vgmplay-js.wasm vgmplay-js.data
 
       - name: Fetch LibAtrac9
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: |
           if [ ! -d modules/vgmstream/dependencies/LibAtrac9 ]; then
             git clone --depth 1 https://github.com/Thealexbarney/LibAtrac9 modules/vgmstream/dependencies/LibAtrac9
           fi
 
       - name: Build WASM
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build
           cd build
@@ -49,6 +74,16 @@ jobs:
             echo "Error: Build did not produce required JS/WASM files"
             exit 1
           fi
+
+      - name: Save WASM cache
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.wasm-cache-key.outputs.key }}
+          path: |
+            vgmplay-js.js
+            vgmplay-js.wasm
+            vgmplay-js.data
           
       - name: Prepare Extensions
         run: |

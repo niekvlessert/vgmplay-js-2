@@ -110,6 +110,7 @@ static bool msEnded = false;
 static bool msSupportsLoop = false;
 static bool msRequiresMwk = false;
 static bool msMwkLoaded = false;
+static std::string currentMoonsoundPath;
 static std::string pendingMwkPath;
 static int lastLoadErrorCode = 0;
 
@@ -138,6 +139,8 @@ static ma_data_converter apeConverter;
 static bool apeConverterInitialized = false;
 static std::vector<int16_t> apeInputBuffer;
 static std::vector<float> apeOutputBuffer;
+
+extern "C" int OpenVGMFile(const char *path);
 
 static bool isADLMIDI = false;
 static ADL_MIDIPlayer* adlPlayer = nullptr;
@@ -665,6 +668,7 @@ static void cleanup(bool keepVGMPlayer) {
     msSupportsLoop = false;
     msRequiresMwk = false;
     msMwkLoaded = false;
+    currentMoonsoundPath.clear();
   }
   if (isADLMIDI) {
     if (adlPlayer) {
@@ -1039,7 +1043,10 @@ void Seek(unsigned int sec, unsigned int ms) {
     return;
   }
   if (isMoonsound && msCtx) {
-    ms_reset(msCtx);
+    std::string reopenPath = currentMoonsoundPath;
+    if (reopenPath.empty() || !OpenVGMFile(reopenPath.c_str())) {
+      return;
+    }
     const UINT32 CHUNK = 4096;
     int16_t dummy[CHUNK * 2];
     // MoonSound internal renderer always runs at 44100Hz
@@ -1299,6 +1306,7 @@ int OpenVGMFile(const char *path) {
     msRenderedSamples = 0;
     msEnded = false;
     isMoonsound = true;
+    currentMoonsoundPath = basePath;
     pendingMwkPath.clear();
     return 1;
   }
@@ -2960,12 +2968,23 @@ char *ShowTitle(void) {
     return titleBuf;
   }
   if (isMoonsound && msCtx) {
-    const char *title = ms_get_song_name(msCtx);
+    std::string title = currentMoonsoundPath;
+    size_t slash = title.find_last_of('/');
+    if (slash != std::string::npos) {
+      title = title.substr(slash + 1);
+    }
+    size_t dot = title.find_last_of('.');
+    if (dot != std::string::npos) {
+      title = title.substr(0, dot);
+    }
+    if (title.empty()) {
+      title = "MoonSound Song";
+    }
     std::string s;
     for (int i = 0; i < 11; i++) {
       s += "Key";
       s += "|||";
-      if (i == 0) s += (title ? title : "");
+      if (i == 0) s += title;
       else if (i == 2) s += "MoonSound Song";
       else if (i == 4) s += "MSX Moonsound";
       else s += "";

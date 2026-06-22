@@ -5,7 +5,7 @@
   const ARCHIVE_META_VERSION = 1;
   const ARCHIVE_EXTS = new Set(['zip', '7z', 'rar', 'rsn', 'vgmz', 'vgmdz', 'vgmpack', 'vigamup']);
   const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp']);
-  const DEFAULT_CONFIG = { showUnsupported: false };
+  const DEFAULT_CONFIG = { showUnsupported: false, showFilenames: false, imageOverview: true, volume: 80 };
   const BADGE_CLASS = {
     SPC: 'badge-spc',
     VGM: 'badge-vgm',
@@ -179,6 +179,8 @@
       this.rootUrl = '';
       this.config = { ...DEFAULT_CONFIG, ...(window.VGMPLAY_NATIVE_CONFIG || {}) };
       this.archiveMetaCache = this.loadArchiveMetaCache();
+      this.infoMode = 'help';
+      this.homeRomsLoaded = false;
       this.mount();
     }
 
@@ -188,12 +190,14 @@
       this.root.className = 'native-app';
       this.root.innerHTML = `
         <div class="native-topbar">
-          <div class="native-brand">VGMP</div>
+          <div class="native-brand">VGMPlay-JS</div>
           <div class="native-path" data-role="path">No folder selected</div>
           <div class="native-spacer"></div>
           <button class="native-settings-btn" data-role="settings" title="Settings">Settings</button>
           <div class="native-settings-popover" data-role="settings-popover" hidden>
             <label><input type="checkbox" data-role="show-unsupported" /> Show unsupported files</label>
+            <label><input type="checkbox" data-role="show-filenames" /> Show real filenames</label>
+            <label><input type="checkbox" data-role="image-overview" /> Show image overview</label>
           </div>
           <input class="native-search" data-role="search" placeholder="Filter tracks, formats, chips..." />
         </div>
@@ -205,8 +209,15 @@
           <div class="native-info" data-role="info"></div>
         </div>
         <div class="native-player">
+          <button data-role="prev" title="Previous">|<</button>
           <button data-role="play" title="Play/Pause">▶</button>
           <button data-role="stop" title="Stop">■</button>
+          <button data-role="next" title="Next">>|</button>
+          <span class="native-player-sep"></span>
+          <button data-role="bass" title="Bass Boost (B)">B</button>
+          <button data-role="reverb" title="Reverb (V)">V</button>
+          <button data-role="random" title="Random (R)">R</button>
+          <button data-role="loop" title="Loop (L)">L</button>
           <div class="native-now">
             <div class="native-now-title" data-role="now-title">No track selected</div>
             <div class="native-now-source" data-role="now-source"></div>
@@ -230,11 +241,28 @@
       this.timeCurrentEl = this.root.querySelector('[data-role="time-current"]');
       this.timeTotalEl = this.root.querySelector('[data-role="time-total"]');
       this.progressEl = this.root.querySelector('[data-role="progress"]');
+      this.progressTrackEl = this.root.querySelector('.native-progress');
+      this.volumeEl = this.root.querySelector('[data-role="volume"]');
+      this.prevBtn = this.root.querySelector('[data-role="prev"]');
+      this.nextBtn = this.root.querySelector('[data-role="next"]');
+      this.bassBtn = this.root.querySelector('[data-role="bass"]');
+      this.reverbBtn = this.root.querySelector('[data-role="reverb"]');
+      this.randomBtn = this.root.querySelector('[data-role="random"]');
+      this.loopBtn = this.root.querySelector('[data-role="loop"]');
       this.settingsBtn = this.root.querySelector('[data-role="settings"]');
       this.settingsPopover = this.root.querySelector('[data-role="settings-popover"]');
       this.showUnsupportedEl = this.root.querySelector('[data-role="show-unsupported"]');
+      this.showFilenamesEl = this.root.querySelector('[data-role="show-filenames"]');
+      this.imageOverviewEl = this.root.querySelector('[data-role="image-overview"]');
+      this.config = { ...DEFAULT_CONFIG, ...(window.VGMPLAY_NATIVE_CONFIG || {}) };
       this.showUnsupportedEl.checked = !!this.config.showUnsupported;
+      this.showFilenamesEl.checked = !!this.config.showFilenames;
+      this.imageOverviewEl.checked = this.config.imageOverview !== false;
       this.searchEl.addEventListener('input', () => this.setSearch(this.searchEl.value));
+      this.treeEl.addEventListener('mouseleave', () => {
+        clearTimeout(this.hoverTimer);
+        setTimeout(() => this.restorePlayingInfo(), 80);
+      });
       this.settingsBtn.addEventListener('click', () => {
         this.settingsPopover.hidden = !this.settingsPopover.hidden;
       });
@@ -243,9 +271,75 @@
         this.saveConfig();
         this.renderTree();
       });
+      this.showFilenamesEl.addEventListener('change', () => {
+        this.config.showFilenames = !!this.showFilenamesEl.checked;
+        this.saveConfig();
+        this.renderTree();
+      });
+      this.imageOverviewEl.addEventListener('change', () => {
+        this.config.imageOverview = !!this.imageOverviewEl.checked;
+        this.saveConfig();
+        if (this.config.imageOverview) this.showImageOverview();
+        else this.restorePlayingInfo();
+      });
       this.playBtn.addEventListener('click', () => this.togglePlay());
       this.stopBtn.addEventListener('click', () => this.stop());
-      this.showHelp();
+      if (this.prevBtn) this.prevBtn.addEventListener('click', () => this.prevTrack());
+      if (this.nextBtn) this.nextBtn.addEventListener('click', () => this.nextTrack());
+      if (this.bassBtn) this.bassBtn.addEventListener('click', () => this.toggleBass());
+      if (this.reverbBtn) this.reverbBtn.addEventListener('click', () => this.toggleReverb());
+      if (this.randomBtn) this.randomBtn.addEventListener('click', () => this.toggleRandom());
+      if (this.loopBtn) this.loopBtn.addEventListener('click', () => this.toggleLoop());
+      if (this.volumeEl) {
+        this.volumeEl.value = this.config.volume != null ? this.config.volume : 80;
+        this.volumeEl.addEventListener('input', () => {
+          const vol = Number(this.volumeEl.value) || 0;
+          this.config.volume = vol;
+          this.applyVolume();
+          this.saveConfig();
+        });
+        this.applyVolume();
+      }
+      if (this.progressTrackEl) {
+        this.progressTrackEl.addEventListener('click', (e) => {
+          if (!this.player || !this.player.trackLengthSeconds) return;
+          const rect = this.progressTrackEl.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          const targetSec = ratio * this.player.trackLengthSeconds;
+          this.seekTo(targetSec);
+        });
+      }
+      document.addEventListener('keydown', (e) => {
+        const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable)) return;
+        if (e.key === 'Escape') {
+          if (this.settingsPopover && !this.settingsPopover.hidden) {
+            this.settingsPopover.hidden = true;
+            return;
+          }
+          if (this.config.imageOverview !== false && this.infoMode !== 'overview') {
+            this.showImageOverview();
+          } else {
+            this.collapseAll();
+            this.selectedId = null;
+            this.renderTree();
+            this.treeEl.scrollTop = 0;
+            if (this.config.imageOverview !== false) this.showImageOverview();
+            else this.showHelp();
+          }
+          return;
+        }
+        if (e.key === ' ' || e.code === 'Space') {
+          e.preventDefault();
+          this.togglePlay();
+          return;
+        }
+        if (e.key === 'ArrowLeft') { this.prevTrack(); return; }
+        if (e.key === 'ArrowRight') { this.nextTrack(); return; }
+      });
+      this._syncPlayStateInterval = setInterval(() => this.syncPlayState(), 500);
+      if (this.config.imageOverview !== false) this.showImageOverview();
+      else this.showHelp();
     }
 
     loadIndex(items, options = {}) {
@@ -256,7 +350,8 @@
       this.selectedId = null;
       this.buildEntries(Array.isArray(items) ? items : []);
       this.renderTree();
-      this.showHelp();
+      if (this.config.imageOverview !== false) this.showImageOverview();
+      else this.showHelp();
     }
 
     buildEntries(items) {
@@ -421,12 +516,31 @@
     renderRow(entry, depth, container) {
       const row = document.createElement('div');
       row.className = `native-row ${entry.type}${entry.id === this.selectedId ? ' selected' : ''}${entry.warnings && entry.warnings.length ? ' warn' : ''}`;
+      const showFilenames = !!this.config.showFilenames;
+      let displayName = entry.name;
+      if (!showFilenames && entry.metadata) {
+        const m = entry.metadata;
+        if (isArchiveEntry(entry)) {
+          if (m.gameTitle || m.title) displayName = m.gameTitle || m.title;
+        } else if (entry.type === 'track' || entry.type === 'archiveTrack') {
+          const game = m.game || '';
+          const trackTitle = m.trackTitle || '';
+          if (trackTitle) displayName = trackTitle;
+          else if (game && game !== displayName) displayName = game;
+        } else if (entry.type === 'trackPart' && entry.metadata && entry.metadata.trackTitle) {
+          displayName = entry.metadata.trackTitle;
+        }
+      }
+      const duration = entry.metadata && entry.metadata.duration ? entry.metadata.duration : '';
       row.innerHTML = `
         <span class="native-indent" style="width:${depth * 16}px"></span>
         <span class="native-expander">${this.hasChildren(entry) ? (entry.expanded ? '&#9662;' : '&#9656;') : ''}</span>
-        <span class="native-name">${escapeHtml(entry.name)}</span>
+        <span class="native-name">${escapeHtml(displayName)}</span>
+        ${entry.innerFormat ? `<span class="native-badge ${BADGE_CLASS[entry.innerFormat] || ''}">${escapeHtml(entry.innerFormat)}</span>` : ''}
         ${entry.format ? `<span class="native-badge ${BADGE_CLASS[entry.format] || ''}">${escapeHtml(entry.format)}</span>` : ''}
+        ${duration ? `<span class="native-duration">${escapeHtml(duration)}</span>` : ''}
         ${entry.warnings && entry.warnings.length ? '<span class="native-warning-mark">!</span>' : ''}`;
+      row.dataset.entryId = entry.id;
       row.addEventListener('mouseenter', () => this.hover(entry));
       row.addEventListener('mouseleave', () => clearTimeout(this.hoverTimer));
       row.addEventListener('click', () => this.select(entry));
@@ -441,18 +555,16 @@
       const start = offset + 1;
       const end = Math.min(offset + PAGE_SIZE, total);
       row.innerHTML = `<span class="native-indent" style="width:${depth * 16}px"></span><span>${start}-${end} of ${total}</span>`;
-      if (offset > 0) {
-        const prev = document.createElement('button');
-        prev.textContent = '< Prev';
-        prev.addEventListener('click', () => { this.pageOffsets[parentId] = Math.max(0, offset - PAGE_SIZE); this.renderTree(); });
-        row.appendChild(prev);
-      }
-      if (offset + PAGE_SIZE < total) {
-        const next = document.createElement('button');
-        next.textContent = 'Next >';
-        next.addEventListener('click', () => { this.pageOffsets[parentId] = offset + PAGE_SIZE; this.renderTree(); });
-        row.appendChild(next);
-      }
+      const prev = document.createElement('button');
+      prev.textContent = '< Prev';
+      prev.disabled = offset <= 0;
+      prev.addEventListener('click', () => { this.pageOffsets[parentId] = Math.max(0, offset - PAGE_SIZE); this.renderTree(); });
+      row.appendChild(prev);
+      const next = document.createElement('button');
+      next.textContent = 'Next >';
+      next.disabled = offset + PAGE_SIZE >= total;
+      next.addEventListener('click', () => { this.pageOffsets[parentId] = offset + PAGE_SIZE; this.renderTree(); });
+      row.appendChild(next);
       container.appendChild(row);
     }
 
@@ -462,6 +574,7 @@
 
     hover(entry) {
       clearTimeout(this.hoverTimer);
+      this._lastHoveredEntry = entry;
       this.hoverTimer = setTimeout(() => {
         this.showInfo(entry);
         if (isArchiveEntry(entry)) {
@@ -472,10 +585,20 @@
       }, 140);
     }
 
+    restorePlayingInfo() {
+      this._lastHoveredEntry = null;
+      if (this.playingEntry) this.showInfo(this.playingEntry);
+      else if (this.config.imageOverview !== false) this.showImageOverview();
+      else this.showHelp();
+    }
+
     select(entry) {
       this.selectedId = entry.id;
       this.showInfo(entry);
-      if (isArchiveEntry(entry)) {
+      if (entry.playable && this.hasChildren(entry)) {
+        entry.expanded = !entry.expanded;
+        if (entry.expanded && !(entry.id in this.pageOffsets)) this.pageOffsets[entry.id] = 0;
+      } else if (isArchiveEntry(entry)) {
         this.inspectArchive(entry, { expand: !this.hasChildren(entry) });
       } else if (entry.inspectable) {
         this.inspectEntry(entry, { expand: true });
@@ -508,10 +631,44 @@
     }
 
     showHelp() {
-      this.infoEl.innerHTML = '<div class="native-help"><strong>Welcome to VGMP</strong><br>Open a local folder, hover entries to inspect metadata, double-click playable tracks to load bytes and play, and use search to filter by path or format.</div>';
+      this.infoMode = 'help';
+      this.infoEl.innerHTML = '<div class="native-help"><strong>Welcome to VGMPlay-JS</strong><br>Open a local folder, hover entries to inspect metadata, double-click playable tracks to load and play, and use search to filter by path or format.<br><br>Keyboard: Space = play/pause, Arrow keys = prev/next, Escape = back.</div>';
+    }
+
+    showImageOverview() {
+      this.infoMode = 'overview';
+      const entries = this.entries.filter((entry) => {
+        if (!entry || entry.id === 'root' || entry.type === 'folder') return false;
+        const m = entry.metadata || {};
+        return !!(m.coverDataUrl || m.coverUrl);
+      });
+      if (!entries.length) {
+        this.infoEl.innerHTML = '<div class="native-help"><strong>No pack images indexed yet</strong><br>Images from sidecar files and cached archive metadata will appear here.</div>';
+        return;
+      }
+      this.infoEl.innerHTML = `
+        <div class="native-overview">
+          <div class="native-section-title">Indexed Images</div>
+          <div class="native-overview-grid">
+            ${entries.map((entry) => {
+              const m = entry.metadata || {};
+              const src = m.coverDataUrl || m.coverUrl || '';
+              const title = m.gameTitle || m.game || m.title || entry.name;
+              const subtitle = entry.innerFormat ? `${entry.innerFormat} / ${entry.format || ''}` : (entry.format || entry.type);
+              return `<button class="native-cover-tile" data-entry-id="${escapeHtml(entry.id)}"><img src="${escapeHtml(src)}" alt=""><div class="native-cover-title">${escapeHtml(title)}</div><div class="native-cover-subtitle">${escapeHtml(subtitle)}</div></button>`;
+            }).join('')}
+          </div>
+        </div>`;
+      this.infoEl.querySelectorAll('.native-cover-tile').forEach((tile) => {
+        tile.addEventListener('click', () => {
+          const entry = this.byId.get(tile.dataset.entryId);
+          if (entry) this.openFromOverview(entry);
+        });
+      });
     }
 
     showInfo(entry) {
+      this.infoMode = 'detail';
       const m = entry.metadata || {};
       const statusClass = (entry.warnings && entry.warnings.length) ? 'warning' : (m.status && m.status.indexOf('Playable') >= 0 ? 'playable' : '');
       const title = m.trackTitle || m.title || entry.name;
@@ -573,6 +730,49 @@
       return names.join(' / ');
     }
 
+    expandAncestors(entry) {
+      let cur = entry && entry.parentId ? this.byId.get(entry.parentId) : null;
+      while (cur) {
+        cur.expanded = true;
+        cur = cur.parentId ? this.byId.get(cur.parentId) : null;
+      }
+    }
+
+    collapseAll() {
+      for (const entry of this.entries) {
+        if (entry.id !== 'root') entry.expanded = false;
+      }
+      this.pageOffsets = {};
+    }
+
+    scrollEntryIntoView(entry) {
+      if (!entry) return;
+      requestAnimationFrame(() => {
+        const selector = `[data-entry-id="${CSS.escape(entry.id)}"]`;
+        const node = this.treeEl.querySelector(selector);
+        if (node) node.scrollIntoView({ block: 'center' });
+      });
+    }
+
+    async openFromOverview(entry) {
+      this.selectedId = entry.id;
+      this.expandAncestors(entry);
+      if (isArchiveEntry(entry)) {
+        await this.inspectArchive(entry, { expand: true });
+        const first = (this.children.get(entry.id) || []).find((child) => child.playable);
+        this.renderTree();
+        this.scrollEntryIntoView(first || entry);
+        if (first) this.playEntry(first);
+        else this.showInfo(entry);
+        return;
+      }
+      if (this.hasChildren(entry)) entry.expanded = true;
+      this.renderTree();
+      this.scrollEntryIntoView(entry);
+      if (entry.playable) this.playEntry(entry);
+      else this.showInfo(entry);
+    }
+
     sidecarKey(path) {
       const dir = dirname(path);
       const name = baseName(path).replace(/\.[^.]+$/, '').toLowerCase();
@@ -605,13 +805,22 @@
       this.selectedId = entry.id;
       this.playingEntry = entry;
       this.statusEl.textContent = 'Loading';
-      this.nowTitleEl.textContent = entry.name;
+      const m = entry.metadata || {};
+      const showGameNames = !this.config.showFilenames;
+      let nowTitle = entry.name;
+      if (showGameNames) {
+        if (m.trackTitle) nowTitle = m.trackTitle;
+        else if (m.game) nowTitle = m.game;
+      }
+      this.nowTitleEl.textContent = nowTitle;
       this.nowSourceEl.textContent = this.pathFor(entry);
       this.renderTree();
       try {
         const path = await this.ensureEntryInFs(entry);
         const playPath = entry.trackPath || path;
         await this.player.checkEverythingReady();
+        await this.preloadNativeHomeRoms();
+        const noticeStart = Array.isArray(this.player.noPlayableNotices) ? this.player.noPlayableNotices.length : 0;
         const game = {
           files: entry.archiveGameFiles || [{ filepath: path }],
           path: dirname(path),
@@ -622,6 +831,11 @@
         this.player.games = [game];
         this.player.activeGame = game;
         await this.player.playFileFromFS(false, playPath, 1, 0);
+        const notice = this.latestPlaybackNotice(noticeStart);
+        if (notice) throw new Error(notice);
+        this._nativeEndedKey = '';
+        this.applyVolume();
+        setTimeout(() => this.applyVolume(), 80);
         entry.metadata = { ...(entry.metadata || {}), loop: this.loopStatusLabel() };
         this.showInfo(entry);
         this.statusEl.textContent = 'Playing';
@@ -630,8 +844,40 @@
         this.startFakeProgress();
       } catch (e) {
         console.error('[VGM Native] Failed to play local entry', e);
+        const message = e && e.message ? e.message : 'Playback failed';
         this.statusEl.textContent = 'Failed';
+        entry.metadata = { ...(entry.metadata || {}), status: message };
+        entry.warnings = Array.from(new Set([...(entry.warnings || []), message]));
+        this.showInfo(entry);
       }
+    }
+
+    async preloadNativeHomeRoms() {
+      if (this.homeRomsLoaded) return;
+      this.homeRomsLoaded = true;
+      const roms = Array.isArray(window.VGMPLAY_NATIVE_HOME_ROMS) ? window.VGMPLAY_NATIVE_HOME_ROMS : [];
+      if (!roms.length || !this.player || !this.player.saveRomFile) return;
+      await this.player.checkEverythingReady();
+      for (const rom of roms) {
+        try {
+          const bytes = await this.fetchBytes(rom.url);
+          const romType = this.player._getRomType ? this.player._getRomType(rom.name) : null;
+          if (romType) this.player.saveRomFile(bytes, rom.name, romType);
+        } catch (e) {
+          console.warn('[VGM Native] Failed to preload ROM', rom && rom.name, e);
+        }
+      }
+    }
+
+    latestPlaybackNotice(startIndex = 0) {
+      const notices = this.player && this.player.noPlayableNotices;
+      if (!Array.isArray(notices) || !notices.length) return '';
+      const fresh = notices.slice(Math.max(0, startIndex));
+      for (let i = fresh.length - 1; i >= 0; i--) {
+        const msg = String(fresh[i] || '');
+        if (/yrw801\.rom|waves\.dat|MT32_/i.test(msg)) return msg;
+      }
+      return '';
     }
 
     async inspectEntry(entry, options = {}) {
@@ -805,8 +1051,9 @@
       return {
         version: ARCHIVE_META_VERSION,
         sha256: sha,
-        title: archiveTitle,
+        title: this.bestArchiveTitle(archiveTitle, tracks),
         archiveName: entry.name,
+        innerFormat: this.commonTrackFormat(tracks),
         sizeBytes: entry.item.sizeBytes || 0,
         mtime: entry.item.mtime || 0,
         trackCount: tracks.length,
@@ -858,6 +1105,7 @@
       entry.metadata = {
         ...(entry.metadata || {}),
         title: archiveMeta.title || (entry.metadata && entry.metadata.title) || entry.name,
+        gameTitle: archiveMeta.title || '',
         status: options.verified ? 'Archive indexed' : 'Archive preview from cache',
         sha256: archiveMeta.sha256,
         trackCount: archiveMeta.trackCount || (archiveMeta.tracks ? archiveMeta.tracks.length : 0),
@@ -866,6 +1114,7 @@
         content: (entry.metadata && entry.metadata.content) || 'Archive container',
         backend: 'Archive reader'
       };
+      entry.innerFormat = archiveMeta.innerFormat || '';
       const children = (archiveMeta.tracks || []).map((track, index) => this.archiveTrackFromMeta(entry, track, index));
       this.replaceChildren(entry.id, children);
       if (options.expand) entry.expanded = true;
@@ -898,6 +1147,43 @@
         },
         warnings: parent.warnings || []
       };
+    }
+
+    bestArchiveTitle(fallback, tracks) {
+      const counts = new Map();
+      for (const track of tracks || []) {
+        const m = track.metadata || {};
+        const value = (m.game || '').trim();
+        if (!value || value.length < 2) continue;
+        counts.set(value, (counts.get(value) || 0) + 1);
+      }
+      let best = '';
+      let bestCount = 0;
+      for (const [name, count] of counts.entries()) {
+        if (count > bestCount) {
+          best = name;
+          bestCount = count;
+        }
+      }
+      return best || fallback;
+    }
+
+    commonTrackFormat(tracks) {
+      const counts = new Map();
+      for (const track of tracks || []) {
+        if (!track.format) continue;
+        counts.set(track.format, (counts.get(track.format) || 0) + 1);
+      }
+      if (!counts.size) return '';
+      let best = '';
+      let bestCount = 0;
+      for (const [format, count] of counts.entries()) {
+        if (count > bestCount) {
+          best = format;
+          bestCount = count;
+        }
+      }
+      return bestCount === (tracks || []).length ? best : '';
     }
 
     inspectMultiTrack(entry, path) {
@@ -1240,16 +1526,128 @@
       this.timeTotalEl.textContent = '0:00';
       this.progressTimer = setInterval(() => {
         if (!this.player || !this.player.isVGMPlaying) return;
-        this.fakeProgress += 0.5;
+        if (this.player.isPlaybackPaused) return;
         this.updateProgress();
-      }, 500);
+      }, 250);
     }
 
     updateProgress() {
-      const total = this.player && this.player.trackLengthSeconds ? this.player.trackLengthSeconds : 0;
+      const p = this.player;
+      const total = p && p.trackLengthSeconds ? p.trackLengthSeconds : 0;
+      let current = 0;
+      if (p && p.context && !p.isPlaybackPaused && p.playbackStartTime) {
+        const elapsed = p.context.currentTime - p.playbackStartTime;
+        current = p.startSample && p.sampleRate ? (p.startSample / p.sampleRate) + elapsed : elapsed;
+      } else if (p && p.visualSamplePosition && p.sampleRate) {
+        current = p.visualSamplePosition / p.sampleRate;
+      } else {
+        current = this.fakeProgress;
+      }
+      if (current > total && total > 0) current = total;
       this.timeTotalEl.textContent = total ? this.formatTime(total) : '0:00';
-      this.timeCurrentEl.textContent = this.formatTime(this.fakeProgress);
-      this.progressEl.style.width = total ? Math.min(100, (this.fakeProgress / total) * 100) + '%' : '0';
+      this.timeCurrentEl.textContent = this.formatTime(current);
+      this.progressEl.style.width = total ? Math.min(100, (current / total) * 100) + '%' : '0';
+      if (p && p.trackLengthSeconds && current >= total && !p.isPlaybackPaused) {
+        const endKey = this.playingEntry ? this.playingEntry.id : 'current';
+        if (p.loopMode === 2 && this._nativeEndedKey !== endKey) {
+          this._nativeEndedKey = endKey;
+          this.nextTrack();
+        } else if (p.loopMode !== 1 && this._nativeEndedKey !== endKey) {
+          this._nativeEndedKey = endKey;
+          this.stop();
+        }
+      } else {
+        this._nativeEndedKey = '';
+        this.fakeProgress = current;
+      }
+      if (this.progressTrackEl) {
+        this.progressTrackEl.classList.toggle('disabled', !!(p && p.loopMode === 1));
+      }
+    }
+
+    syncPlayState() {
+      const p = this.player;
+      if (!p) return;
+      if (p.isPlaybackPaused) {
+        this.playBtn.textContent = '▶';
+        this.playBtn.classList.remove('active');
+        if (p.isVGMPlaying) this.statusEl.textContent = 'Paused';
+      } else if (p.isVGMPlaying) {
+        this.playBtn.textContent = 'II';
+        this.playBtn.classList.add('active');
+        this.statusEl.textContent = 'Playing';
+      }
+      if (this.bassBtn) this.bassBtn.classList.toggle('active', !!p.bassBoostEnabled);
+      if (this.reverbBtn) this.reverbBtn.classList.toggle('active', !!p.reverbEnabled);
+      if (this.randomBtn) this.randomBtn.classList.toggle('active', !!p.isRandomEnabled);
+      if (this.loopBtn) this.loopBtn.classList.toggle('active', p.loopMode === 1);
+      if (this.progressTrackEl) this.progressTrackEl.classList.toggle('disabled', p.loopMode === 1);
+    }
+
+    applyVolume() {
+      const value = this.volumeEl ? Number(this.volumeEl.value) : (this.config.volume || 80);
+      if (this.player && this.player.masterGain && this.player.masterGain.gain) {
+        this.player.masterGain.gain.value = Math.max(0, Math.min(1, value / 100));
+      }
+    }
+
+    prevTrack() {
+      this.player && this.player.changeTrack && this.player.changeTrack('previous');
+    }
+
+    nextTrack() {
+      this.player && this.player.changeTrack && this.player.changeTrack('next');
+    }
+
+    toggleBass() {
+      if (this.player && this.player.toggleBassBoost) {
+        this.player.toggleBassBoost();
+        this.syncPlayState();
+      }
+    }
+
+    toggleReverb() {
+      if (this.player && this.player.toggleReverb) {
+        this.player.toggleReverb();
+        this.syncPlayState();
+      }
+    }
+
+    toggleRandom() {
+      if (this.player && this.player.toggleRandomScope) {
+        this.player.toggleRandomScope();
+        this.syncPlayState();
+      }
+    }
+
+    toggleLoop() {
+      if (this.player && this.player.toggleLoopMode) {
+        this.player.toggleLoopMode();
+        this.syncPlayState();
+      }
+    }
+
+    seekTo(seconds) {
+      const p = this.player;
+      if (!p || !p.SeekVGM || !p.sampleRate || !p.trackLengthSeconds) return;
+      if (p.loopMode === 1 || (p.IsVGMStream && p.IsVGMStream && p.IsVGMStream())) return;
+      try {
+        const targetSeconds = Math.max(0, Math.min(Number(seconds) || 0, p.trackLengthSeconds || 0));
+        const seekSecond = Math.floor(targetSeconds);
+        const seekMS = Math.round((targetSeconds - seekSecond) * 1000);
+        p.SeekVGM(seekSecond, seekMS);
+        p.samplesGenerated = targetSeconds * p.sampleRate;
+        p.visualSamplePosition = targetSeconds * p.sampleRate;
+        p.startSample = p.visualSamplePosition;
+        p.playbackStartTime = p.context ? p.context.currentTime : 0;
+        p.emulatorFinished = false;
+        p.isFadingOut = false;
+        if (p.masterGain && p.context) {
+          const now = p.context.currentTime;
+          p.masterGain.gain.cancelScheduledValues(now);
+          p.masterGain.gain.setValueAtTime(1.0, now);
+        }
+      } catch (e) {}
     }
 
     formatTime(seconds) {

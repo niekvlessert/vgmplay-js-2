@@ -137,6 +137,10 @@ body.vgmplayNativeMode > .vgmplayContainer {
   white-space: nowrap;
 }
 
+.native-settings-popover label + label {
+  margin-top: 8px;
+}
+
 .native-search {
   width: 260px;
   height: 28px;
@@ -159,8 +163,8 @@ body.vgmplayNativeMode > .vgmplayContainer {
 }
 
 .native-library {
-  width: 340px;
-  min-width: 260px;
+  width: 440px;
+  min-width: 340px;
   display: flex;
   flex-direction: column;
   background: var(--native-surface);
@@ -300,6 +304,7 @@ body.vgmplayNativeMode > .vgmplayContainer {
 }
 
 .native-pager button {
+  width: 66px;
   border: 1px solid var(--native-border);
   border-radius: 3px;
   background: var(--native-surface-alt);
@@ -308,11 +313,75 @@ body.vgmplayNativeMode > .vgmplayContainer {
   padding: 1px 8px;
 }
 
+.native-pager button:disabled {
+  color: transparent;
+  background: transparent;
+  border-color: transparent;
+  pointer-events: none;
+}
+
 .native-info {
   flex: 1;
   min-width: 0;
   overflow: auto;
   padding: 16px 20px;
+}
+
+.native-overview {
+  max-width: 1280px;
+}
+
+.native-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.native-cover-tile {
+  min-width: 0;
+  border: 1px solid var(--native-border);
+  border-radius: 6px;
+  background: var(--native-surface);
+  color: var(--native-text);
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.native-cover-tile:hover,
+.native-cover-tile:focus {
+  border-color: var(--native-focus);
+  background: var(--native-hover);
+}
+
+.native-cover-tile img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #10111d;
+}
+
+.native-cover-title {
+  margin-top: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--native-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.native-cover-subtitle {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--native-text-muted);
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 10px;
 }
 
 .native-help {
@@ -373,8 +442,9 @@ body.vgmplayNativeMode > .vgmplayContainer {
 .native-status.error { color: var(--native-error); }
 
 .native-info-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 130px minmax(120px, 520px);
+  justify-content: start;
   gap: 18px;
   padding: 3px 0;
 }
@@ -386,13 +456,22 @@ body.vgmplayNativeMode > .vgmplayContainer {
 
 .native-info-value {
   min-width: 0;
-  text-align: right;
+  text-align: left;
   color: var(--native-text);
   font-family: "SF Mono", Consolas, monospace;
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.native-duration {
+  flex: 0 0 auto;
+  min-width: 34px;
+  color: var(--native-text-muted);
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 10px;
+  text-align: right;
 }
 
 .native-info-path {
@@ -427,11 +506,11 @@ body.vgmplayNativeMode > .vgmplayContainer {
 }
 
 .native-player {
-  height: 42px;
+  height: 48px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 6px 14px;
   border-top: 1px solid var(--native-border);
   background: #15162a;
@@ -440,15 +519,33 @@ body.vgmplayNativeMode > .vgmplayContainer {
 .native-player button {
   width: 28px;
   height: 28px;
+  padding: 0;
   border: 1px solid var(--native-border);
   border-radius: 4px;
   background: var(--native-surface);
   color: var(--native-text-dim);
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+  flex: 0 0 auto;
 }
 
 .native-player button.active {
   background: var(--native-accent);
   color: white;
+  border-color: var(--native-accent);
+}
+
+.native-player button:hover {
+  border-color: var(--native-focus);
+  color: var(--native-text);
+}
+
+.native-player-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--native-border);
+  flex: 0 0 auto;
 }
 
 .native-now {
@@ -479,17 +576,30 @@ body.vgmplayNativeMode > .vgmplayContainer {
 }
 
 .native-progress {
-  width: 150px;
-  height: 4px;
-  border-radius: 2px;
+  width: 260px;
+  height: 12px;
+  border-radius: 6px;
   background: var(--native-surface);
   overflow: hidden;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.native-progress:hover {
+  height: 12px;
+}
+
+.native-progress.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .native-progress-fill {
   height: 100%;
   width: 0;
   background: var(--native-accent);
+  border-radius: 6px;
+  transition: width 0.25s linear;
 }
 
 .native-volume {

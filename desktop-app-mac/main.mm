@@ -137,6 +137,7 @@
 - (NSString *)nativeArchiveMetaPath;
 - (NSDictionary *)loadNativeConfig;
 - (NSDictionary *)loadNativeArchiveMeta;
+- (NSArray *)loadNativeHomeRoms;
 - (void)saveNativeConfig:(NSDictionary *)config;
 - (void)saveNativeArchiveMeta:(NSDictionary *)metadata;
 @end
@@ -187,14 +188,18 @@
 
     NSDictionary *nativeConfig = [self loadNativeConfig];
     NSDictionary *nativeArchiveMeta = [self loadNativeArchiveMeta];
+    NSArray *nativeHomeRoms = [self loadNativeHomeRoms];
     NSData *nativeConfigData = [NSJSONSerialization dataWithJSONObject:nativeConfig options:0 error:nil];
     NSData *nativeArchiveMetaData = [NSJSONSerialization dataWithJSONObject:nativeArchiveMeta options:0 error:nil];
+    NSData *nativeHomeRomsData = [NSJSONSerialization dataWithJSONObject:nativeHomeRoms options:0 error:nil];
     NSString *nativeConfigJson = nativeConfigData ? [[NSString alloc] initWithData:nativeConfigData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeArchiveMetaJson = nativeArchiveMetaData ? [[NSString alloc] initWithData:nativeArchiveMetaData encoding:NSUTF8StringEncoding] : @"{}";
+    NSString *nativeHomeRomsJson = nativeHomeRomsData ? [[NSString alloc] initWithData:nativeHomeRomsData encoding:NSUTF8StringEncoding] : @"[]";
     NSString *nativeConfigScript = [NSString stringWithFormat:
-      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@;",
+      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@; window.VGMPLAY_NATIVE_HOME_ROMS = %@;",
       nativeConfigJson ?: @"{}",
-      nativeArchiveMetaJson ?: @"{}"];
+      nativeArchiveMetaJson ?: @"{}",
+      nativeHomeRomsJson ?: @"[]"];
     WKUserScript *nativeConfigUserScript = [[WKUserScript alloc] initWithSource:nativeConfigScript
                                                                   injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                                                forMainFrameOnly:YES];
@@ -339,10 +344,11 @@
 - (NSDictionary *)loadNativeConfig {
   NSString *path = [self nativeConfigPath];
   NSData *data = [NSData dataWithContentsOfFile:path];
-  if (!data) return @{ @"showUnsupported" : @NO };
+  NSDictionary *defaults = @{ @"showUnsupported" : @NO, @"showFilenames" : @NO, @"imageOverview" : @YES, @"volume" : @80 };
+  if (!data) return defaults;
   id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-  if (![json isKindOfClass:[NSDictionary class]]) return @{ @"showUnsupported" : @NO };
-  NSMutableDictionary *config = [@{ @"showUnsupported" : @NO } mutableCopy];
+  if (![json isKindOfClass:[NSDictionary class]]) return defaults;
+  NSMutableDictionary *config = [defaults mutableCopy];
   [config addEntriesFromDictionary:(NSDictionary *)json];
   return config;
 }
@@ -356,13 +362,41 @@
   return (NSDictionary *)json;
 }
 
+- (NSArray *)loadNativeHomeRoms {
+  NSString *romDir = [NSHomeDirectory() stringByAppendingPathComponent:@"vgmplay-js"];
+  NSArray<NSString *> *names = @[ @"yrw801.rom", @"waves.dat", @"MT32_CONTROL.ROM", @"MT32_PCM.ROM" ];
+  NSMutableArray *roms = [NSMutableArray array];
+  NSFileManager *fm = [NSFileManager defaultManager];
+  for (NSString *name in names) {
+    NSString *path = [romDir stringByAppendingPathComponent:name];
+    BOOL isDir = NO;
+    if (![fm fileExistsAtPath:path isDirectory:&isDir] || isDir) continue;
+    NSString *encodedPath = [path stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLPathAllowedCharacterSet]];
+    NSString *url = [NSString stringWithFormat:@"vgmplay://%@", encodedPath];
+    [roms addObject:@{ @"name" : name, @"url" : url }];
+  }
+  return roms;
+}
+
 - (void)saveNativeConfig:(NSDictionary *)config {
   NSString *path = [self nativeConfigPath];
   NSString *dir = [path stringByDeletingLastPathComponent];
   [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-  NSMutableDictionary *safeConfig = [@{ @"showUnsupported" : @NO } mutableCopy];
+  NSMutableDictionary *safeConfig = [@{ @"showUnsupported" : @NO, @"showFilenames" : @NO, @"imageOverview" : @YES, @"volume" : @80 } mutableCopy];
   if ([config[@"showUnsupported"] respondsToSelector:@selector(boolValue)]) {
     safeConfig[@"showUnsupported"] = @([config[@"showUnsupported"] boolValue]);
+  }
+  if ([config[@"showFilenames"] respondsToSelector:@selector(boolValue)]) {
+    safeConfig[@"showFilenames"] = @([config[@"showFilenames"] boolValue]);
+  }
+  if ([config[@"imageOverview"] respondsToSelector:@selector(boolValue)]) {
+    safeConfig[@"imageOverview"] = @([config[@"imageOverview"] boolValue]);
+  }
+  if ([config[@"volume"] respondsToSelector:@selector(doubleValue)]) {
+    double volume = [config[@"volume"] doubleValue];
+    if (volume < 0) volume = 0;
+    if (volume > 100) volume = 100;
+    safeConfig[@"volume"] = @(volume);
   }
   NSData *data = [NSJSONSerialization dataWithJSONObject:safeConfig options:NSJSONWritingPrettyPrinted error:nil];
   if (data) [data writeToFile:path atomically:YES];

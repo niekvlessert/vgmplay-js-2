@@ -1,4 +1,6 @@
 # Extra assets staged only into desktop app bundles.
 index.html
+native-index.html
+vgmplay-native-library.js
 background.js
 dist/

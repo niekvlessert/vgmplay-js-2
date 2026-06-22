@@ -1,0 +1,497 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --native-bg: #1a1b26;
+  --native-surface: #1f2030;
+  --native-surface-alt: #24253a;
+  --native-hover: #2a2b42;
+  --native-selected: #2d3a5c;
+  --native-border: #33364d;
+  --native-focus: #4c5190;
+  --native-text: #c8cad8;
+  --native-text-dim: #8a8da8;
+  --native-text-muted: #5a5d78;
+  --native-accent: #6c72cb;
+  --native-accent-bright: #8b8fe8;
+  --native-warning: #e0a526;
+  --native-error: #e05555;
+  --native-success: #4caf80;
+  --badge-spc: #9b6dff;
+  --badge-vgm: #2fa7ff;
+  --badge-vgz: #5577ff;
+  --badge-ssf: #24d3c7;
+  --badge-psf: #55d66b;
+  --badge-nsf: #ff5fa2;
+  --badge-gbs: #81d957;
+  --badge-hes: #ff8d4d;
+  --badge-kss: #c777ff;
+  --badge-midi: #ffbf3f;
+  --badge-mod: #00c2ff;
+  --badge-s3m: #ff4fd8;
+  --badge-xm: #00d7a7;
+  --badge-it: #ff6f61;
+  --badge-mptm: #d4e157;
+  --badge-at9: #4dd0e1;
+  --badge-adx: #ff9f1c;
+  --badge-hca: #f06292;
+  --badge-wem: #26a69a;
+  --badge-nintendo: #ef5350;
+  --badge-rsn: #8b93a7;
+  --badge-zip: #7a8494;
+  --badge-pack: #8f98aa;
+}
+
+body.vgmplayNativeMode {
+  margin: 0;
+  background: var(--native-bg);
+  color: var(--native-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+body.vgmplayNativeMode > .vgmplayContainer {
+  position: absolute !important;
+  left: -10000px !important;
+  top: -10000px !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.native-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--native-bg);
+}
+
+.native-topbar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--native-surface);
+  border-bottom: 1px solid var(--native-border);
+}
+
+.native-brand {
+  font-weight: 700;
+  color: var(--native-accent-bright);
+  letter-spacing: 0.4px;
+}
+
+.native-path {
+  min-width: 0;
+  max-width: 440px;
+  color: var(--native-text-muted);
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.native-spacer {
+  flex: 1;
+}
+
+.native-settings-btn {
+  height: 28px;
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  background: var(--native-bg);
+  color: var(--native-text-dim);
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.native-settings-btn:hover {
+  border-color: var(--native-focus);
+  color: var(--native-text);
+}
+
+.native-settings-popover {
+  position: absolute;
+  top: 36px;
+  right: 292px;
+  z-index: 10;
+  padding: 10px 12px;
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  background: var(--native-surface-alt);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  color: var(--native-text);
+  font-size: 12px;
+}
+
+.native-settings-popover label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.native-search {
+  width: 260px;
+  height: 28px;
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  background: var(--native-bg);
+  color: var(--native-text);
+  padding: 0 10px;
+  outline: none;
+}
+
+.native-search:focus {
+  border-color: var(--native-focus);
+}
+
+.native-main {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.native-library {
+  width: 340px;
+  min-width: 260px;
+  display: flex;
+  flex-direction: column;
+  background: var(--native-surface);
+  border-right: 1px solid var(--native-border);
+}
+
+.native-panel-title {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--native-border);
+  color: var(--native-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.native-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.native-row {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-left: 2px solid transparent;
+  user-select: none;
+  cursor: default;
+}
+
+.native-row:hover {
+  background: var(--native-hover);
+}
+
+.native-row.selected {
+  background: var(--native-selected);
+  border-left-color: var(--native-accent);
+}
+
+.native-row.warn {
+  border-left-color: var(--native-warning);
+}
+
+.native-indent {
+  flex: 0 0 auto;
+}
+
+.native-expander {
+  width: 28px;
+  height: 24px;
+  line-height: 24px;
+  color: var(--native-text-muted);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  flex: 0 0 auto;
+}
+
+.native-row:hover .native-expander {
+  color: var(--native-accent-bright);
+}
+
+.native-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--native-text-dim);
+}
+
+.native-row.folder > .native-name {
+  color: var(--native-text);
+  font-weight: 600;
+}
+
+.native-row.archive > .native-name,
+.native-row.pack > .native-name {
+  color: var(--native-accent-bright);
+}
+
+.native-badge {
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: white;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+  letter-spacing: 0.4px;
+}
+
+.badge-spc { background: var(--badge-spc); }
+.badge-vgm { background: var(--badge-vgm); }
+.badge-vgz { background: var(--badge-vgz); }
+.badge-ssf { background: var(--badge-ssf); }
+.badge-psf { background: var(--badge-psf); }
+.badge-nsf { background: var(--badge-nsf); }
+.badge-gbs { background: var(--badge-gbs); color: #15220e; }
+.badge-hes { background: var(--badge-hes); color: #2c160b; }
+.badge-kss { background: var(--badge-kss); }
+.badge-midi { background: var(--badge-midi); color: #2b230e; }
+.badge-mod { background: var(--badge-mod); color: #05202a; }
+.badge-s3m { background: var(--badge-s3m); }
+.badge-xm { background: var(--badge-xm); color: #06251e; }
+.badge-it { background: var(--badge-it); color: #2e0e0a; }
+.badge-mptm { background: var(--badge-mptm); color: #24280a; }
+.badge-at9 { background: var(--badge-at9); color: #08272c; }
+.badge-adx { background: var(--badge-adx); color: #2c1800; }
+.badge-hca { background: var(--badge-hca); }
+.badge-wem { background: var(--badge-wem); }
+.badge-nintendo { background: var(--badge-nintendo); }
+.badge-rsn { background: var(--badge-rsn); }
+.badge-zip { background: var(--badge-zip); }
+.badge-pack { background: var(--badge-pack); }
+
+.native-warning-mark {
+  color: var(--native-warning);
+  font-size: 12px;
+}
+
+.native-pager {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  color: var(--native-text-muted);
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 10px;
+}
+
+.native-pager button {
+  border: 1px solid var(--native-border);
+  border-radius: 3px;
+  background: var(--native-surface-alt);
+  color: var(--native-accent-bright);
+  font-size: 10px;
+  padding: 1px 8px;
+}
+
+.native-info {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 16px 20px;
+}
+
+.native-help {
+  max-width: 460px;
+  margin-top: 32px;
+  color: var(--native-text-muted);
+  line-height: 1.8;
+}
+
+.native-section {
+  margin-bottom: 16px;
+}
+
+.native-cover-wrap {
+  margin: 0 0 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--native-border);
+}
+
+.native-cover {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid var(--native-border);
+  border-radius: 6px;
+  background: var(--native-surface);
+}
+
+.native-section-title {
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--native-border);
+  color: var(--native-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.native-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--native-text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.native-status {
+  font-size: 11px;
+  color: var(--native-text-dim);
+}
+
+.native-status.playable { color: var(--native-success); }
+.native-status.warning { color: var(--native-warning); }
+.native-status.error { color: var(--native-error); }
+
+.native-info-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 3px 0;
+}
+
+.native-info-key {
+  min-width: 130px;
+  color: var(--native-text-muted);
+}
+
+.native-info-value {
+  min-width: 0;
+  text-align: right;
+  color: var(--native-text);
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.native-info-path {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  background: var(--native-surface);
+  color: var(--native-text-dim);
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.native-comments {
+  color: var(--native-text);
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.native-alert {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid #5a4a18;
+  border-radius: 4px;
+  background: #3a3018;
+  color: var(--native-warning);
+}
+
+.native-player {
+  height: 42px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  border-top: 1px solid var(--native-border);
+  background: #15162a;
+}
+
+.native-player button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  background: var(--native-surface);
+  color: var(--native-text-dim);
+}
+
+.native-player button.active {
+  background: var(--native-accent);
+  color: white;
+}
+
+.native-now {
+  flex: 1;
+  min-width: 0;
+}
+
+.native-now-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--native-text);
+  font-weight: 600;
+}
+
+.native-now-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--native-text-muted);
+  font-size: 10px;
+}
+
+.native-time {
+  color: var(--native-text-muted);
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 10px;
+}
+
+.native-progress {
+  width: 150px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--native-surface);
+  overflow: hidden;
+}
+
+.native-progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--native-accent);
+}
+
+.native-volume {
+  width: 72px;
+}

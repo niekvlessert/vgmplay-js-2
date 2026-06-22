@@ -88,6 +88,14 @@
     mime = @"application/json";
   else if ([path hasSuffix:@".png"])
     mime = @"image/png";
+  else if ([path hasSuffix:@".jpg"] || [path hasSuffix:@".jpeg"])
+    mime = @"image/jpeg";
+  else if ([path hasSuffix:@".webp"])
+    mime = @"image/webp";
+  else if ([path hasSuffix:@".gif"])
+    mime = @"image/gif";
+  else if ([path hasSuffix:@".bmp"])
+    mime = @"image/bmp";
   else if ([path hasSuffix:@".svg"])
     mime = @"image/svg+xml";
 
@@ -125,6 +133,12 @@
 @property(strong) WKWebView *webView;
 @property(strong) LocalFileHandler *handler;
 - (void)loadMusicFromFolder:(NSString *)dirPath;
+- (NSString *)nativeConfigPath;
+- (NSString *)nativeArchiveMetaPath;
+- (NSDictionary *)loadNativeConfig;
+- (NSDictionary *)loadNativeArchiveMeta;
+- (void)saveNativeConfig:(NSDictionary *)config;
+- (void)saveNativeArchiveMeta:(NSDictionary *)metadata;
 @end
 
 @implementation AppWindowController
@@ -171,6 +185,21 @@
     [config setURLSchemeHandler:self.handler forURLScheme:@"vgmplay"];
     NSLog(@"URL scheme handler registered for 'vgmplay'");
 
+    NSDictionary *nativeConfig = [self loadNativeConfig];
+    NSDictionary *nativeArchiveMeta = [self loadNativeArchiveMeta];
+    NSData *nativeConfigData = [NSJSONSerialization dataWithJSONObject:nativeConfig options:0 error:nil];
+    NSData *nativeArchiveMetaData = [NSJSONSerialization dataWithJSONObject:nativeArchiveMeta options:0 error:nil];
+    NSString *nativeConfigJson = nativeConfigData ? [[NSString alloc] initWithData:nativeConfigData encoding:NSUTF8StringEncoding] : @"{}";
+    NSString *nativeArchiveMetaJson = nativeArchiveMetaData ? [[NSString alloc] initWithData:nativeArchiveMetaData encoding:NSUTF8StringEncoding] : @"{}";
+    NSString *nativeConfigScript = [NSString stringWithFormat:
+      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@;",
+      nativeConfigJson ?: @"{}",
+      nativeArchiveMetaJson ?: @"{}"];
+    WKUserScript *nativeConfigUserScript = [[WKUserScript alloc] initWithSource:nativeConfigScript
+                                                                  injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                               forMainFrameOnly:YES];
+    [config.userContentController addUserScript:nativeConfigUserScript];
+
     // Enable Web Inspector (Safari → Develop → VGMPlay)
     [config.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
     NSLog(@"Web Inspector enabled");
@@ -201,6 +230,9 @@
                                                     forMainFrameOnly:YES];
     [config.userContentController addUserScript:userScript];
     [config.userContentController addScriptMessageHandler:self name:@"consoleLog"];
+    [config.userContentController addScriptMessageHandler:self name:@"nativeSaveConfig"];
+    [config.userContentController addScriptMessageHandler:self name:@"nativeSaveArchiveMeta"];
+    [config.userContentController addScriptMessageHandler:self name:@"nativeOpenFile"];
     NSLog(@"Console logging bridge injected");
 
     [window.contentView addSubview:self.webView];
@@ -208,7 +240,7 @@
     NSLog(@"Window frame: %@", NSStringFromRect(window.frame));
     NSLog(@"WebView added to window");
 
-    NSURL *url = [NSURL URLWithString:@"vgmplay:///index.html"];
+    NSURL *url = [NSURL URLWithString:@"vgmplay:///native-index.html"];
     NSLog(@"Loading URL: %@", url.absoluteString);
     [self.webView loadRequest:[NSURLRequest requestWithURL:url]];
     NSLog(@"Load request sent to WebView");
@@ -272,7 +304,77 @@
     NSString *level = body[@"level"] ?: @"unknown";
     NSString *msg = body[@"message"] ?: @"";
     NSLog(@"JS Console [%@]: %@", level, msg);
+  } else if ([message.name isEqualToString:@"nativeSaveConfig"]) {
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+      [self saveNativeConfig:(NSDictionary *)message.body];
+    }
+  } else if ([message.name isEqualToString:@"nativeSaveArchiveMeta"]) {
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+      [self saveNativeArchiveMeta:(NSDictionary *)message.body];
+    }
+  } else if ([message.name isEqualToString:@"nativeOpenFile"]) {
+    NSString *path = nil;
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+      id rawPath = ((NSDictionary *)message.body)[@"path"];
+      if ([rawPath isKindOfClass:[NSString class]]) path = (NSString *)rawPath;
+    } else if ([message.body isKindOfClass:[NSString class]]) {
+      path = (NSString *)message.body;
+    }
+    if (path.length > 0) {
+      [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path]];
+    }
   }
+}
+
+- (NSString *)nativeConfigPath {
+  NSString *home = NSHomeDirectory();
+  return [[home stringByAppendingPathComponent:@".vgmplay_js"] stringByAppendingPathComponent:@"config.json"];
+}
+
+- (NSString *)nativeArchiveMetaPath {
+  NSString *home = NSHomeDirectory();
+  return [[home stringByAppendingPathComponent:@".vgmplay_js"] stringByAppendingPathComponent:@"archive-meta.json"];
+}
+
+- (NSDictionary *)loadNativeConfig {
+  NSString *path = [self nativeConfigPath];
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data) return @{ @"showUnsupported" : @NO };
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![json isKindOfClass:[NSDictionary class]]) return @{ @"showUnsupported" : @NO };
+  NSMutableDictionary *config = [@{ @"showUnsupported" : @NO } mutableCopy];
+  [config addEntriesFromDictionary:(NSDictionary *)json];
+  return config;
+}
+
+- (NSDictionary *)loadNativeArchiveMeta {
+  NSString *path = [self nativeArchiveMetaPath];
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data) return @{ @"version" : @1, @"packsBySha" : @{}, @"quick" : @{} };
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![json isKindOfClass:[NSDictionary class]]) return @{ @"version" : @1, @"packsBySha" : @{}, @"quick" : @{} };
+  return (NSDictionary *)json;
+}
+
+- (void)saveNativeConfig:(NSDictionary *)config {
+  NSString *path = [self nativeConfigPath];
+  NSString *dir = [path stringByDeletingLastPathComponent];
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  NSMutableDictionary *safeConfig = [@{ @"showUnsupported" : @NO } mutableCopy];
+  if ([config[@"showUnsupported"] respondsToSelector:@selector(boolValue)]) {
+    safeConfig[@"showUnsupported"] = @([config[@"showUnsupported"] boolValue]);
+  }
+  NSData *data = [NSJSONSerialization dataWithJSONObject:safeConfig options:NSJSONWritingPrettyPrinted error:nil];
+  if (data) [data writeToFile:path atomically:YES];
+}
+
+- (void)saveNativeArchiveMeta:(NSDictionary *)metadata {
+  NSString *path = [self nativeArchiveMetaPath];
+  NSString *dir = [path stringByDeletingLastPathComponent];
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  if (![NSJSONSerialization isValidJSONObject:metadata]) return;
+  NSData *data = [NSJSONSerialization dataWithJSONObject:metadata options:NSJSONWritingPrettyPrinted error:nil];
+  if (data) [data writeToFile:path atomically:YES];
 }
 
 #pragma mark Menu Actions
@@ -305,66 +407,117 @@
   NSURL *dirURL = [NSURL fileURLWithPath:dirPath];
   NSFileManager *fm = [NSFileManager defaultManager];
 
-  NSSet *extensions = [NSSet setWithArray:@[
-    @"zip",     @"7z",  @"rar",     @"vgm", @"vgz", @"spc",  @"nsf",
-    @"nsfe",    @"gbs", @"hes",     @"sap", @"ay",  @"kss",  @"psf",
-    @"minipsf", @"usf", @"miniusf", @"mp3", @"ogg", @"flac", @"wav",
-    @"s3m",     @"it",  @"mod",     @"xm"
+  NSSet *archiveExtensions = [NSSet setWithArray:@[
+    @"zip", @"7z", @"rar", @"rsn", @"vgmz", @"vgmdz", @"vgmpack", @"vigamup"
+  ]];
+  NSSet *imageExtensions = [NSSet setWithArray:@[
+    @"png", @"jpg", @"jpeg", @"webp", @"gif", @"bmp"
+  ]];
+  NSSet *supportExtensions = [NSSet setWithArray:@[
+    @"mwk", @"psflib", @"usflib", @"m3u", @"txt", @"trackinfo", @"gameinfo"
+  ]];
+  NSSet *playableExtensions = [NSSet setWithArray:@[
+    @"vgm", @"vgz", @"spc", @"nsf", @"nsfe", @"gbs", @"hes", @"sap",
+    @"ay", @"kss", @"kssx", @"kscc", @"psf", @"minipsf", @"ssf",
+    @"minissf", @"dsf", @"minidsf", @"usf", @"miniusf", @"mus", @"lmp",
+    @"mid", @"midi", @"rmi", @"s3m", @"it", @"mod", @"xm", @"mptm",
+    @"stm", @"mtm", @"669", @"amf", @"dmf", @"far", @"imf", @"med",
+    @"okt", @"ptm", @"ult", @"umx", @"mwm", @"mgs", @"mbm", @"mp3",
+    @"ogg", @"flac", @"wav", @"ape", @"m4a", @"aac", @"opus", @"wma",
+    @"aif", @"aiff", @"aifc", @"bfstm", @"bcstm", @"brstm", @"adx",
+    @"hca", @"dsp", @"idsp", @"vag", @"vgs", @"fsb", @"wem", @"xma",
+    @"xma2", @"at3", @"at9", @"aa3", @"ac3", @"ast", @"bnsf", @"caf",
+    @"dts", @"genh", @"hps", @"mca", @"msf", @"npsf", @"nus3bank",
+    @"pcm", @"rsd", @"rwav", @"strm", @"swav", @"txth", @"txtp",
+    @"vab", @"vas", @"xwb", @"xwm", @"ymf", @"zsm"
   ]];
 
-  NSMutableArray *files = [NSMutableArray array];
+  NSMutableArray *items = [NSMutableArray array];
   NSDirectoryEnumerator<NSURL *> *enumerator =
       [fm enumeratorAtURL:dirURL
-  includingPropertiesForKeys:nil
+  includingPropertiesForKeys:@[NSURLFileSizeKey, NSURLContentModificationDateKey, NSURLIsRegularFileKey]
                      options:0
                 errorHandler:nil];
 
   for (NSURL *fileURL in enumerator) {
+    NSNumber *isRegular = nil;
+    [fileURL getResourceValue:&isRegular forKey:NSURLIsRegularFileKey error:nil];
+    if (isRegular && !isRegular.boolValue) continue;
     NSString *ext = fileURL.pathExtension.lowercaseString;
-    if ([extensions containsObject:ext]) {
-      [files addObject:fileURL.path];
+    NSString *kind = nil;
+    if ([archiveExtensions containsObject:ext])
+      kind = @"archive";
+    else if ([playableExtensions containsObject:ext])
+      kind = @"playable";
+    else if ([imageExtensions containsObject:ext])
+      kind = @"image";
+    else if ([supportExtensions containsObject:ext])
+      kind = @"unsupported";
+    else
+      kind = @"unsupported";
+
+    NSString *filePath = fileURL.path;
+    NSString *relativePath = filePath;
+    if ([relativePath hasPrefix:dirPath]) {
+      relativePath = [relativePath substringFromIndex:dirPath.length];
+      if ([relativePath hasPrefix:@"/"]) relativePath = [relativePath substringFromIndex:1];
     }
-  }
-
-  if (files.count == 0) {
-    NSString *distPath = [dirPath stringByAppendingPathComponent:@"dist"];
-    BOOL isDir = NO;
-    if ([fm fileExistsAtPath:distPath isDirectory:&isDir] && isDir) {
-      NSURL *distURL = [NSURL fileURLWithPath:distPath];
-      NSDirectoryEnumerator<NSURL *> *distEnum =
-          [fm enumeratorAtURL:distURL
-  includingPropertiesForKeys:nil
-                     options:0
-                errorHandler:nil];
-      for (NSURL *fileURL in distEnum) {
-        NSString *ext = fileURL.pathExtension.lowercaseString;
-        if ([extensions containsObject:ext]) {
-          [files addObject:fileURL.path];
-        }
-      }
-    }
-  }
-
-  [files sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
-
-  NSMutableArray *jsArray = [NSMutableArray array];
-  for (NSString *filePath in files) {
+    NSNumber *size = nil;
+    NSDate *mtime = nil;
+    [fileURL getResourceValue:&size forKey:NSURLFileSizeKey error:nil];
+    [fileURL getResourceValue:&mtime forKey:NSURLContentModificationDateKey error:nil];
     NSString *escapedPath =
         [filePath stringByAddingPercentEncodingWithAllowedCharacters:
                       [NSCharacterSet URLPathAllowedCharacterSet]];
-    [jsArray
-        addObject:[NSString stringWithFormat:@"'vgmplay://%@'", escapedPath]];
+    NSMutableDictionary *item = [@{
+      @"url" : [NSString stringWithFormat:@"vgmplay://%@", escapedPath],
+      @"name" : fileURL.lastPathComponent ?: relativePath,
+      @"relativePath" : relativePath,
+      @"nativePath" : filePath,
+      @"kind" : kind,
+      @"sizeBytes" : size ?: @0
+    } mutableCopy];
+    if (mtime) item[@"mtime"] = @((long long)mtime.timeIntervalSince1970);
+    [items addObject:item];
   }
 
-  if (jsArray.count > 0) {
+  [items sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+    return [a[@"relativePath"] localizedCaseInsensitiveCompare:b[@"relativePath"]];
+  }];
+
+  if (items.count > 0) {
     [[NSUserDefaults standardUserDefaults] setObject:dirPath
                                               forKey:@"LastFolderPath"];
     [[NSUserDefaults standardUserDefaults] synchronize];
 
-    NSString *js = [NSString
-        stringWithFormat:@"var files = [%@]; files.forEach(f => "
-                         @"window.vgmPlayInstance.loadZIPWithVGMFromURL(f));",
-                         [jsArray componentsJoinedByString:@","]];
+    NSError *jsonError = nil;
+    NSDictionary *payload = @{
+      @"items" : items,
+      @"options" : @{
+        @"rootName" : dirPath.lastPathComponent ?: @"Music Library",
+        @"rootUrl" : dirPath
+      }
+    };
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:payload
+                                                       options:0
+                                                         error:&jsonError];
+    if (!jsonData) {
+      NSLog(@"loadMusicFromFolder: Failed to encode JSON: %@", jsonError.localizedDescription);
+      return;
+    }
+    NSString *json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    NSString *js = [NSString stringWithFormat:
+        @"(function(payload){"
+         "var attempts=0;"
+         "function load(){"
+         "if(window.vgmPlayInstance&&window.vgmPlayInstance.loadNativeLibraryIndex){"
+         "window.vgmPlayInstance.loadNativeLibraryIndex(payload.items,payload.options||{});return;}"
+         "if(++attempts<200)setTimeout(load,50);"
+         "else console.error('[VGM Native] Timed out waiting for native library API');"
+         "}"
+         "load();"
+         "})(%@);",
+        json];
     [self.webView evaluateJavaScript:js completionHandler:nil];
   }
 }

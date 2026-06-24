@@ -253,6 +253,11 @@ body.vgmplayNativeMode > .vgmplayContainer {
   color: var(--native-text);
 }
 
+.native-row.disabled-inspecting {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
 .native-badge {
   flex: 0 0 auto;
   min-width: 34px;

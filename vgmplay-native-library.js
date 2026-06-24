@@ -470,7 +470,7 @@
       for (const list of this.children.values()) {
         list.sort((a, b) => {
           const rank = { folder: 0, archive: 1, pack: 1, archiveGame: 2, archiveTrack: 3, trackPart: 3, track: 4, unsupported: 5 };
-          return a.name.localeCompare(b.name) || (rank[a.type] - rank[b.type]);
+          return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }) || (rank[a.type] - rank[b.type]);
         });
       }
       for (const entry of Array.from(entries)) {
@@ -535,6 +535,15 @@
         list = list.filter((entry) => entry.type !== 'unsupported');
       }
       if (this.matchedIds) list = list.filter((entry) => this.matchedIds.has(entry.id));
+
+      list = Array.from(list);
+      const rank = { folder: 0, archive: 1, pack: 1, archiveGame: 2, archiveTrack: 3, trackPart: 3, track: 4, unsupported: 5 };
+      list.sort((a, b) => {
+        const nameA = this.displayNameFor(a);
+        const nameB = this.displayNameFor(b);
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' }) || (rank[a.type] - rank[b.type]);
+      });
+
       const total = list.length;
       const offset = this.pageOffsets[parentId] || 0;
       const shouldPaginate = parentId !== 'root' && total > PAGE_SIZE;
@@ -545,20 +554,11 @@
 
     renderRow(entry, depth, container) {
       const row = document.createElement('div');
-      row.className = `native-row ${entry.type}${entry.id === this.selectedId ? ' selected' : ''}${entry.warnings && entry.warnings.length ? ' warn' : ''}`;
-      const showFilenames = !!this.config.showFilenames;
-      let displayName = entry.name;
-      if (!showFilenames && entry.metadata) {
-        const m = entry.metadata;
-        if (isArchiveEntry(entry)) {
-          if (m.gameTitle || m.title) displayName = m.gameTitle || m.title;
-        } else if (entry.type === 'track' || entry.type === 'archiveTrack') {
-          const trackTitle = m.trackTitle || '';
-          if (trackTitle) displayName = trackTitle;
-        } else if (entry.type === 'trackPart' && entry.metadata && entry.metadata.trackTitle) {
-          displayName = entry.metadata.trackTitle;
-        }
-      }
+      const isMultiTrack = entry.format && FORMAT_INFO[entry.format] && FORMAT_INFO[entry.format].multiTrack;
+      const displayType = isMultiTrack ? 'archive' : entry.type;
+      const isInspecting = this.isAncestorInspecting(entry);
+      row.className = `native-row ${displayType}${entry.id === this.selectedId ? ' selected' : ''}${entry.warnings && entry.warnings.length ? ' warn' : ''}${isInspecting ? ' disabled-inspecting' : ''}`;
+      const displayName = this.displayNameFor(entry);
       const duration = entry.metadata && entry.metadata.duration ? entry.metadata.duration : '';
       row.innerHTML = `
         <span class="native-indent" style="width:${depth * 16}px"></span>
@@ -636,6 +636,7 @@
     }
 
     select(entry) {
+      if (this.isAncestorInspecting(entry)) return;
       this.selectedId = entry.id;
       this.showInfo(entry);
       if (entry.playable && this.hasChildren(entry)) {
@@ -659,6 +660,7 @@
     }
 
     open(entry) {
+      if (this.isAncestorInspecting(entry)) return;
       if (entry.playable) {
         this.playEntry(entry);
         return;
@@ -868,6 +870,7 @@
 
     async playEntry(entry) {
       if (!entry || !entry.item || !entry.item.url) return;
+      if (this.isAncestorInspecting(entry)) return;
       this._manualStopRequested = false;
       this.selectedId = entry.id;
       this.playingEntry = entry;
@@ -2161,8 +2164,62 @@
       }
     }
 
+    isAncestorInspecting(entry) {
+      let cur = entry && entry.parentId ? this.byId.get(entry.parentId) : null;
+      while (cur) {
+        if (cur.archiveInspecting) return true;
+        cur = cur.parentId ? this.byId.get(cur.parentId) : null;
+      }
+      return false;
+    }
+
+    displayNameFor(entry) {
+      if (!entry) return '';
+      const showFilenames = !!this.config.showFilenames;
+      let displayName = entry.name || '';
+      if (!showFilenames && entry.metadata) {
+        const m = entry.metadata;
+        if (isArchiveEntry(entry)) {
+          if (m.gameTitle || m.title) displayName = m.gameTitle || m.title;
+        } else if (entry.type === 'track' || entry.type === 'archiveTrack') {
+          const trackTitle = m.trackTitle || '';
+          if (trackTitle) displayName = trackTitle;
+        } else if (entry.type === 'trackPart' && entry.metadata && entry.metadata.trackTitle) {
+          displayName = entry.metadata.trackTitle;
+        }
+      }
+      return displayName;
+    }
+
+    flattenPlayableTree(parentId = 'root') {
+      let list = this.children.get(parentId) || [];
+      list = list.filter((entry) => !entry.hidden);
+      if (!this.config.showUnsupported) {
+        list = list.filter((entry) => entry.type !== 'unsupported');
+      }
+      if (this.matchedIds) list = list.filter((entry) => this.matchedIds.has(entry.id));
+
+      const rank = { folder: 0, archive: 1, pack: 1, archiveGame: 2, archiveTrack: 3, trackPart: 3, track: 4, unsupported: 5 };
+      list = Array.from(list).sort((a, b) => {
+        const nameA = this.displayNameFor(a);
+        const nameB = this.displayNameFor(b);
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' }) || (rank[a.type] - rank[b.type]);
+      });
+
+      let result = [];
+      for (const entry of list) {
+        if (entry.playable) {
+          result.push(entry);
+        }
+        if (this.hasChildren(entry)) {
+          result = result.concat(this.flattenPlayableTree(entry.id));
+        }
+      }
+      return result;
+    }
+
     playableEntries() {
-      return this.entries.filter((entry) => entry && entry.playable);
+      return this.flattenPlayableTree('root');
     }
 
     playAdjacentEntry(direction) {

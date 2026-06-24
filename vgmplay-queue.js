@@ -145,7 +145,7 @@ export function installQueue(VGMPlay_js) {
 										console.error('[VGM] processRarBuffer is not available. Archive modules may not be loaded yet.');
 										next();
 									}
-								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
+								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.ssf') || lower.endsWith('.minissf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 									classContext.processPSFBuffer(byteArray, job.data).then(next);
 								} else if (lower.endsWith('.zip')) {
 									classContext.processZipBuffer(byteArray, job.data).then(next);
@@ -174,7 +174,7 @@ export function installQueue(VGMPlay_js) {
 						console.error('[VGM] processRarBuffer is not available. Archive modules may not be loaded yet.');
 						next();
 					}
-				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
+				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.ssf') || lower.endsWith('.minissf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 					classContext.processPSFBuffer(job.data, job.name).then(next);
 				} else if (lower.endsWith('.zip')) {
 					classContext.processZipBuffer(job.data, job.name).then(next);

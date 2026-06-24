@@ -3,6 +3,7 @@
 
   const PAGE_SIZE = 10;
   const ARCHIVE_META_VERSION = 1;
+  const TRACK_META_VERSION = 1;
   const ARCHIVE_EXTS = new Set(['zip', '7z', 'rar', 'rsn', 'vgmz', 'vgmdz', 'vgmpack', 'vigamup']);
   const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp']);
   const DEFAULT_CONFIG = { showUnsupported: false, showFilenames: false, imageOverview: true, volume: 80 };
@@ -59,6 +60,10 @@
     VGMPACK: 'badge-pack',
     VGMZ: 'badge-vgz',
     VGMDZ: 'badge-vgz',
+    FLAC: 'badge-flac',
+    APE: 'badge-ape',
+    MBM: 'badge-mbm',
+    MGS: 'badge-kss',
     VIGAMUP: 'badge-pack'
   };
   const FORMAT_INFO = {
@@ -74,7 +79,12 @@
     VGZ: { content: 'Compressed VGM command stream', backend: 'libvgm' },
     PSF: { content: 'PlayStation sequenced music', backend: 'Highly Experimental' },
     SSF: { content: 'Saturn sequenced music', backend: 'LazyUSF/SSF' },
+    MINISSF: { content: 'Saturn sequenced music', backend: 'LazyUSF/SSF' },
     MIDI: { content: 'MIDI sequence', backend: 'MIDI synthesizer' },
+    MBM: { content: 'MSX MoonBlaster module', backend: 'KSS' },
+    MGS: { content: 'MSX music sequence', backend: 'KSS' },
+    FLAC: { content: 'FLAC audio stream', backend: 'Native decoder' },
+    APE: { content: 'Monkey audio stream', backend: 'Monkey audio decoder' },
     MOD: { content: 'Tracker module', backend: 'OpenMPT' },
     S3M: { content: 'Tracker module', backend: 'OpenMPT' },
     XM: { content: 'Tracker module', backend: 'OpenMPT' },
@@ -179,6 +189,7 @@
       this.rootUrl = '';
       this.config = { ...DEFAULT_CONFIG, ...(window.VGMPLAY_NATIVE_CONFIG || {}) };
       this.archiveMetaCache = this.loadArchiveMetaCache();
+      this.trackMetaCache = this.loadTrackMetaCache();
       this.infoMode = 'help';
       this.homeRomsLoaded = false;
       this.mount();
@@ -302,6 +313,7 @@
       }
       if (this.progressTrackEl) {
         this.progressTrackEl.addEventListener('click', (e) => {
+          if (this.player && this.player.loopMode === 1) return;
           if (!this.player || !this.player.trackLengthSeconds) return;
           const rect = this.progressTrackEl.getBoundingClientRect();
           const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -313,6 +325,8 @@
         const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
         if (tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable)) return;
         if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
           if (this.settingsPopover && !this.settingsPopover.hidden) {
             this.settingsPopover.hidden = true;
             return;
@@ -331,12 +345,23 @@
         }
         if (e.key === ' ' || e.code === 'Space') {
           e.preventDefault();
+          e.stopImmediatePropagation();
           this.togglePlay();
           return;
         }
-        if (e.key === 'ArrowLeft') { this.prevTrack(); return; }
-        if (e.key === 'ArrowRight') { this.nextTrack(); return; }
-      });
+        if (e.key === 'ArrowLeft' || e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          this.prevTrack();
+          return;
+        }
+        if (e.key === 'ArrowRight' || e.key === 'n' || e.key === 'N') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          this.nextTrack();
+          return;
+        }
+      }, true);
       this._syncPlayStateInterval = setInterval(() => this.syncPlayState(), 500);
       if (this.config.imageOverview !== false) this.showImageOverview();
       else this.showHelp();
@@ -423,6 +448,7 @@
           format: unsupported ? '' : format,
           playable: !archive && !unsupported,
           inspectable: !unsupported,
+          pendingExpandable: !archive && !unsupported && !!(FORMAT_INFO[format] && FORMAT_INFO[format].multiTrack),
           expanded: false,
           metadata,
           warnings: this.warningsFor(item, format),
@@ -441,12 +467,13 @@
       }
       for (const list of this.children.values()) {
         list.sort((a, b) => {
-          const rank = { folder: 0, archive: 1, pack: 1, archiveTrack: 2, trackPart: 2, track: 3, unsupported: 4 };
+          const rank = { folder: 0, archive: 1, pack: 1, archiveGame: 2, archiveTrack: 3, trackPart: 3, track: 4, unsupported: 5 };
           return (rank[a.type] - rank[b.type]) || a.name.localeCompare(b.name);
         });
       }
-      for (const entry of entries) {
+      for (const entry of Array.from(entries)) {
         if (isArchiveEntry(entry)) this.applyCachedArchivePreview(entry);
+        else if (entry.playable) this.applyCachedTrackPreview(entry);
       }
     }
 
@@ -501,6 +528,7 @@
 
     renderChildren(parentId, depth, container) {
       let list = this.children.get(parentId) || [];
+      list = list.filter((entry) => !entry.hidden);
       if (!this.config.showUnsupported) {
         list = list.filter((entry) => entry.type !== 'unsupported');
       }
@@ -523,10 +551,8 @@
         if (isArchiveEntry(entry)) {
           if (m.gameTitle || m.title) displayName = m.gameTitle || m.title;
         } else if (entry.type === 'track' || entry.type === 'archiveTrack') {
-          const game = m.game || '';
           const trackTitle = m.trackTitle || '';
           if (trackTitle) displayName = trackTitle;
-          else if (game && game !== displayName) displayName = game;
         } else if (entry.type === 'trackPart' && entry.metadata && entry.metadata.trackTitle) {
           displayName = entry.metadata.trackTitle;
         }
@@ -536,9 +562,8 @@
         <span class="native-indent" style="width:${depth * 16}px"></span>
         <span class="native-expander">${this.hasChildren(entry) ? (entry.expanded ? '&#9662;' : '&#9656;') : ''}</span>
         <span class="native-name">${escapeHtml(displayName)}</span>
-        ${entry.innerFormat ? `<span class="native-badge ${BADGE_CLASS[entry.innerFormat] || ''}">${escapeHtml(entry.innerFormat)}</span>` : ''}
-        ${entry.format ? `<span class="native-badge ${BADGE_CLASS[entry.format] || ''}">${escapeHtml(entry.format)}</span>` : ''}
         ${duration ? `<span class="native-duration">${escapeHtml(duration)}</span>` : ''}
+        ${this.renderFormatBadges(entry)}
         ${entry.warnings && entry.warnings.length ? '<span class="native-warning-mark">!</span>' : ''}`;
       row.dataset.entryId = entry.id;
       row.addEventListener('mouseenter', () => this.hover(entry));
@@ -569,13 +594,29 @@
     }
 
     hasChildren(entry) {
-      return (this.children.get(entry.id) || []).length > 0;
+      return (this.children.get(entry.id) || []).length > 0 || !!entry.pendingExpandable;
+    }
+
+    renderFormatBadges(entry) {
+      const values = [];
+      if (entry.innerFormats && entry.innerFormats.length) {
+        for (const format of entry.innerFormats) values.push(format);
+      } else if (entry.innerFormat) {
+        values.push(entry.innerFormat);
+      }
+      if (entry.format) values.push(entry.format);
+      const unique = [];
+      for (const value of values) {
+        if (value && !unique.includes(value)) unique.push(value);
+      }
+      return unique.slice(0, 4).map((format) => `<span class="native-badge ${BADGE_CLASS[format] || ''}">${escapeHtml(format)}</span>`).join('');
     }
 
     hover(entry) {
       clearTimeout(this.hoverTimer);
       this._lastHoveredEntry = entry;
       this.hoverTimer = setTimeout(() => {
+        if (this.infoMode === 'overview') return;
         this.showInfo(entry);
         if (isArchiveEntry(entry)) {
           return;
@@ -596,8 +637,13 @@
       this.selectedId = entry.id;
       this.showInfo(entry);
       if (entry.playable && this.hasChildren(entry)) {
-        entry.expanded = !entry.expanded;
-        if (entry.expanded && !(entry.id in this.pageOffsets)) this.pageOffsets[entry.id] = 0;
+        const children = this.children.get(entry.id) || [];
+        if (entry.pendingExpandable && !children.length) {
+          this.inspectEntry(entry, { expand: true });
+        } else {
+          entry.expanded = !entry.expanded;
+          if (entry.expanded && !(entry.id in this.pageOffsets)) this.pageOffsets[entry.id] = 0;
+        }
       } else if (isArchiveEntry(entry)) {
         this.inspectArchive(entry, { expand: !this.hasChildren(entry) });
       } else if (entry.inspectable) {
@@ -639,6 +685,8 @@
       this.infoMode = 'overview';
       const entries = this.entries.filter((entry) => {
         if (!entry || entry.id === 'root' || entry.type === 'folder') return false;
+        if (entry.parentId !== 'root') return false;
+        if (entry.type === 'archiveTrack' || entry.type === 'trackPart') return false;
         const m = entry.metadata || {};
         return !!(m.coverDataUrl || m.coverUrl);
       });
@@ -802,6 +850,7 @@
 
     async playEntry(entry) {
       if (!entry || !entry.item || !entry.item.url) return;
+      this._manualStopRequested = false;
       this.selectedId = entry.id;
       this.playingEntry = entry;
       this.statusEl.textContent = 'Loading';
@@ -820,6 +869,7 @@
         const playPath = entry.trackPath || path;
         await this.player.checkEverythingReady();
         await this.preloadNativeHomeRoms();
+        this.player._nativeLibraryApp = this;
         const noticeStart = Array.isArray(this.player.noPlayableNotices) ? this.player.noPlayableNotices.length : 0;
         const game = {
           files: entry.archiveGameFiles || [{ filepath: path }],
@@ -919,6 +969,7 @@
         metadata.chip = metadata.chip || this.chipLabel(entry.format);
 
         const tracks = this.inspectMultiTrack(entry, path);
+        entry.pendingExpandable = false;
         if (tracks.length) {
           metadata.trackCount = tracks.length;
           entry.expanded = !!options.expand;
@@ -928,6 +979,7 @@
         }
         entry.metadata = metadata;
         entry.inspected = true;
+        this.saveTrackMetadata(entry);
       } catch (e) {
         console.error('[VGM Native] Failed to inspect local entry', e);
         entry.metadata = { ...(entry.metadata || {}), status: 'Metadata unavailable' };
@@ -997,6 +1049,7 @@
       const entries = result.entries || [];
       const fileDataByPath = result.fileDataByPath || new Map();
       const tracks = [];
+      const unsupported = [];
       const support = [];
       let cover = null;
       const archiveTitle = baseName(entry.path).replace(/\.[^.]+$/, '');
@@ -1005,6 +1058,21 @@
       await this.player.checkEverythingReady();
 
       const imageCandidates = [];
+      const addUnsupported = (rel, data) => {
+        if (!rel || !data || this.isPlayablePath(rel) || this.isImagePath(rel) || this.isArchiveSupportPath(rel)) return;
+        unsupported.push({
+          path: rel,
+          name: baseName(rel),
+          format: formatOf({ name: rel }),
+          metadata: {
+            title: baseName(rel),
+            status: 'Unsupported inside archive',
+            content: 'Unsupported file',
+            container: dirname(rel),
+            estimatedMemory: data.length ? this.formatSize(data.length) : ''
+          }
+        });
+      };
       for (const archiveEntry of entries) {
         const rel = archiveEntry && archiveEntry.filepath ? archiveEntry.filepath : '';
         const lower = rel.toLowerCase();
@@ -1014,14 +1082,21 @@
         if (lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo') || lower.endsWith('.m3u')) {
           support.push({ path: rel, sizeBytes: data.length });
         }
+        addUnsupported(rel, data);
       }
       cover = await this.pickArchiveCover(imageCandidates, archiveBase);
+
+      const vigamupMeta = await this.buildVigamupMetadata(entry, entries, fileDataByPath, root, archiveTitle, archiveBase, sha);
+      if (vigamupMeta) return { ...vigamupMeta, unsupported };
 
       let index = 0;
       for (const archiveEntry of entries) {
         const rel = archiveEntry && archiveEntry.filepath ? archiveEntry.filepath : '';
         const data = fileDataByPath.get(rel);
-        if (!rel || !data || !this.isPlayablePath(rel)) continue;
+        if (!rel || !data) continue;
+        if (!this.isPlayablePath(rel)) {
+          continue;
+        }
         const fsPath = `${root}/${rel}`.replace(/[\\]+/g, '/');
         this.writeBytesToFs(fsPath, data);
         const trackMeta = this.metadataForPath(fsPath, rel);
@@ -1059,9 +1134,139 @@
         trackCount: tracks.length,
         coverDataUrl: cover ? cover.dataUrl : '',
         coverPath: cover ? cover.path : '',
+        innerFormats: this.topTrackFormats(tracks, 4),
         support,
-        tracks
+        tracks,
+        unsupported
       };
+    }
+
+    async buildVigamupMetadata(entry, entries, fileDataByPath, root, archiveTitle, archiveBase, sha) {
+      const entryFormat = formatOf(entry);
+      const kssFiles = [];
+      const infoByStem = new Map();
+      const tracksByStem = new Map();
+      const imagesByStem = new Map();
+      for (const archiveEntry of entries) {
+        const rel = archiveEntry && archiveEntry.filepath ? archiveEntry.filepath : '';
+        const data = fileDataByPath.get(rel);
+        if (!rel || !data) continue;
+        const lower = rel.toLowerCase();
+        const stem = baseName(rel).replace(/\.[^.]+$/, '').toLowerCase();
+        if (lower.endsWith('.kss') || lower.endsWith('.kssx') || lower.endsWith('.kscc')) kssFiles.push(rel);
+        else if (lower.endsWith('.gameinfo')) infoByStem.set(stem, this.decodeText(data));
+        else if (lower.endsWith('.trackinfo')) tracksByStem.set(stem, this.decodeText(data));
+        else if (this.isImagePath(lower)) imagesByStem.set(stem, { rel, data });
+      }
+      if (!kssFiles.length) return null;
+      const flatVigamupShape = kssFiles.length > 1 && (infoByStem.size || tracksByStem.size || imagesByStem.size);
+      if (entryFormat !== 'VIGAMUP' && !flatVigamupShape) return null;
+
+      const games = [];
+      const allTracks = [];
+      let packCover = null;
+      for (const rel of kssFiles.sort((a, b) => a.localeCompare(b))) {
+        const data = fileDataByPath.get(rel);
+        const stem = baseName(rel).replace(/\.[^.]+$/, '').toLowerCase();
+        const fsPath = `${root}/${rel}`.replace(/[\\]+/g, '/');
+        this.writeBytesToFs(fsPath, data);
+        const gameInfo = this.parseGameInfo(infoByStem.get(stem) || '');
+        const gameTitle = gameInfo.full_title || gameInfo.title || baseName(rel).replace(/\.[^.]+$/, '');
+        const image = imagesByStem.get(stem);
+        const coverDataUrl = image ? this.bytesToDataUrl(image.data, this.mimeForImagePath(image.rel)) : '';
+        if (!packCover && coverDataUrl) packCover = { dataUrl: coverDataUrl, path: image.rel };
+        const trackInfo = this.parseKssTrackInfo(tracksByStem.get(stem) || '');
+        const count = Number(this.player.GetKSSTrackCountDirect ? this.player.GetKSSTrackCountDirect(fsPath) : 0) || 0;
+        const trkMin = Number(this.player.GetKSSTrackMinDirect ? this.player.GetKSSTrackMinDirect(fsPath) : 0) || 0;
+        const tracks = [];
+        const sourceEntries = trackInfo.length ? trackInfo : Array.from({ length: Math.max(1, count) }, (_, i) => ({ index: i, title: '' }));
+        for (const item of sourceEntries) {
+          let trackIndex = item.index;
+          if (trackIndex == null && item.num != null) trackIndex = item.num - trkMin;
+          if (trackIndex == null || trackIndex < 0) continue;
+          if (count && trackIndex >= count) continue;
+          const trackPath = `${fsPath}|track=${trackIndex}`;
+          const title = item.title || (this.player.GetKSSTrackNameDirect ? this.player.GetKSSTrackNameDirect(fsPath, trackIndex) : '') || `Track ${trackIndex + 1}`;
+          const length = item.lengthSec || this.readLength(trackPath);
+          const track = {
+            path: rel,
+            trackPathSuffix: `|track=${trackIndex}`,
+            name: title,
+            format: 'KSS',
+            metadata: {
+              title,
+              trackTitle: title,
+              game: gameTitle,
+              system: 'MSX',
+              status: 'Playable',
+              content: 'MSX/SMS music container',
+              backend: 'KSS',
+              chip: 'KSS',
+              container: rel,
+              duration: length ? this.formatTime(length) : '',
+              lengthSec: length || 0,
+              coverDataUrl
+            }
+          };
+          tracks.push(track);
+          allTracks.push(track);
+        }
+        games.push({
+          name: gameTitle,
+          path: rel,
+          format: 'KSS',
+          coverDataUrl,
+          gameInfo,
+          trackCount: tracks.length,
+          tracks
+        });
+      }
+
+      return {
+        version: ARCHIVE_META_VERSION,
+        sha256: sha,
+        title: archiveTitle,
+        archiveName: entry.name,
+        innerFormat: '',
+        innerFormats: this.topTrackFormats(allTracks, 4),
+        sizeBytes: entry.item.sizeBytes || 0,
+        mtime: entry.item.mtime || 0,
+        trackCount: allTracks.length,
+        coverDataUrl: packCover ? packCover.dataUrl : '',
+        coverPath: packCover ? packCover.path : '',
+        support: [],
+        tracks: allTracks,
+        games
+      };
+    }
+
+    decodeText(bytes) {
+      try {
+        return new TextDecoder('utf-8').decode(bytes);
+      } catch (e) {
+        let s = '';
+        for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+        return s;
+      }
+    }
+
+    parseGameInfo(text) {
+      const fields = {};
+      String(text || '').split(/\r?\n/).forEach((line) => {
+        const idx = line.indexOf(':');
+        if (idx <= 0) return;
+        fields[line.substring(0, idx).trim().toLowerCase()] = line.substring(idx + 1).trim();
+      });
+      return fields;
+    }
+
+    parseKssTrackInfo(text) {
+      if (!text) return [];
+      try {
+        const meta = this.player && this.player._parseKssTxt ? this.player._parseKssTxt(text) : null;
+        if (meta && meta.entries) return meta.entries;
+      } catch (e) {}
+      return [];
     }
 
     metadataForPath(fsPath, relPath) {
@@ -1102,30 +1307,84 @@
       entry.archiveSha = archiveMeta.sha256;
       entry.archiveInspected = true;
       entry.archiveVerified = !!options.verified;
+      const playableTrackCount = archiveMeta.trackCount || (archiveMeta.tracks ? archiveMeta.tracks.length : 0);
+      entry.hidden = playableTrackCount <= 0;
       entry.metadata = {
         ...(entry.metadata || {}),
         title: archiveMeta.title || (entry.metadata && entry.metadata.title) || entry.name,
         gameTitle: archiveMeta.title || '',
         status: options.verified ? 'Archive indexed' : 'Archive preview from cache',
         sha256: archiveMeta.sha256,
-        trackCount: archiveMeta.trackCount || (archiveMeta.tracks ? archiveMeta.tracks.length : 0),
+        trackCount: playableTrackCount,
         coverDataUrl: archiveMeta.coverDataUrl || (entry.metadata && entry.metadata.coverDataUrl) || '',
         coverUrl: (entry.metadata && entry.metadata.coverUrl) || '',
         content: (entry.metadata && entry.metadata.content) || 'Archive container',
         backend: 'Archive reader'
       };
+      if (entry.hidden) {
+        entry.expanded = false;
+        this.replaceChildren(entry.id, []);
+        if (this.selectedId === entry.id) this.selectedId = null;
+        if (this.playingEntry && this.playingEntry.id === entry.id) this.playingEntry = null;
+        if (this.config.imageOverview !== false) this.showImageOverview();
+        else this.showHelp();
+        this.renderTree();
+        return;
+      }
       entry.innerFormat = archiveMeta.innerFormat || '';
-      const children = (archiveMeta.tracks || []).map((track, index) => this.archiveTrackFromMeta(entry, track, index));
+      entry.innerFormats = archiveMeta.innerFormats || (entry.innerFormat ? [entry.innerFormat] : []);
+      let children = [];
+      if (archiveMeta.games && archiveMeta.games.length) {
+        children = archiveMeta.games.map((game, index) => this.archiveGameFromMeta(entry, game, index));
+      } else {
+        children = (archiveMeta.tracks || []).map((track, index) => this.archiveTrackFromMeta(entry, track, index));
+      }
+      children = children.concat((archiveMeta.unsupported || []).map((item, index) => this.archiveUnsupportedFromMeta(entry, item, index)));
       this.replaceChildren(entry.id, children);
+      if (archiveMeta.games && archiveMeta.games.length) {
+        archiveMeta.games.forEach((game, gameIndex) => {
+          const parentId = `${entry.id}:game:${gameIndex}`;
+          const tracks = (game.tracks || []).map((track, trackIndex) => this.archiveTrackFromMeta(entry, track, `${gameIndex}:${trackIndex}`, parentId));
+          this.replaceChildren(parentId, tracks);
+        });
+      }
       if (options.expand) entry.expanded = true;
       this.renderTree();
     }
 
-    archiveTrackFromMeta(parent, track, index) {
+    archiveGameFromMeta(parent, game, index) {
+      return {
+        id: `${parent.id}:game:${index}`,
+        parentId: parent.id,
+        type: 'archiveGame',
+        name: game.name || `Game ${index + 1}`,
+        format: game.format || '',
+        playable: false,
+        inspectable: false,
+        expanded: false,
+        item: parent.item,
+        path: parent.path,
+        archiveParentId: parent.id,
+        metadata: {
+          title: game.name || `Game ${index + 1}`,
+          gameTitle: game.name || '',
+          status: 'Game indexed',
+          trackCount: game.trackCount || (game.tracks ? game.tracks.length : 0),
+          coverDataUrl: game.coverDataUrl || '',
+          coverUrl: '',
+          content: 'VIGAMUP game',
+          backend: 'Archive reader',
+          format: game.format || ''
+        },
+        warnings: parent.warnings || []
+      };
+    }
+
+    archiveTrackFromMeta(parent, track, index, parentId = parent.id) {
       const format = track.format || formatOf({ name: track.path });
       return {
         id: `${parent.id}:archive:${index}`,
-        parentId: parent.id,
+        parentId,
         type: 'archiveTrack',
         name: track.name || baseName(track.path),
         format,
@@ -1146,6 +1405,28 @@
           coverUrl: parent.metadata && parent.metadata.coverUrl || ''
         },
         warnings: parent.warnings || []
+      };
+    }
+
+    archiveUnsupportedFromMeta(parent, item, index) {
+      const format = item.format || formatOf({ name: item.path });
+      return {
+        id: `${parent.id}:unsupported:${index}`,
+        parentId: parent.id,
+        type: 'unsupported',
+        name: item.name || baseName(item.path),
+        format: '',
+        playable: false,
+        inspectable: false,
+        expanded: false,
+        item: parent.item,
+        path: item.path,
+        metadata: {
+          ...(item.metadata || {}),
+          format,
+          container: `${parent.name} / ${dirname(item.path)}`
+        },
+        warnings: []
       };
     }
 
@@ -1186,6 +1467,19 @@
       return bestCount === (tracks || []).length ? best : '';
     }
 
+    topTrackFormats(tracks, limit = 4) {
+      const counts = new Map();
+      const order = [];
+      for (const track of tracks || []) {
+        if (!track.format) continue;
+        if (!counts.has(track.format)) order.push(track.format);
+        counts.set(track.format, (counts.get(track.format) || 0) + 1);
+      }
+      return order
+        .sort((a, b) => (counts.get(b) - counts.get(a)) || a.localeCompare(b))
+        .slice(0, limit);
+    }
+
     inspectMultiTrack(entry, path) {
       const info = FORMAT_INFO[entry.format] || {};
       if (!info.multiTrack) return [];
@@ -1195,6 +1489,19 @@
         if ((entry.format === 'KSS' || entry.format === 'KSSX' || entry.format === 'KSCC') && this.player.GetKSSTrackCountDirect) {
           count = Number(this.player.GetKSSTrackCountDirect(path)) || 0;
           getName = this.player.GetKSSTrackNameDirect ? (i) => this.player.GetKSSTrackNameDirect(path, i) : null;
+          if (count > 64) {
+            let hasNamedTrack = false;
+            const probeCount = Math.min(count, 16);
+            for (let i = 0; i < probeCount; i++) {
+              try {
+                if (getName && getName(i)) {
+                  hasNamedTrack = true;
+                  break;
+                }
+              } catch (e) {}
+            }
+            if (!hasNamedTrack) return [];
+          }
         } else if (this.player.GetGMETrackCountDirect) {
           count = Number(this.player.GetGMETrackCountDirect(path)) || 0;
           getName = this.player.GetGMETrackNameDirect ? (i) => this.player.GetGMETrackNameDirect(path, i) : null;
@@ -1228,6 +1535,7 @@
         path: parent.path,
         fsPath: path,
         trackPath,
+        pendingTrackIndex: index,
         metadata: {
           ...(parent.metadata || {}),
           title: name,
@@ -1244,11 +1552,15 @@
 
     replaceChildren(parentId, children) {
       const oldChildren = this.children.get(parentId) || [];
-      for (const child of oldChildren) {
+      const removeChild = (child) => {
+        const nested = this.children.get(child.id) || [];
+        for (const nestedChild of nested) removeChild(nestedChild);
+        this.children.delete(child.id);
         this.byId.delete(child.id);
         const index = this.entries.findIndex((entry) => entry.id === child.id);
         if (index >= 0) this.entries.splice(index, 1);
-      }
+      };
+      for (const child of oldChildren) removeChild(child);
       this.children.set(parentId, children);
       for (const child of children) {
         this.entries.push(child);
@@ -1275,6 +1587,9 @@
       try { if (this.player._fileExists && this.player._fileExists(path)) FS.unlink(path); } catch (e) {}
       FS.writeFile(path, bytes);
       entry.fsPath = path;
+      if (entry.pendingTrackIndex != null) {
+        entry.trackPath = `${path}|track=${entry.pendingTrackIndex}`;
+      }
       return path;
     }
 
@@ -1365,6 +1680,11 @@
       return IMAGE_EXTS.has(extOf(path));
     }
 
+    isArchiveSupportPath(path) {
+      const lower = String(path || '').toLowerCase();
+      return lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo') || lower.endsWith('.m3u');
+    }
+
     writeBytesToFs(path, bytes) {
       this.ensureDir(path);
       try { if (this.player._fileExists && this.player._fileExists(path)) FS.unlink(path); } catch (e) {}
@@ -1435,7 +1755,34 @@
       }
     }
 
+    loadTrackMetaCache() {
+      const fallback = { version: TRACK_META_VERSION, tracks: {} };
+      const raw = window.VGMPLAY_NATIVE_TRACK_META;
+      if (raw && raw.version === TRACK_META_VERSION && raw.tracks) return raw;
+      try {
+        const local = JSON.parse(localStorage.getItem('vgmplayNativeTrackMeta') || 'null');
+        if (local && local.version === TRACK_META_VERSION && local.tracks) return local;
+      } catch (e) {}
+      return fallback;
+    }
+
+    saveTrackMetaCache() {
+      const cache = this.trackMetaCache || { version: TRACK_META_VERSION, tracks: {} };
+      cache.version = TRACK_META_VERSION;
+      if (!cache.tracks) cache.tracks = {};
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeSaveTrackMeta) {
+        window.webkit.messageHandlers.nativeSaveTrackMeta.postMessage(cache);
+      } else {
+        try { localStorage.setItem('vgmplayNativeTrackMeta', JSON.stringify(cache)); } catch (e) {}
+      }
+    }
+
     archiveQuickKey(entry) {
+      const item = entry.item || {};
+      return [this.rootUrl || this.rootName || '', entry.path || entry.name || '', item.sizeBytes || 0, item.mtime || 0].join('|');
+    }
+
+    trackQuickKey(entry) {
       const item = entry.item || {};
       return [this.rootUrl || this.rootName || '', entry.path || entry.name || '', item.sizeBytes || 0, item.mtime || 0].join('|');
     }
@@ -1450,6 +1797,80 @@
       const cached = sha && this.archiveMetaCache.packsBySha && this.archiveMetaCache.packsBySha[sha];
       if (!cached) return;
       this.applyArchiveMetadata(entry, cached, { expand: false, verified: false });
+    }
+
+    applyCachedTrackPreview(entry) {
+      const cache = this.trackMetaCache && this.trackMetaCache.tracks;
+      const cached = cache && cache[this.trackQuickKey(entry)];
+      if (!cached) return;
+      entry.metadata = {
+        ...(entry.metadata || {}),
+        ...(cached.metadata || {}),
+        status: 'Playable'
+      };
+      entry.inspected = true;
+      const tracks = Array.isArray(cached.tracks) ? cached.tracks : [];
+      entry.pendingExpandable = false;
+      if (tracks.length) {
+        entry.metadata.trackCount = tracks.length;
+        this.replaceChildren(entry.id, tracks.map((track, index) => this.cachedTrackPartFromMeta(entry, track, index)));
+      }
+    }
+
+    cachedTrackPartFromMeta(parent, track, index) {
+      const metadata = track && track.metadata ? track.metadata : {};
+      const trackIndex = track && track.trackIndex != null ? track.trackIndex : index;
+      const name = (track && track.name) || metadata.trackTitle || `Track ${trackIndex + 1}`;
+      return {
+        id: `${parent.id}:track:${trackIndex}`,
+        parentId: parent.id,
+        type: 'trackPart',
+        name,
+        format: parent.format,
+        playable: true,
+        inspectable: false,
+        expanded: false,
+        item: parent.item,
+        path: parent.path,
+        pendingTrackIndex: trackIndex,
+        metadata: {
+          ...(parent.metadata || {}),
+          ...metadata,
+          title: name,
+          trackTitle: metadata.trackTitle || name,
+          status: 'Playable',
+          container: parent.name,
+          trackNumber: trackIndex + 1
+        },
+        warnings: parent.warnings || []
+      };
+    }
+
+    saveTrackMetadata(entry) {
+      if (!entry || !entry.playable || entry.type === 'trackPart') return;
+      if (!this.trackMetaCache) this.trackMetaCache = { version: TRACK_META_VERSION, tracks: {} };
+      if (!this.trackMetaCache.tracks) this.trackMetaCache.tracks = {};
+      const children = (this.children.get(entry.id) || []).filter((child) => child.type === 'trackPart');
+      this.trackMetaCache.tracks[this.trackQuickKey(entry)] = {
+        metadata: {
+          ...(entry.metadata || {}),
+          status: 'Playable'
+        },
+        tracks: children.map((child, index) => {
+          const trackIndex = child.pendingTrackIndex != null
+            ? child.pendingTrackIndex
+            : ((child.metadata && child.metadata.trackNumber) ? child.metadata.trackNumber - 1 : index);
+          return {
+            name: child.name,
+            trackIndex,
+            metadata: {
+              ...(child.metadata || {}),
+              status: 'Playable'
+            }
+          };
+        })
+      };
+      this.saveTrackMetaCache();
     }
 
     yieldToUI() {
@@ -1499,6 +1920,7 @@
     togglePlay() {
       if (!this.playingEntry) return;
       if (this.player.isPlaybackPaused) {
+        this._manualStopRequested = false;
         this.player.play();
         this.statusEl.textContent = 'Playing';
         this.playBtn.textContent = 'II';
@@ -1512,6 +1934,7 @@
     }
 
     stop() {
+      this._manualStopRequested = true;
       if (this.player && this.player.stop) this.player.stop();
       this.statusEl.textContent = 'Stopped';
       this.playBtn.textContent = '▶';
@@ -1525,10 +1948,28 @@
       this.fakeProgress = 0;
       this.timeTotalEl.textContent = '0:00';
       this.progressTimer = setInterval(() => {
-        if (!this.player || !this.player.isVGMPlaying) return;
+        if (!this.player) return;
+        if (!this.player.isVGMPlaying) {
+          this.handleStoppedPlayback();
+          return;
+        }
         if (this.player.isPlaybackPaused) return;
         this.updateProgress();
       }, 250);
+    }
+
+    handleStoppedPlayback() {
+      const p = this.player;
+      if (!p || !this.playingEntry || this._manualStopRequested || this._nativeAdvancingAfterStop) return;
+      if (p.loopMode === 1) return;
+      const endKey = this.playingEntry.id;
+      if (this._nativeEndedKey === endKey) return;
+      this._nativeEndedKey = endKey;
+      this._nativeAdvancingAfterStop = true;
+      setTimeout(() => {
+        this._nativeAdvancingAfterStop = false;
+        this.nextTrack();
+      }, 0);
     }
 
     updateProgress() {
@@ -1543,18 +1984,19 @@
       } else {
         current = this.fakeProgress;
       }
-      if (current > total && total > 0) current = total;
+      const isTrackLooping = !!(p && p.loopMode === 1);
+      if (!isTrackLooping && current > total && total > 0) current = total;
       this.timeTotalEl.textContent = total ? this.formatTime(total) : '0:00';
       this.timeCurrentEl.textContent = this.formatTime(current);
-      this.progressEl.style.width = total ? Math.min(100, (current / total) * 100) + '%' : '0';
-      if (p && p.trackLengthSeconds && current >= total && !p.isPlaybackPaused) {
+      this.progressEl.style.width = (!isTrackLooping && total) ? Math.min(100, (current / total) * 100) + '%' : '0';
+      if (p && p.trackLengthSeconds && !isTrackLooping && current >= total && !p.isPlaybackPaused) {
         const endKey = this.playingEntry ? this.playingEntry.id : 'current';
         if (p.loopMode === 2 && this._nativeEndedKey !== endKey) {
           this._nativeEndedKey = endKey;
           this.nextTrack();
         } else if (p.loopMode !== 1 && this._nativeEndedKey !== endKey) {
           this._nativeEndedKey = endKey;
-          this.stop();
+          this.nextTrack();
         }
       } else {
         this._nativeEndedKey = '';
@@ -1571,7 +2013,7 @@
       if (p.isPlaybackPaused) {
         this.playBtn.textContent = '▶';
         this.playBtn.classList.remove('active');
-        if (p.isVGMPlaying) this.statusEl.textContent = 'Paused';
+        this.statusEl.textContent = p.isVGMPlaying ? 'Paused' : 'Stopped';
       } else if (p.isVGMPlaying) {
         this.playBtn.textContent = 'II';
         this.playBtn.classList.add('active');
@@ -1591,12 +2033,35 @@
       }
     }
 
+    playableEntries() {
+      return this.entries.filter((entry) => entry && entry.playable);
+    }
+
+    playAdjacentEntry(direction) {
+      const list = this.playableEntries();
+      if (!list.length) return;
+      const currentIndex = this.playingEntry ? list.findIndex((entry) => entry.id === this.playingEntry.id) : -1;
+      let nextIndex;
+      if (currentIndex < 0) {
+        nextIndex = direction >= 0 ? 0 : list.length - 1;
+      } else {
+        nextIndex = (currentIndex + direction + list.length) % list.length;
+      }
+      const next = list[nextIndex];
+      if (!next) return;
+      this.selectedId = next.id;
+      this.expandAncestors(next);
+      this.renderTree();
+      this.scrollEntryIntoView(next);
+      this.playEntry(next);
+    }
+
     prevTrack() {
-      this.player && this.player.changeTrack && this.player.changeTrack('previous');
+      this.playAdjacentEntry(-1);
     }
 
     nextTrack() {
-      this.player && this.player.changeTrack && this.player.changeTrack('next');
+      this.playAdjacentEntry(1);
     }
 
     toggleBass() {

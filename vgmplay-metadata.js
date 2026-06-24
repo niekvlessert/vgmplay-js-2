@@ -104,6 +104,9 @@ export function installMetadata(VGMPlay_js) {
 				if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
 					titleTarget.innerHTML += "System: Playstation<br/>";
 				}
+				if (lower.endsWith('.ssf') || lower.endsWith('.minissf')) {
+					titleTarget.innerHTML += "System: Sega Saturn<br/>";
+				}
 				if (lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
 					titleTarget.innerHTML += "System: Nintendo 64<br/>";
 				}

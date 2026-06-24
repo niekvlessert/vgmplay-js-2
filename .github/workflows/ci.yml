@@ -112,7 +112,7 @@ jobs:
             ff_extension.zip
 
   deploy-pages:
-    needs: [build-wasm, build-mac]
+    needs: [build-wasm]
     runs-on: ubuntu-latest
     environment:
       name: github-pages

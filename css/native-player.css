@@ -37,6 +37,9 @@
   --badge-adx: #ff9f1c;
   --badge-hca: #f06292;
   --badge-wem: #26a69a;
+  --badge-flac: #3db7ff;
+  --badge-ape: #b0d94c;
+  --badge-mbm: #ff7ab6;
   --badge-nintendo: #ef5350;
   --badge-rsn: #8b93a7;
   --badge-zip: #7a8494;
@@ -282,6 +285,9 @@ body.vgmplayNativeMode > .vgmplayContainer {
 .badge-adx { background: var(--badge-adx); color: #2c1800; }
 .badge-hca { background: var(--badge-hca); }
 .badge-wem { background: var(--badge-wem); }
+.badge-flac { background: var(--badge-flac); color: #061a24; }
+.badge-ape { background: var(--badge-ape); color: #20270a; }
+.badge-mbm { background: var(--badge-mbm); color: #2b0718; }
 .badge-nintendo { background: var(--badge-nintendo); }
 .badge-rsn { background: var(--badge-rsn); }
 .badge-zip { background: var(--badge-zip); }

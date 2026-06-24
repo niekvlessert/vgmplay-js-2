@@ -657,7 +657,7 @@ class VGMPlay_js {
 				if (e.keyCode == 32) e.preventDefault();
 			});
 
-			if (!this.isExtension) {
+			if (!this.isExtension && !this.nativeMode) {
 				Mousetrap.bind('space', (e) => {
 					this.togglePlayback();
 					return false;
@@ -674,11 +674,19 @@ class VGMPlay_js {
 		Mousetrap.bind('n', (e) => {
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this.libraryState === 1) return;
+			if (this.nativeMode) {
+				if (this._nativeLibraryApp) this._nativeLibraryApp.nextTrack();
+				return false;
+			}
 			this.changeTrack('next');
 		});
 		Mousetrap.bind('p', (e) => {
 			if (this._eventIsTyping && this._eventIsTyping(e)) return;
 			if (this.libraryState === 1) return;
+			if (this.nativeMode) {
+				if (this._nativeLibraryApp) this._nativeLibraryApp.prevTrack();
+				return false;
+			}
 			this.changeTrack('previous');
 		});
 		Mousetrap.bind('f', (e) => {
@@ -774,7 +782,7 @@ class VGMPlay_js {
 				}
 				continue;
 			}
-			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
+			if (this._isArchiveUrl(lower) || lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.psflib') || lower.endsWith('.ssf') || lower.endsWith('.minissf') || lower.endsWith('.ssflib') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.usflib') || lower.endsWith('.mus') || lower.endsWith('.lmp') || isMidi) {
 				const url = this.elms[ii].href;
 				this._queueURL(url, false, true);
 				// Try to fetch matching image for archives
@@ -1490,11 +1498,12 @@ class VGMPlay_js {
 			// Ensure PSF/USF library files are present (cache-restore may defer them).
 			const lowerBase = lowerFile.split('|track=')[0];
 			const isPsfFamily = lowerBase.endsWith('.psf') || lowerBase.endsWith('.minipsf') || lowerBase.endsWith('.psflib') ||
+				lowerBase.endsWith('.ssf') || lowerBase.endsWith('.minissf') || lowerBase.endsWith('.ssflib') ||
 				lowerBase.endsWith('.usf') || lowerBase.endsWith('.miniusf') || lowerBase.endsWith('.usflib');
 			if (isPsfFamily && this._ensureFileLoaded && game) {
 				const activeGame = this.games[game - 1];
 				if (activeGame && activeGame.files) {
-					const libs = activeGame.files.filter(f => f && f.filepath && (f.filepath.toLowerCase().endsWith('.psflib') || f.filepath.toLowerCase().endsWith('.usflib')));
+					const libs = activeGame.files.filter(f => f && f.filepath && (f.filepath.toLowerCase().endsWith('.psflib') || f.filepath.toLowerCase().endsWith('.ssflib') || f.filepath.toLowerCase().endsWith('.usflib')));
 					if (libs.length) {
 						if (this._setInfoLoading) this._setInfoLoading(true, 'Fetching PSF libraries...');
 						for (const lib of libs) {
@@ -1714,6 +1723,7 @@ class VGMPlay_js {
 		const p = path.toLowerCase().split('|track=')[0];
 		return p.endsWith('.vgm') || p.endsWith('.vgz') ||
 			p.endsWith('.psf') || p.endsWith('.minipsf') ||
+			p.endsWith('.ssf') || p.endsWith('.minissf') ||
 			p.endsWith('.usf') || p.endsWith('.miniusf') ||
 			p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
 			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
@@ -2385,6 +2395,16 @@ class VGMPlay_js {
 	}
 
 	async changeTrack(action) {
+		if (this.nativeMode && this._nativeLibraryApp && !this._nativeChangeDelegating) {
+			this._nativeChangeDelegating = true;
+			try {
+				if (action === "previous") this._nativeLibraryApp.prevTrack();
+				else this._nativeLibraryApp.nextTrack();
+			} finally {
+				this._nativeChangeDelegating = false;
+			}
+			return;
+		}
 		if (this.games.length === 0) return;
 
 		if (this.isRandomEnabled && action === "next") {
@@ -3354,6 +3374,16 @@ VGMPlay_js.prototype.toggleLoopMode = function () {
 };
 
 VGMPlay_js.prototype._changeTrackInGame = async function (action) {
+	if (this.nativeMode && this._nativeLibraryApp && !this._nativeChangeDelegating) {
+		this._nativeChangeDelegating = true;
+		try {
+			if (action === "previous") this._nativeLibraryApp.prevTrack();
+			else this._nativeLibraryApp.nextTrack();
+		} finally {
+			this._nativeChangeDelegating = false;
+		}
+		return;
+	}
 	if (!this.activeGame) return;
 	const list = (this.activeGame.playableList && this.activeGame.playableList.length)
 		? this.activeGame.playableList

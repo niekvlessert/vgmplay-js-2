@@ -75,6 +75,7 @@ try {
 		if (!job) return;
 		if (msg.type === 'meta') {
 			job.hasKss = !!msg.hasKss;
+			job.metadataOnly = !!msg.metadataOnly;
 			job.entries = (msg.entries || []).map((p) => ({ filepath: p }));
 			return;
 		}
@@ -107,7 +108,8 @@ try {
 			job.resolve({
 				entries: job.entries || [],
 				fileDataByPath: job.fileDataByPath,
-				hasKss: job.hasKss
+				hasKss: job.hasKss,
+				metadataOnly: !!job.metadataOnly
 });
 }
 };
@@ -230,9 +232,9 @@ this._backgroundExtractJobs.set(id, { resolve, reject, timeout, fileDataByPath: 
   });
 };
 
-VGMPlay_js.prototype._extractArchiveWithWorker = function (byteArray, kind, url) {
+VGMPlay_js.prototype._extractArchiveWithWorker = function (byteArray, kind, url, options = {}) {
 return new Promise((resolve, reject) => {
-if (this.isExtension && !this.standalone && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage && url) {
+if (!options.metadataOnly && this.isExtension && !this.standalone && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage && url) {
 this._extractArchiveViaBackground(byteArray, kind, url).then(resolve).catch(reject);
 return;
 }
@@ -255,7 +257,7 @@ hasKss: false,
 fileDataByPath: new Map()
 });
     try {
-      const payload = { type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL, debugMode: this.debugMode };
+      const payload = { type: 'extract', id, kind, buffer: byteArray.buffer, baseURL: this.baseURL, debugMode: this.debugMode, metadataOnly: !!options.metadataOnly };
       if (kind === 'rar') {
         payload.unrarMemoryMB = this.unrarMemoryMB || 1024;
         this._rarWorkersByJob.set(id, worker);

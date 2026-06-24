@@ -1199,7 +1199,7 @@ VGMPlay_js.prototype._positionSettingsWindow = function () {
 
 	VGMPlay_js.prototype._showOpl4RomError = function () {
 		const msg = this.nativeMode
-			? "YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPut yrw801.rom in the app's current folder or in your home folder, then restart or reopen the folder."
+			? "YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPut yrw801.rom in the root of the current directory or in your home folder, then restart or reopen the folder."
 			: "YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPlease upload it by dragging the file onto the 'Insert music files/archives here!' field.";
 		if (!this.noPlayableNotices.includes(msg)) {
 			this.noPlayableNotices.push(msg);

@@ -250,7 +250,7 @@ body.vgmplayNativeMode > .vgmplayContainer {
 
 .native-row.archive > .native-name,
 .native-row.pack > .native-name {
-  color: var(--native-accent-bright);
+  color: var(--native-text);
 }
 
 .native-badge {

@@ -47,7 +47,7 @@ function _isKssMultiTrackFile(path) {
 const AE_OK = 0;
 const AE_EOF = 1;
 
-async function _handleArchive(id, buffer, debugMode) {
+async function _handleArchive(id, buffer, debugMode, metadataOnly) {
   await _ensureLibArchiveLoaded();
   
   const uint8Buffer = new Uint8Array(buffer);
@@ -155,18 +155,20 @@ async function _handleArchive(id, buffer, debugMode) {
           hasKss = true;
         }
         
-        const size = archiveEntrySize(entry);
-        const data = new Uint8Array(size);
-        const dataPtr = malloc(size);
-        
-        try {
-          const readResult = archiveReadData(archive, dataPtr, size);
-          if (readResult > 0) {
-            data.set(Module.HEAPU8.subarray(dataPtr, dataPtr + readResult));
+        if (!metadataOnly) {
+          const size = archiveEntrySize(entry);
+          const data = new Uint8Array(size);
+          const dataPtr = malloc(size);
+          
+          try {
+            const readResult = archiveReadData(archive, dataPtr, size);
+            if (readResult > 0) {
+              data.set(Module.HEAPU8.subarray(dataPtr, dataPtr + readResult));
+            }
+            fileDataMap.set(pathname, data);
+          } finally {
+            free(dataPtr);
           }
-          fileDataMap.set(pathname, data);
-        } finally {
-          free(dataPtr);
         }
         
         if (debugMode && entries.length % 50 === 0) {
@@ -190,12 +192,14 @@ async function _handleArchive(id, buffer, debugMode) {
       console.warn('[Worker] Libarchive returned zero entries', errStr || '');
     }
   }
-  self.postMessage({ type: 'meta', id, entries, hasKss });
+  self.postMessage({ type: 'meta', id, entries, hasKss, metadataOnly: !!metadataOnly });
   
-  for (let i = 0; i < entries.length; i++) {
-    const path = entries[i];
-    const data = fileDataMap.get(path);
-    self.postMessage({ type: 'file', id, path, data }, [data.buffer]);
+  if (!metadataOnly) {
+    for (let i = 0; i < entries.length; i++) {
+      const path = entries[i];
+      const data = fileDataMap.get(path);
+      self.postMessage({ type: 'file', id, path, data }, [data.buffer]);
+    }
   }
   
   if (debugMode) console.log(`[Worker] Job ${id}: Libarchive extraction complete`);
@@ -211,7 +215,7 @@ self.onmessage = async (e) => {
   try {
     _ensureLoaded(msg.baseURL || '');
     if (debugMode) console.log('[Worker] Handling', msg.kind, 'archive with libarchive');
-    await _handleArchive(msg.id, msg.buffer, debugMode);
+    await _handleArchive(msg.id, msg.buffer, debugMode, !!msg.metadataOnly);
   } catch (err) {
     if (debugMode) console.error('[Worker] Error:', err);
     self.postMessage({ type: 'error', id: msg.id, message: err && err.message ? err.message : String(err) });

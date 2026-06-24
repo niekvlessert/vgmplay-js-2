@@ -304,6 +304,10 @@ if (this._initCache && !this._cacheReady) {
 					return;
 				}
 				this.stop();
+				if (this.nativeMode && this._nativeLibraryApp && this.loopMode !== 1) {
+					this._nativeLibraryApp.nextTrack();
+					return;
+				}
 				setTimeout(() => {
 					if (this.loopMode === 1 && !this.currentTrackSupportsLoop) {
 						this.loopMode = 0;
@@ -561,6 +565,10 @@ if (this._initCache && !this._cacheReady) {
 				return;
 			}
 			this.stop();
+			if (this.nativeMode && this._nativeLibraryApp && this.loopMode !== 1) {
+				this._nativeLibraryApp.nextTrack();
+				return;
+			}
 			// Small delay to let the user "see" the end
 			setTimeout(() => {
 				if (this.loopMode === 1 && !this.currentTrackSupportsLoop) {

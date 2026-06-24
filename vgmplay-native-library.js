@@ -865,6 +865,9 @@
       this.nowSourceEl.textContent = this.pathFor(entry);
       this.renderTree();
       try {
+        if (entry.type === 'archiveTrack') {
+          await this.cushionCurrentPlayback();
+        }
         const path = await this.ensureEntryInFs(entry);
         const playPath = entry.trackPath || path;
         await this.player.checkEverythingReady();
@@ -883,6 +886,9 @@
         await this.player.playFileFromFS(false, playPath, 1, 0);
         const notice = this.latestPlaybackNotice(noticeStart);
         if (notice) throw new Error(notice);
+        if (!this.player.isVGMPlaying) {
+          throw new Error(this.latestPlaybackNotice(noticeStart) || 'Playback did not start');
+        }
         this._nativeEndedKey = '';
         this.applyVolume();
         setTimeout(() => this.applyVolume(), 80);
@@ -894,11 +900,51 @@
         this.startFakeProgress();
       } catch (e) {
         console.error('[VGM Native] Failed to play local entry', e);
-        const message = e && e.message ? e.message : 'Playback failed';
+        this._manualStopRequested = true;
+        if (this.player && this.player.stop) this.player.stop();
+        const message = this.nativePlaybackErrorMessage(e && e.message ? e.message : 'Playback failed');
         this.statusEl.textContent = 'Failed';
+        this.playBtn.textContent = '▶';
+        this.playBtn.classList.remove('active');
         entry.metadata = { ...(entry.metadata || {}), status: message };
         entry.warnings = Array.from(new Set([...(entry.warnings || []), message]));
         this.showInfo(entry);
+      }
+    }
+
+    nativePlaybackErrorMessage(message) {
+      const text = String(message || '');
+      if (/yrw801\.rom|YMF278B|OPL4/i.test(text)) {
+        return 'YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPut yrw801.rom in the root of the current directory or in your home folder, then restart or reopen the folder.';
+      }
+      if (/waves\.dat|MoonSound/i.test(text)) {
+        return 'MoonSound playback requires the file waves.dat.\n\nPut waves.dat in the root of the current directory or in your home folder, then restart or reopen the folder.';
+      }
+      return text;
+    }
+
+    async cushionCurrentPlayback(buffers = 12) {
+      const p = this.player;
+      if (!p || !p.workletNode || !p.generateBuffer || !p.isVGMPlaying || p.isPlaybackPaused || p._isLoadingFile) return;
+      try {
+        if (p._checkTrackEnd) p._checkTrackEnd();
+        if (p.VGMEnded && p.VGMEnded()) return;
+      } catch (e) {
+        return;
+      }
+      for (let i = 0; i < buffers; i++) {
+        try {
+          if (!p.isVGMPlaying || p.isPlaybackPaused || (p.VGMEnded && p.VGMEnded())) break;
+          const buf = p.generateBuffer();
+          p.workletNode.port.postMessage({
+            type: 'buffer',
+            left: buf.left,
+            right: buf.right
+          }, [buf.left.buffer, buf.right.buffer]);
+        } catch (e) {
+          break;
+        }
+        if (i % 4 === 3) await this.yieldToUI();
       }
     }
 
@@ -925,7 +971,12 @@
       const fresh = notices.slice(Math.max(0, startIndex));
       for (let i = fresh.length - 1; i >= 0; i--) {
         const msg = String(fresh[i] || '');
-        if (/yrw801\.rom|waves\.dat|MT32_/i.test(msg)) return msg;
+        if (/yrw801\.rom|waves\.dat|MT32_/i.test(msg)) {
+          const normalized = this.nativePlaybackErrorMessage(msg);
+          const originalIndex = Math.max(0, startIndex) + i;
+          if (normalized !== msg) notices[originalIndex] = normalized;
+          return normalized;
+        }
       }
       return '';
     }
@@ -1004,6 +1055,7 @@
       this.statusEl.textContent = 'Hashing archive';
       this.showInfo(entry);
       try {
+        await this.cushionCurrentPlayback(20);
         const originalBytes = await this.fetchBytes(entry.item.url);
         const sha = await this.sha256Hex(originalBytes);
         const cached = this.archiveMetaCache.packsBySha[sha];
@@ -1018,12 +1070,15 @@
         entry.metadata = { ...(entry.metadata || {}), status: 'Indexing archive in background...', sha256: sha };
         this.statusEl.textContent = 'Indexing archive';
         this.showInfo(entry);
-        const result = await this.extractArchive(entry, originalBytes);
-        entry.archiveFiles = result.fileDataByPath;
-        const metadata = await this.buildArchiveMetadata(entry, result, sha);
-        this.archiveMetaCache.packsBySha[sha] = metadata;
-        this.rememberArchiveQuickKey(entry, sha);
-        this.saveArchiveMetaCache();
+        const lightIndex = this.shouldUseLightArchiveIndex() && !options.force && !options.fullIndex;
+        const result = await this.extractArchive(entry, originalBytes, { metadataOnly: lightIndex });
+        entry.archiveFiles = result.metadataOnly ? null : result.fileDataByPath;
+        const metadata = await this.buildArchiveMetadata(entry, result, sha, { lightIndex });
+        if (!metadata.lightIndex) {
+          this.archiveMetaCache.packsBySha[sha] = metadata;
+          this.rememberArchiveQuickKey(entry, sha);
+          this.saveArchiveMetaCache();
+        }
         this.applyArchiveMetadata(entry, metadata, { expand: !!options.expand, verified: true });
         this.statusEl.textContent = 'Archive ready';
       } catch (e) {
@@ -1037,17 +1092,18 @@
       }
     }
 
-    async extractArchive(entry, bytes) {
+    async extractArchive(entry, bytes, options = {}) {
       await this.player.checkEverythingReady();
       if (!this.player._extractArchiveWithWorker) throw new Error('Archive worker unavailable');
       const ext = extOf(entry.path || entry.name);
       const kind = ext === 'rar' ? 'rar' : (ext === '7z' ? '7z' : 'zip');
-      return this.player._extractArchiveWithWorker(new Uint8Array(bytes), kind, entry.name || entry.path || 'archive');
+      return this.player._extractArchiveWithWorker(new Uint8Array(bytes), kind, entry.name || entry.path || 'archive', options);
     }
 
-    async buildArchiveMetadata(entry, result, sha) {
+    async buildArchiveMetadata(entry, result, sha, options = {}) {
       const entries = result.entries || [];
       const fileDataByPath = result.fileDataByPath || new Map();
+      const metadataOnly = !!result.metadataOnly;
       const tracks = [];
       const unsupported = [];
       const support = [];
@@ -1056,10 +1112,11 @@
       const archiveBase = archiveTitle.toLowerCase();
       const root = `/native-archives/${sha}`;
       await this.player.checkEverythingReady();
+      const lightIndex = !!options.lightIndex || metadataOnly;
 
       const imageCandidates = [];
       const addUnsupported = (rel, data) => {
-        if (!rel || !data || this.isPlayablePath(rel) || this.isImagePath(rel) || this.isArchiveSupportPath(rel)) return;
+        if (!rel || this.isPlayablePath(rel) || this.isImagePath(rel) || this.isArchiveSupportPath(rel)) return;
         unsupported.push({
           path: rel,
           name: baseName(rel),
@@ -1069,7 +1126,7 @@
             status: 'Unsupported inside archive',
             content: 'Unsupported file',
             container: dirname(rel),
-            estimatedMemory: data.length ? this.formatSize(data.length) : ''
+            estimatedMemory: data && data.length ? this.formatSize(data.length) : ''
           }
         });
       };
@@ -1077,24 +1134,48 @@
         const rel = archiveEntry && archiveEntry.filepath ? archiveEntry.filepath : '';
         const lower = rel.toLowerCase();
         const data = fileDataByPath.get(rel);
-        if (!rel || !data) continue;
-        if (this.isImagePath(lower)) imageCandidates.push({ rel, lower, data });
+        if (!rel) continue;
+        if (this.isImagePath(lower) && data) imageCandidates.push({ rel, lower, data });
         if (lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo') || lower.endsWith('.m3u')) {
-          support.push({ path: rel, sizeBytes: data.length });
+          support.push({ path: rel, sizeBytes: data ? data.length : 0 });
         }
-        addUnsupported(rel, data);
+        if (data || metadataOnly) addUnsupported(rel, data);
       }
       cover = await this.pickArchiveCover(imageCandidates, archiveBase);
 
-      const vigamupMeta = await this.buildVigamupMetadata(entry, entries, fileDataByPath, root, archiveTitle, archiveBase, sha);
-      if (vigamupMeta) return { ...vigamupMeta, unsupported };
+      if (!metadataOnly) {
+        const vigamupMeta = await this.buildVigamupMetadata(entry, entries, fileDataByPath, root, archiveTitle, archiveBase, sha);
+        if (vigamupMeta) return { ...vigamupMeta, unsupported };
+      }
 
       let index = 0;
       for (const archiveEntry of entries) {
         const rel = archiveEntry && archiveEntry.filepath ? archiveEntry.filepath : '';
         const data = fileDataByPath.get(rel);
-        if (!rel || !data) continue;
+        if (!rel || (!data && !lightIndex)) continue;
         if (!this.isPlayablePath(rel)) {
+          continue;
+        }
+        if (lightIndex) {
+          const format = formatOf({ name: rel });
+          const info = FORMAT_INFO[format] || {};
+          const name = baseName(rel);
+          tracks.push({
+            path: rel,
+            name,
+            format,
+            metadata: {
+              title: name.replace(/\.[^.]+$/, ''),
+              status: 'Playable',
+              format,
+              content: info.content || 'Playable audio file',
+              backend: info.backend || '',
+              chip: info.backend || format || '',
+              container: dirname(rel)
+            }
+          });
+          index++;
+          if (index % 100 === 0) await this.yieldToUI();
           continue;
         }
         const fsPath = `${root}/${rel}`.replace(/[\\]+/g, '/');
@@ -1135,10 +1216,16 @@
         coverDataUrl: cover ? cover.dataUrl : '',
         coverPath: cover ? cover.path : '',
         innerFormats: this.topTrackFormats(tracks, 4),
+        lightIndex,
         support,
         tracks,
         unsupported
       };
+    }
+
+    shouldUseLightArchiveIndex() {
+      const p = this.player;
+      return !!(p && p.isVGMPlaying && !p.isPlaybackPaused);
     }
 
     async buildVigamupMetadata(entry, entries, fileDataByPath, root, archiveTitle, archiveBase, sha) {
@@ -1401,8 +1488,8 @@
           title: track.name || (track.metadata && track.metadata.title) || baseName(track.path),
           status: 'Playable',
           container: `${parent.name} / ${dirname(track.path)}`,
-          coverDataUrl: parent.metadata && parent.metadata.coverDataUrl || '',
-          coverUrl: parent.metadata && parent.metadata.coverUrl || ''
+          coverDataUrl: (track.metadata && track.metadata.coverDataUrl) || (parent.metadata && parent.metadata.coverDataUrl) || '',
+          coverUrl: (track.metadata && track.metadata.coverUrl) || (parent.metadata && parent.metadata.coverUrl) || ''
         },
         warnings: parent.warnings || []
       };
@@ -1597,7 +1684,7 @@
       const parent = this.byId.get(entry.archiveParentId);
       if (!parent) throw new Error('Archive parent missing');
       if (!parent.archiveFiles) {
-        await this.inspectArchive(parent, { expand: false, force: true });
+        await this.inspectArchive(parent, { expand: false, force: true, fullIndex: true });
       }
       const data = parent.archiveFiles && parent.archiveFiles.get(entry.archivePath);
       if (!data) throw new Error('Archive track bytes missing');
@@ -1976,7 +2063,10 @@
       const p = this.player;
       const total = p && p.trackLengthSeconds ? p.trackLengthSeconds : 0;
       let current = 0;
-      if (p && p.context && !p.isPlaybackPaused && p.playbackStartTime) {
+      const isTrackLooping = !!(p && p.loopMode === 1);
+      if (!isTrackLooping && p && p.visualSamplePosition && p.sampleRate) {
+        current = p.visualSamplePosition / p.sampleRate;
+      } else if (p && p.context && !p.isPlaybackPaused && p.playbackStartTime) {
         const elapsed = p.context.currentTime - p.playbackStartTime;
         current = p.startSample && p.sampleRate ? (p.startSample / p.sampleRate) + elapsed : elapsed;
       } else if (p && p.visualSamplePosition && p.sampleRate) {
@@ -1984,7 +2074,6 @@
       } else {
         current = this.fakeProgress;
       }
-      const isTrackLooping = !!(p && p.loopMode === 1);
       if (!isTrackLooping && current > total && total > 0) current = total;
       this.timeTotalEl.textContent = total ? this.formatTime(total) : '0:00';
       this.timeCurrentEl.textContent = this.formatTime(current);

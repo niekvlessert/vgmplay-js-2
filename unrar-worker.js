@@ -5,6 +5,7 @@ const _defaultBaseURL = (typeof location !== 'undefined' && location.href)
 let _modulePromise = null;
 let _baseURL = '';
 let _debugMode = false;
+let _metadataOnly = false;
 
 function _ensureLoaded(baseURL) {
   _baseURL = baseURL || _baseURL || _defaultBaseURL;
@@ -64,7 +65,14 @@ async function _handleRar(id, buffer) {
   }
 
   if (_debugMode) console.log(`[UnrarWorker] Found ${paths.length} entries for job ${id}`);
-  self.postMessage({ type: 'meta', id, entries: paths, hasKss });
+  self.postMessage({ type: 'meta', id, entries: paths, hasKss, metadataOnly: !!_metadataOnly });
+
+  if (_metadataOnly) {
+    try { Module.FS.unlink(listPath); } catch (e) {}
+    try { Module.FS.unlink(archivePath); } catch (e) {}
+    self.postMessage({ type: 'done', id });
+    return;
+  }
 
   const extractRes = Module.ccall('rar_extract_all', 'number', ['string', 'string'], [archivePath, outDir]);
   if (extractRes < 0) {
@@ -89,6 +97,7 @@ self.onmessage = async (e) => {
   const msg = e.data || {};
   const debugMode = msg.debugMode;
   _debugMode = !!debugMode;
+  _metadataOnly = !!msg.metadataOnly;
   if (_debugMode) console.log('[UnrarWorker] Received message:', msg.type, 'kind:', msg.kind, 'id:', msg.id);
   if (msg.type !== 'extract') return;
   try {

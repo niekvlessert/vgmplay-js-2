@@ -264,6 +264,7 @@ if (this._initCache && !this._cacheReady) {
 
 		// Check for end of track (crucial for background advancement)
 		this._checkTrackEnd();
+		if (!this.isVGMPlaying) return;
 
 		// Check if VGM ended (for formats without length info)
 		if (this.VGMEnded()) {

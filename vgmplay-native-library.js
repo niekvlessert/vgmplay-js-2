@@ -192,6 +192,8 @@
       this.trackMetaCache = this.loadTrackMetaCache();
       this.infoMode = 'help';
       this.homeRomsLoaded = false;
+      this._loadingTrack = false;
+      this._playSequence = 0;
       this.mount();
     }
 
@@ -779,9 +781,25 @@
     }
 
     expandAncestors(entry) {
+      let child = entry;
       let cur = entry && entry.parentId ? this.byId.get(entry.parentId) : null;
       while (cur) {
         cur.expanded = true;
+        if (cur.id !== 'root') {
+          let list = this.children.get(cur.id) || [];
+          list = list.filter((e) => !e.hidden);
+          if (!this.config.showUnsupported) {
+            list = list.filter((e) => e.type !== 'unsupported');
+          }
+          if (this.matchedIds) list = list.filter((e) => this.matchedIds.has(e.id));
+
+          const childIndex = list.findIndex((e) => e.id === child.id);
+          if (childIndex >= 0) {
+            const offset = Math.floor(childIndex / PAGE_SIZE) * PAGE_SIZE;
+            this.pageOffsets[cur.id] = offset;
+          }
+        }
+        child = cur;
         cur = cur.parentId ? this.byId.get(cur.parentId) : null;
       }
     }
@@ -853,6 +871,7 @@
       this._manualStopRequested = false;
       this.selectedId = entry.id;
       this.playingEntry = entry;
+      this.expandAncestors(entry);
       this.statusEl.textContent = 'Loading';
       const m = entry.metadata || {};
       const showGameNames = !this.config.showFilenames;
@@ -864,14 +883,23 @@
       this.nowTitleEl.textContent = nowTitle;
       this.nowSourceEl.textContent = this.pathFor(entry);
       this.renderTree();
+
+      this._playSequence = (this._playSequence || 0) + 1;
+      const seq = this._playSequence;
+      this._loadingTrack = true;
+
       try {
         if (entry.type === 'archiveTrack') {
           await this.cushionCurrentPlayback();
+          if (this._playSequence !== seq) return;
         }
         const path = await this.ensureEntryInFs(entry);
+        if (this._playSequence !== seq) return;
         const playPath = entry.trackPath || path;
         await this.player.checkEverythingReady();
+        if (this._playSequence !== seq) return;
         await this.preloadNativeHomeRoms();
+        if (this._playSequence !== seq) return;
         this.player._nativeLibraryApp = this;
         const noticeStart = Array.isArray(this.player.noPlayableNotices) ? this.player.noPlayableNotices.length : 0;
         const game = {
@@ -884,6 +912,7 @@
         this.player.games = [game];
         this.player.activeGame = game;
         await this.player.playFileFromFS(false, playPath, 1, 0);
+        if (this._playSequence !== seq) return;
         const notice = this.latestPlaybackNotice(noticeStart);
         if (notice) throw new Error(notice);
         if (!this.player.isVGMPlaying) {
@@ -891,7 +920,9 @@
         }
         this._nativeEndedKey = '';
         this.applyVolume();
-        setTimeout(() => this.applyVolume(), 80);
+        setTimeout(() => {
+          if (this._playSequence === seq) this.applyVolume();
+        }, 80);
         entry.metadata = { ...(entry.metadata || {}), loop: this.loopStatusLabel() };
         this.showInfo(entry);
         this.statusEl.textContent = 'Playing';
@@ -899,6 +930,7 @@
         this.playBtn.classList.add('active');
         this.startFakeProgress();
       } catch (e) {
+        if (this._playSequence !== seq) return;
         console.error('[VGM Native] Failed to play local entry', e);
         this._manualStopRequested = true;
         if (this.player && this.player.stop) this.player.stop();
@@ -909,6 +941,10 @@
         entry.metadata = { ...(entry.metadata || {}), status: message };
         entry.warnings = Array.from(new Set([...(entry.warnings || []), message]));
         this.showInfo(entry);
+      } finally {
+        if (this._playSequence === seq) {
+          this._loadingTrack = false;
+        }
       }
     }
 
@@ -2049,7 +2085,7 @@
 
     handleStoppedPlayback() {
       const p = this.player;
-      if (!p || !this.playingEntry || this._manualStopRequested || this._nativeAdvancingAfterStop) return;
+      if (!p || !this.playingEntry || this._manualStopRequested || this._nativeAdvancingAfterStop || this._loadingTrack) return;
       if (p.loopMode === 1) return;
       const endKey = this.playingEntry.id;
       if (this._nativeEndedKey === endKey) return;
@@ -2081,6 +2117,7 @@
       this.timeCurrentEl.textContent = this.formatTime(current);
       this.progressEl.style.width = (!isTrackLooping && total) ? Math.min(100, (current / total) * 100) + '%' : '0';
       if (p && p.trackLengthSeconds && !isTrackLooping && current >= total && !p.isPlaybackPaused) {
+        if (this._loadingTrack) return;
         const endKey = this.playingEntry ? this.playingEntry.id : 'current';
         if (p.loopMode === 2 && this._nativeEndedKey !== endKey) {
           this._nativeEndedKey = endKey;
@@ -2226,8 +2263,10 @@
       return;
     }
     if (window.nativeLibraryApp) return;
+    player.nativeMode = true;
     const app = new NativeLibraryApp(player);
     window.nativeLibraryApp = app;
+    player._nativeLibraryApp = app;
     player.loadNativeLibraryIndex = (items, options) => app.loadIndex(items, options);
     window.loadNativeLibraryIndex = (items, options) => app.loadIndex(items, options);
   }

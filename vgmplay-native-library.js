@@ -468,7 +468,7 @@
       for (const list of this.children.values()) {
         list.sort((a, b) => {
           const rank = { folder: 0, archive: 1, pack: 1, archiveGame: 2, archiveTrack: 3, trackPart: 3, track: 4, unsupported: 5 };
-          return (rank[a.type] - rank[b.type]) || a.name.localeCompare(b.name);
+          return a.name.localeCompare(b.name) || (rank[a.type] - rank[b.type]);
         });
       }
       for (const entry of Array.from(entries)) {
@@ -1377,7 +1377,7 @@
       const comments = this.readTag(fsPath, 10);
       const length = this.readLength(fsPath);
       if (title) metadata.trackTitle = title;
-      if (game) metadata.game = game;
+      if (game && format !== 'MBM') metadata.game = game;
       if (system) metadata.system = system;
       if (author) metadata.author = author;
       if (date) metadata.date = date;
@@ -1522,6 +1522,8 @@
       for (const track of tracks || []) {
         const m = track.metadata || {};
         const value = (m.game || '').trim();
+        const trackTitle = (m.trackTitle || m.title || track.name || '').trim();
+        if (value && trackTitle && value === trackTitle) continue;
         if (!value || value.length < 2) continue;
         counts.set(value, (counts.get(value) || 0) + 1);
       }

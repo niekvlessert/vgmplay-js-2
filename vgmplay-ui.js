@@ -695,8 +695,8 @@ VGMPlay_js.prototype._positionSettingsWindow = function () {
 };
 
 	VGMPlay_js.prototype._setupTooltips = function () {
-		const buttons = this.playerWindow.querySelectorAll('button');
-		const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
+		const buttons = this.playerWindow && this.playerWindow.querySelectorAll ? this.playerWindow.querySelectorAll('button') : [];
+		const tracks = this.vgmplayContainer && this.vgmplayContainer.querySelectorAll ? this.vgmplayContainer.querySelectorAll('.vgmplayTrack') : [];
 		const targets = [...buttons, ...tracks];
 		const idDescriptions = {
 			'buttonTogglePlayback': (this.isExtension ? 'Play/Pause (C)' : 'Play/Pause (Space)'),

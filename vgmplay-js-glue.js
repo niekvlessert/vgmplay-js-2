@@ -1420,6 +1420,7 @@ class VGMPlay_js {
 	}
 
 	_updateHighlight() {
+		if (!this.vgmplayContainer || !this.vgmplayContainer.querySelectorAll) return;
 		// Remove highlight from all elements
 		const tracks = this.vgmplayContainer.querySelectorAll('.vgmplayTrack');
 		tracks.forEach(track => {
@@ -3660,6 +3661,10 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 	const data = scriptEl ? scriptEl.dataset : {};
 	// Use extension options if available, otherwise build from data attributes
 	const options = window.VGMPLAY_EXTENSION_OPTIONS || {};
+	if (window.VGMPLAY_NATIVE_PLAYER) {
+		options.useAsLibrary = true;
+		options.autoScanDist = false;
+	}
 	if (!window.VGMPLAY_EXTENSION_OPTIONS) {
 		// Only add standalone from data if not using extension options
 		if (data && typeof data.standalone !== 'undefined') {

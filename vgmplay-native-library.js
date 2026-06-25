@@ -529,6 +529,16 @@
     }
 
     renderChildren(parentId, depth, container) {
+      const list = this.visibleChildren(parentId);
+      const total = list.length;
+      const offset = this.pageOffsets[parentId] || 0;
+      const shouldPaginate = parentId !== 'root' && total > PAGE_SIZE;
+      const page = shouldPaginate ? list.slice(offset, offset + PAGE_SIZE) : list;
+      for (const entry of page) this.renderRow(entry, depth, container);
+      if (shouldPaginate) this.renderPager(parentId, depth, total, offset, container);
+    }
+
+    visibleChildren(parentId) {
       let list = this.children.get(parentId) || [];
       list = list.filter((entry) => !entry.hidden);
       if (!this.config.showUnsupported) {
@@ -543,13 +553,7 @@
         const nameB = this.displayNameFor(b);
         return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' }) || (rank[a.type] - rank[b.type]);
       });
-
-      const total = list.length;
-      const offset = this.pageOffsets[parentId] || 0;
-      const shouldPaginate = parentId !== 'root' && total > PAGE_SIZE;
-      const page = shouldPaginate ? list.slice(offset, offset + PAGE_SIZE) : list;
-      for (const entry of page) this.renderRow(entry, depth, container);
-      if (shouldPaginate) this.renderPager(parentId, depth, total, offset, container);
+      return list;
     }
 
     renderRow(entry, depth, container) {
@@ -788,13 +792,7 @@
       while (cur) {
         cur.expanded = true;
         if (cur.id !== 'root') {
-          let list = this.children.get(cur.id) || [];
-          list = list.filter((e) => !e.hidden);
-          if (!this.config.showUnsupported) {
-            list = list.filter((e) => e.type !== 'unsupported');
-          }
-          if (this.matchedIds) list = list.filter((e) => this.matchedIds.has(e.id));
-
+          const list = this.visibleChildren(cur.id);
           const childIndex = list.findIndex((e) => e.id === child.id);
           if (childIndex >= 0) {
             const offset = Math.floor(childIndex / PAGE_SIZE) * PAGE_SIZE;
@@ -826,8 +824,13 @@
       this.selectedId = entry.id;
       this.expandAncestors(entry);
       if (isArchiveEntry(entry)) {
+        this.resetPageOffsetsForSubtree(entry.id);
         await this.inspectArchive(entry, { expand: true });
-        const first = (this.children.get(entry.id) || []).find((child) => child.playable);
+        const first = this.firstPlayableInSubtree(entry.id);
+        if (first) {
+          this.resetPageOffsetsForSubtree(entry.id);
+          this.expandAncestors(first);
+        }
         this.renderTree();
         this.scrollEntryIntoView(first || entry);
         if (first) this.playEntry(first);
@@ -839,6 +842,26 @@
       this.scrollEntryIntoView(entry);
       if (entry.playable) this.playEntry(entry);
       else this.showInfo(entry);
+    }
+
+    resetPageOffsetsForSubtree(parentId) {
+      delete this.pageOffsets[parentId];
+      const children = this.children.get(parentId) || [];
+      for (const child of children) {
+        delete this.pageOffsets[child.id];
+        if (this.hasChildren(child)) this.resetPageOffsetsForSubtree(child.id);
+      }
+    }
+
+    firstPlayableInSubtree(parentId) {
+      for (const entry of this.visibleChildren(parentId)) {
+        if (entry.playable) return entry;
+        if (this.hasChildren(entry)) {
+          const nested = this.firstPlayableInSubtree(entry.id);
+          if (nested) return nested;
+        }
+      }
+      return null;
     }
 
     sidecarKey(path) {
@@ -2192,20 +2215,7 @@
     }
 
     flattenPlayableTree(parentId = 'root') {
-      let list = this.children.get(parentId) || [];
-      list = list.filter((entry) => !entry.hidden);
-      if (!this.config.showUnsupported) {
-        list = list.filter((entry) => entry.type !== 'unsupported');
-      }
-      if (this.matchedIds) list = list.filter((entry) => this.matchedIds.has(entry.id));
-
-      const rank = { folder: 0, archive: 1, pack: 1, archiveGame: 2, archiveTrack: 3, trackPart: 3, track: 4, unsupported: 5 };
-      list = Array.from(list).sort((a, b) => {
-        const nameA = this.displayNameFor(a);
-        const nameB = this.displayNameFor(b);
-        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' }) || (rank[a.type] - rank[b.type]);
-      });
-
+      const list = this.visibleChildren(parentId);
       let result = [];
       for (const entry of list) {
         if (entry.playable) {

@@ -2,11 +2,12 @@
   'use strict';
 
   const PAGE_SIZE = 10;
-  const ARCHIVE_META_VERSION = 1;
-  const TRACK_META_VERSION = 1;
+  const ARCHIVE_META_VERSION = 4;
+  const TRACK_META_VERSION = 2;
   const ARCHIVE_EXTS = new Set(['zip', '7z', 'rar', 'rsn', 'vgmz', 'vgmdz', 'vgmpack', 'vigamup']);
   const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp']);
-  const DEFAULT_CONFIG = { showUnsupported: false, showFilenames: false, imageOverview: true, volume: 80 };
+  const DEFAULT_CONFIG = { showUnsupported: false, showFilenames: false, imageOverview: true, volume: 80, libraryWidth: 440 };
+  const LIBRARY_MIN_WIDTH = 440;
   const BADGE_CLASS = {
     SPC: 'badge-spc',
     VGM: 'badge-vgm',
@@ -206,6 +207,7 @@
           <div class="native-brand">VGMPlay-JS</div>
           <div class="native-path" data-role="path">No folder selected</div>
           <div class="native-spacer"></div>
+          <button class="native-topbar-btn" data-role="scan-archives" title="Scan all archives">Scan Archives</button>
           <button class="native-settings-btn" data-role="settings" title="Settings">Settings</button>
           <div class="native-settings-popover" data-role="settings-popover" hidden>
             <label><input type="checkbox" data-role="show-unsupported" /> Show unsupported files</label>
@@ -219,6 +221,7 @@
             <div class="native-panel-title">Library</div>
             <div class="native-tree" data-role="tree"></div>
           </div>
+          <div class="native-resizer" data-role="library-resizer" title="Resize library"></div>
           <div class="native-info" data-role="info"></div>
         </div>
         <div class="native-player">
@@ -244,6 +247,8 @@
       document.body.appendChild(this.root);
       this.treeEl = this.root.querySelector('[data-role="tree"]');
       this.infoEl = this.root.querySelector('[data-role="info"]');
+      this.libraryEl = this.root.querySelector('.native-library');
+      this.libraryResizerEl = this.root.querySelector('[data-role="library-resizer"]');
       this.pathEl = this.root.querySelector('[data-role="path"]');
       this.searchEl = this.root.querySelector('[data-role="search"]');
       this.nowTitleEl = this.root.querySelector('[data-role="now-title"]');
@@ -262,6 +267,7 @@
       this.reverbBtn = this.root.querySelector('[data-role="reverb"]');
       this.randomBtn = this.root.querySelector('[data-role="random"]');
       this.loopBtn = this.root.querySelector('[data-role="loop"]');
+      this.scanArchivesBtn = this.root.querySelector('[data-role="scan-archives"]');
       this.settingsBtn = this.root.querySelector('[data-role="settings"]');
       this.settingsPopover = this.root.querySelector('[data-role="settings-popover"]');
       this.showUnsupportedEl = this.root.querySelector('[data-role="show-unsupported"]');
@@ -271,6 +277,8 @@
       this.showUnsupportedEl.checked = !!this.config.showUnsupported;
       this.showFilenamesEl.checked = !!this.config.showFilenames;
       this.imageOverviewEl.checked = this.config.imageOverview !== false;
+      this.applyLibraryWidth(this.config.libraryWidth);
+      this.setupLibraryResizer();
       this.searchEl.addEventListener('input', () => this.setSearch(this.searchEl.value));
       this.treeEl.addEventListener('mouseleave', () => {
         clearTimeout(this.hoverTimer);
@@ -279,6 +287,9 @@
       this.settingsBtn.addEventListener('click', () => {
         this.settingsPopover.hidden = !this.settingsPopover.hidden;
       });
+      if (this.scanArchivesBtn) {
+        this.scanArchivesBtn.addEventListener('click', () => this.scanAllArchives());
+      }
       this.showUnsupportedEl.addEventListener('change', () => {
         this.config.showUnsupported = !!this.showUnsupportedEl.checked;
         this.saveConfig();
@@ -1121,7 +1132,7 @@
         const originalBytes = await this.fetchBytes(entry.item.url);
         const sha = await this.sha256Hex(originalBytes);
         const cached = this.archiveMetaCache.packsBySha[sha];
-        if (cached && !options.force) {
+        if (cached && !options.force && (!options.fullIndex || !cached.lightIndex)) {
           this.applyArchiveMetadata(entry, cached, { expand: !!options.expand, verified: true });
           this.rememberArchiveQuickKey(entry, sha);
           this.saveArchiveMetaCache();
@@ -1132,8 +1143,12 @@
         entry.metadata = { ...(entry.metadata || {}), status: 'Indexing archive in background...', sha256: sha };
         this.statusEl.textContent = 'Indexing archive';
         this.showInfo(entry);
-        const lightIndex = this.shouldUseLightArchiveIndex() && !options.force && !options.fullIndex;
-        const result = await this.extractArchive(entry, originalBytes, { metadataOnly: lightIndex });
+        let lightIndex = this.shouldUseLightArchiveIndex() && !options.force && !options.fullIndex && formatOf(entry) !== 'VIGAMUP';
+        let result = await this.extractArchive(entry, originalBytes, { metadataOnly: lightIndex });
+        if (result.metadataOnly && this.isVigamupArchiveShape(entry, result.entries || [])) {
+          lightIndex = false;
+          result = await this.extractArchive(entry, originalBytes, { metadataOnly: false });
+        }
         entry.archiveFiles = result.metadataOnly ? null : result.fileDataByPath;
         const metadata = await this.buildArchiveMetadata(entry, result, sha, { lightIndex });
         if (!metadata.lightIndex) {
@@ -1154,6 +1169,52 @@
       }
     }
 
+    async scanAllArchives() {
+      if (this._scanningArchives) return;
+      const archives = this.entries.filter((entry) => isArchiveEntry(entry) && !entry.hidden);
+      if (!archives.length) {
+        this.statusEl.textContent = 'No archives';
+        return;
+      }
+      this._scanningArchives = true;
+      if (this.scanArchivesBtn) {
+        this.scanArchivesBtn.disabled = true;
+        this.scanArchivesBtn.textContent = 'Scanning...';
+      }
+      let scanned = 0;
+      let skipped = 0;
+      try {
+        for (let i = 0; i < archives.length; i++) {
+          const entry = archives[i];
+          if (entry.archiveVerified && entry.archiveInspected && !entry.archiveLightIndex) {
+            skipped++;
+            continue;
+          }
+          this.selectedId = entry.id;
+          entry.metadata = { ...(entry.metadata || {}), status: `Scanning archive ${i + 1} of ${archives.length}` };
+          this.statusEl.textContent = `Scanning ${i + 1}/${archives.length}`;
+          this.showInfo(entry);
+          this.renderTree();
+          try {
+            await this.inspectArchive(entry, { expand: false, fullIndex: true });
+            scanned++;
+          } catch (e) {
+            console.warn('[VGM Native] Scan all archives skipped failed archive', entry && entry.name, e);
+          }
+          await this.yieldToUI();
+        }
+        this.statusEl.textContent = scanned ? `Scanned ${scanned}` : `Archives ready`;
+        if (skipped && scanned) this.statusEl.textContent = `Scanned ${scanned}, skipped ${skipped}`;
+      } finally {
+        this._scanningArchives = false;
+        if (this.scanArchivesBtn) {
+          this.scanArchivesBtn.disabled = false;
+          this.scanArchivesBtn.textContent = 'Scan Archives';
+        }
+        this.renderTree();
+      }
+    }
+
     async extractArchive(entry, bytes, options = {}) {
       await this.player.checkEverythingReady();
       if (!this.player._extractArchiveWithWorker) throw new Error('Archive worker unavailable');
@@ -1167,6 +1228,7 @@
       const fileDataByPath = result.fileDataByPath || new Map();
       const metadataOnly = !!result.metadataOnly;
       const tracks = [];
+      const games = [];
       const unsupported = [];
       const support = [];
       let cover = null;
@@ -1222,6 +1284,28 @@
           const format = formatOf({ name: rel });
           const info = FORMAT_INFO[format] || {};
           const name = baseName(rel);
+          if (this.isKssFormat(format)) {
+            const gameTitle = name.replace(/\.[^.]+$/, '');
+            const kssTracks = this.kssArchiveTracks(rel, format, gameTitle, {
+              status: 'Playable',
+              format,
+              content: info.content || 'MSX/SMS music container',
+              backend: info.backend || 'KSS',
+              chip: info.backend || format || '',
+              container: rel
+            });
+            games.push({
+              name: gameTitle,
+              path: rel,
+              format,
+              trackCount: kssTracks.length,
+              tracks: kssTracks
+            });
+            tracks.push(...kssTracks);
+            index += kssTracks.length;
+            if (index % 100 === 0) await this.yieldToUI();
+            continue;
+          }
           tracks.push({
             path: rel,
             name,
@@ -1243,7 +1327,26 @@
         const fsPath = `${root}/${rel}`.replace(/[\\]+/g, '/');
         this.writeBytesToFs(fsPath, data);
         const trackMeta = this.metadataForPath(fsPath, rel);
-        const containerTracks = this.inspectMultiTrack({ format: formatOf({ name: rel }) }, fsPath);
+        const format = formatOf({ name: rel });
+        if (this.isKssFormat(format)) {
+          const gameTitle = trackMeta.game || trackMeta.trackTitle || trackMeta.title || baseName(rel).replace(/\.[^.]+$/, '');
+          const kssTracks = this.kssArchiveTracks(rel, format, gameTitle, {
+            ...trackMeta,
+            container: rel
+          }, fsPath);
+          games.push({
+            name: gameTitle,
+            path: rel,
+            format,
+            trackCount: kssTracks.length,
+            tracks: kssTracks
+          });
+          tracks.push(...kssTracks);
+          index += kssTracks.length;
+          if (index % 25 === 0) await this.yieldToUI();
+          continue;
+        }
+        const containerTracks = this.inspectMultiTrack({ format: formatOf({ name: rel }), type: 'archiveTrackSource' }, fsPath);
         if (containerTracks.length) {
           for (const part of containerTracks) {
             tracks.push({
@@ -1269,7 +1372,7 @@
       return {
         version: ARCHIVE_META_VERSION,
         sha256: sha,
-        title: this.bestArchiveTitle(archiveTitle, tracks),
+        title: games.length ? archiveTitle : this.bestArchiveTitle(archiveTitle, tracks),
         archiveName: entry.name,
         innerFormat: this.commonTrackFormat(tracks),
         sizeBytes: entry.item.sizeBytes || 0,
@@ -1281,8 +1384,35 @@
         lightIndex,
         support,
         tracks,
+        games,
         unsupported
       };
+    }
+
+    kssArchiveTracks(rel, format, gameTitle, baseMetadata = {}, fsPath = '') {
+      const tracks = [];
+      for (let i = 0; i < 255; i++) {
+        let title = `Track ${i + 1}`;
+        if (fsPath && this.player.GetKSSTrackNameDirect) {
+          try { title = this.player.GetKSSTrackNameDirect(fsPath, i) || title; } catch (e) {}
+        }
+        tracks.push({
+          path: rel,
+          trackPathSuffix: `|track=${i}`,
+          name: title,
+          format,
+          metadata: {
+            ...baseMetadata,
+            title,
+            trackTitle: title,
+            game: gameTitle,
+            status: 'Playable',
+            container: rel,
+            trackNumber: i + 1
+          }
+        });
+      }
+      return tracks;
     }
 
     shouldUseLightArchiveIndex() {
@@ -1456,6 +1586,7 @@
       entry.archiveSha = archiveMeta.sha256;
       entry.archiveInspected = true;
       entry.archiveVerified = !!options.verified;
+      entry.archiveLightIndex = !!archiveMeta.lightIndex;
       const playableTrackCount = archiveMeta.trackCount || (archiveMeta.tracks ? archiveMeta.tracks.length : 0);
       entry.hidden = playableTrackCount <= 0;
       entry.metadata = {
@@ -1637,10 +1768,12 @@
       let count = 0;
       let getName = null;
       try {
-        if ((entry.format === 'KSS' || entry.format === 'KSSX' || entry.format === 'KSCC') && this.player.GetKSSTrackCountDirect) {
+        if (this.isKssFormat(entry.format) && this.player.GetKSSTrackCountDirect) {
           count = Number(this.player.GetKSSTrackCountDirect(path)) || 0;
           getName = this.player.GetKSSTrackNameDirect ? (i) => this.player.GetKSSTrackNameDirect(path, i) : null;
-          if (count > 64) {
+          if (entry.type === 'track' || entry.type === 'archiveTrackSource') {
+            count = 255;
+          } else if (count > 64) {
             let hasNamedTrack = false;
             const probeCount = Math.min(count, 16);
             for (let i = 0; i < probeCount; i++) {
@@ -1834,6 +1967,23 @@
     isArchiveSupportPath(path) {
       const lower = String(path || '').toLowerCase();
       return lower.endsWith('.txt') || lower.endsWith('.trackinfo') || lower.includes('gameinfo') || lower.endsWith('.m3u');
+    }
+
+    isKssFormat(format) {
+      return format === 'KSS' || format === 'KSSX' || format === 'KSCC';
+    }
+
+    isVigamupArchiveShape(entry, entries) {
+      if (formatOf(entry) === 'VIGAMUP') return true;
+      let kssCount = 0;
+      let hasInfo = false;
+      for (const archiveEntry of entries || []) {
+        const rel = archiveEntry && archiveEntry.filepath ? archiveEntry.filepath : String(archiveEntry || '');
+        const lower = rel.toLowerCase();
+        if (lower.endsWith('.kss') || lower.endsWith('.kssx') || lower.endsWith('.kscc')) kssCount++;
+        if (lower.endsWith('.gameinfo') || lower.endsWith('.trackinfo')) hasInfo = true;
+      }
+      return kssCount > 1 && hasInfo;
     }
 
     writeBytesToFs(path, bytes) {
@@ -2049,6 +2199,52 @@
       } else {
         try { localStorage.setItem('vgmplayNativeConfig', JSON.stringify(this.config)); } catch (e) {}
       }
+    }
+
+    clampLibraryWidth(width) {
+      const max = Math.max(LIBRARY_MIN_WIDTH, Math.floor(window.innerWidth * 0.5));
+      const value = Number(width) || LIBRARY_MIN_WIDTH;
+      return Math.max(LIBRARY_MIN_WIDTH, Math.min(max, value));
+    }
+
+    applyLibraryWidth(width) {
+      const clamped = this.clampLibraryWidth(width);
+      if (this.libraryEl) {
+        this.libraryEl.style.width = `${clamped}px`;
+        this.libraryEl.style.flexBasis = `${clamped}px`;
+      }
+      this.config.libraryWidth = clamped;
+      return clamped;
+    }
+
+    setupLibraryResizer() {
+      if (!this.libraryResizerEl || !this.libraryEl || this._libraryResizerReady) return;
+      this._libraryResizerReady = true;
+      let dragging = false;
+      const finish = () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('native-resizing-library');
+        this.saveConfig();
+      };
+      this.libraryResizerEl.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        this.libraryResizerEl.setPointerCapture && this.libraryResizerEl.setPointerCapture(e.pointerId);
+        document.body.classList.add('native-resizing-library');
+        e.preventDefault();
+      });
+      this.libraryResizerEl.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const rect = this.root.getBoundingClientRect();
+        this.applyLibraryWidth(e.clientX - rect.left);
+      });
+      this.libraryResizerEl.addEventListener('pointerup', finish);
+      this.libraryResizerEl.addEventListener('pointercancel', finish);
+      window.addEventListener('resize', () => {
+        const before = this.config.libraryWidth;
+        const after = this.applyLibraryWidth(before);
+        if (after !== before) this.saveConfig();
+      });
     }
 
     async fetchBytes(url) {

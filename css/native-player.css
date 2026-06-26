@@ -104,6 +104,7 @@ body.vgmplayNativeMode > .vgmplayContainer {
   flex: 1;
 }
 
+.native-topbar-btn,
 .native-settings-btn {
   height: 28px;
   border: 1px solid var(--native-border);
@@ -114,6 +115,12 @@ body.vgmplayNativeMode > .vgmplayContainer {
   font-size: 12px;
 }
 
+.native-topbar-btn:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.native-topbar-btn:hover,
 .native-settings-btn:hover {
   border-color: var(--native-focus);
   color: var(--native-text);
@@ -167,11 +174,30 @@ body.vgmplayNativeMode > .vgmplayContainer {
 
 .native-library {
   width: 440px;
-  min-width: 340px;
+  min-width: 440px;
+  flex: 0 0 440px;
   display: flex;
   flex-direction: column;
   background: var(--native-surface);
-  border-right: 1px solid var(--native-border);
+}
+
+.native-resizer {
+  flex: 0 0 6px;
+  width: 6px;
+  cursor: col-resize;
+  background: var(--native-border);
+  opacity: 0.75;
+}
+
+.native-resizer:hover,
+body.native-resizing-library .native-resizer {
+  background: var(--native-focus);
+  opacity: 1;
+}
+
+body.native-resizing-library {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .native-panel-title {

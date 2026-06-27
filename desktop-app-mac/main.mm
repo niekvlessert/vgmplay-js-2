@@ -1,6 +1,46 @@
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
+static NSString *VGMStateDirectory(void) {
+  return [NSHomeDirectory() stringByAppendingPathComponent:@".vgmplay_js"];
+}
+
+static NSString *VGMLogPath(void) {
+  return [VGMStateDirectory() stringByAppendingPathComponent:@"log.txt"];
+}
+
+static void VGMResetLogFile(void) {
+  NSString *dir = VGMStateDirectory();
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  [@"" writeToFile:VGMLogPath() atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+
+static void VGMLog(NSString *format, ...) NS_FORMAT_FUNCTION(1, 2);
+
+static void VGMLog(NSString *format, ...) {
+  va_list args;
+  va_start(args, format);
+  NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
+  va_end(args);
+
+  NSLog(@"%@", message);
+
+  NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], message ?: @""];
+  NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+  if (!data) return;
+
+  NSString *path = VGMLogPath();
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if (![fm fileExistsAtPath:path]) {
+    [fm createFileAtPath:path contents:nil attributes:nil];
+  }
+  NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+  if (!handle) return;
+  [handle seekToEndOfFile];
+  [handle writeData:data];
+  [handle closeFile];
+}
+
 #pragma mark - Local Scheme Handler
 
 @interface LocalFileHandler : NSObject <WKURLSchemeHandler>
@@ -140,6 +180,9 @@
 - (NSArray *)loadNativeHomeRoms;
 - (void)saveNativeConfig:(NSDictionary *)config;
 - (void)saveNativeArchiveMeta:(NSDictionary *)metadata;
+- (void)saveNativeArchiveMetaJson:(NSString *)json;
+- (void)saveNativeArchiveMetaBase64Json:(NSString *)base64Json;
+- (void)saveNativeArchiveImage:(NSDictionary *)payload;
 @end
 
 @implementation AppWindowController
@@ -237,6 +280,7 @@
     [config.userContentController addScriptMessageHandler:self name:@"consoleLog"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveConfig"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveArchiveMeta"];
+    [config.userContentController addScriptMessageHandler:self name:@"nativeSaveArchiveImage"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeOpenFile"];
     NSLog(@"Console logging bridge injected");
 
@@ -308,14 +352,29 @@
     NSDictionary *body = message.body;
     NSString *level = body[@"level"] ?: @"unknown";
     NSString *msg = body[@"message"] ?: @"";
-    NSLog(@"JS Console [%@]: %@", level, msg);
+    VGMLog(@"JS Console [%@]: %@", level, msg);
   } else if ([message.name isEqualToString:@"nativeSaveConfig"]) {
     if ([message.body isKindOfClass:[NSDictionary class]]) {
       [self saveNativeConfig:(NSDictionary *)message.body];
     }
   } else if ([message.name isEqualToString:@"nativeSaveArchiveMeta"]) {
     if ([message.body isKindOfClass:[NSDictionary class]]) {
-      [self saveNativeArchiveMeta:(NSDictionary *)message.body];
+      NSDictionary *body = (NSDictionary *)message.body;
+      if ([body[@"encoding"] isEqualToString:@"base64-json"] && [body[@"data"] isKindOfClass:[NSString class]]) {
+        [self saveNativeArchiveMetaBase64Json:(NSString *)body[@"data"]];
+      } else {
+        [self saveNativeArchiveMeta:body];
+      }
+    } else if ([message.body isKindOfClass:[NSString class]]) {
+      [self saveNativeArchiveMetaJson:(NSString *)message.body];
+    } else {
+      VGMLog(@"nativeSaveArchiveMeta ignored unexpected body type: %@", NSStringFromClass([message.body class]));
+    }
+  } else if ([message.name isEqualToString:@"nativeSaveArchiveImage"]) {
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+      [self saveNativeArchiveImage:(NSDictionary *)message.body];
+    } else {
+      VGMLog(@"nativeSaveArchiveImage ignored unexpected body type: %@", NSStringFromClass([message.body class]));
     }
   } else if ([message.name isEqualToString:@"nativeOpenFile"]) {
     NSString *path = nil;
@@ -332,13 +391,11 @@
 }
 
 - (NSString *)nativeConfigPath {
-  NSString *home = NSHomeDirectory();
-  return [[home stringByAppendingPathComponent:@".vgmplay_js"] stringByAppendingPathComponent:@"config.json"];
+  return [VGMStateDirectory() stringByAppendingPathComponent:@"config.json"];
 }
 
 - (NSString *)nativeArchiveMetaPath {
-  NSString *home = NSHomeDirectory();
-  return [[home stringByAppendingPathComponent:@".vgmplay_js"] stringByAppendingPathComponent:@"archive-meta.json"];
+  return [VGMStateDirectory() stringByAppendingPathComponent:@"archive-meta.json"];
 }
 
 - (NSDictionary *)loadNativeConfig {
@@ -366,8 +423,37 @@
   NSString *path = [self nativeArchiveMetaPath];
   NSData *data = [NSData dataWithContentsOfFile:path];
   if (!data) return @{ @"version" : @1, @"packsBySha" : @{}, @"quick" : @{} };
-  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-  if (![json isKindOfClass:[NSDictionary class]]) return @{ @"version" : @1, @"packsBySha" : @{}, @"quick" : @{} };
+  NSError *error = nil;
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+  if (![json isKindOfClass:[NSDictionary class]]) {
+    NSString *raw = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (raw) {
+      NSError *regexError = nil;
+      NSRegularExpression *surrogateEscapeRegex =
+          [NSRegularExpression regularExpressionWithPattern:@"\\\\u[dD][89a-fA-F][0-9a-fA-F]{2}"
+                                                    options:0
+                                                      error:&regexError];
+      if (surrogateEscapeRegex && !regexError) {
+        NSString *repaired = [surrogateEscapeRegex stringByReplacingMatchesInString:raw
+                                                                            options:0
+                                                                              range:NSMakeRange(0, raw.length)
+                                                                       withTemplate:@"\\\\ufffd"];
+        NSData *repairedData = [repaired dataUsingEncoding:NSUTF8StringEncoding];
+        if (repairedData) {
+          NSError *repairParseError = nil;
+          id repairedJson = [NSJSONSerialization JSONObjectWithData:repairedData options:0 error:&repairParseError];
+          if ([repairedJson isKindOfClass:[NSDictionary class]]) {
+            [repairedData writeToFile:path atomically:YES];
+            VGMLog(@"repaired native archive metadata surrogate escapes in %@ (%lu bytes)", path, (unsigned long)repairedData.length);
+            return (NSDictionary *)repairedJson;
+          }
+        }
+      }
+    }
+    VGMLog(@"failed to load native archive metadata from %@: %@", path, error);
+    return @{ @"version" : @1, @"packsBySha" : @{}, @"quick" : @{} };
+  }
+  VGMLog(@"loaded native archive metadata from %@ (%lu bytes)", path, (unsigned long)data.length);
   return (NSDictionary *)json;
 }
 
@@ -410,9 +496,82 @@
   NSString *path = [self nativeArchiveMetaPath];
   NSString *dir = [path stringByDeletingLastPathComponent];
   [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-  if (![NSJSONSerialization isValidJSONObject:metadata]) return;
-  NSData *data = [NSJSONSerialization dataWithJSONObject:metadata options:NSJSONWritingPrettyPrinted error:nil];
-  if (data) [data writeToFile:path atomically:YES];
+  if (![NSJSONSerialization isValidJSONObject:metadata]) {
+    VGMLog(@"native archive metadata is not valid JSON object");
+    return;
+  }
+  NSError *error = nil;
+  NSData *data = [NSJSONSerialization dataWithJSONObject:metadata options:NSJSONWritingPrettyPrinted error:&error];
+  if (!data) {
+    VGMLog(@"failed to serialize native archive metadata: %@", error);
+    return;
+  }
+  if (![data writeToFile:path atomically:YES]) {
+    VGMLog(@"failed to write native archive metadata to %@", path);
+    return;
+  }
+  VGMLog(@"saved native archive metadata to %@ (%lu bytes)", path, (unsigned long)data.length);
+}
+
+- (void)saveNativeArchiveMetaJson:(NSString *)json {
+  NSString *path = [self nativeArchiveMetaPath];
+  NSString *dir = [path stringByDeletingLastPathComponent];
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
+  if (!data) {
+    VGMLog(@"native archive metadata JSON could not be encoded");
+    return;
+  }
+  if (![data writeToFile:path atomically:YES]) {
+    VGMLog(@"failed to write native archive metadata JSON to %@", path);
+    return;
+  }
+  VGMLog(@"saved native archive metadata JSON to %@ (%lu bytes)", path, (unsigned long)data.length);
+}
+
+- (void)saveNativeArchiveMetaBase64Json:(NSString *)base64Json {
+  NSString *path = [self nativeArchiveMetaPath];
+  NSString *dir = [path stringByDeletingLastPathComponent];
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+
+  NSData *data = [[NSData alloc] initWithBase64EncodedString:base64Json options:0];
+  if (!data) {
+    VGMLog(@"native archive metadata base64 JSON could not be decoded");
+    return;
+  }
+  if (![data writeToFile:path atomically:YES]) {
+    VGMLog(@"failed to write native archive metadata base64 JSON to %@", path);
+    return;
+  }
+  VGMLog(@"saved native archive metadata base64 JSON to %@ (%lu bytes)", path, (unsigned long)data.length);
+}
+
+- (void)saveNativeArchiveImage:(NSDictionary *)payload {
+  NSString *path = [payload[@"path"] isKindOfClass:[NSString class]] ? payload[@"path"] : nil;
+  NSString *base64 = [payload[@"data"] isKindOfClass:[NSString class]] ? payload[@"data"] : nil;
+  if (path.length == 0 || base64.length == 0) {
+    VGMLog(@"native archive image save missing path or data");
+    return;
+  }
+
+  NSString *dir = [path stringByDeletingLastPathComponent];
+  if (![[dir lastPathComponent] isEqualToString:@".vgmplay_js_images"]) {
+    VGMLog(@"native archive image save rejected unexpected directory: %@", path);
+    return;
+  }
+
+  NSData *data = [[NSData alloc] initWithBase64EncodedString:base64 options:0];
+  if (!data) {
+    VGMLog(@"native archive image could not be decoded: %@", path);
+    return;
+  }
+
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  if (![data writeToFile:path atomically:YES]) {
+    VGMLog(@"failed to write native archive image to %@", path);
+    return;
+  }
+  VGMLog(@"saved native archive image to %@ (%lu bytes)", path, (unsigned long)data.length);
 }
 
 #pragma mark Menu Actions
@@ -590,8 +749,9 @@ static AppWindowController *sharedWindowController;
 
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
-    NSLog(@"=== VGMPlay Mac App Starting ===");
-    NSLog(@"Executable path: %s", argv[0]);
+    VGMResetLogFile();
+    VGMLog(@"=== VGMPlay Mac App Starting ===");
+    VGMLog(@"Executable path: %s", argv[0]);
     
     NSApplication *app = [NSApplication sharedApplication];
     [app setActivationPolicy:NSApplicationActivationPolicyRegular];

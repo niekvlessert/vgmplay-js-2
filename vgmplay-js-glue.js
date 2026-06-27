@@ -929,6 +929,7 @@ class VGMPlay_js {
 					const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 					const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
 					FS.createDataFile(parent, name, fileArray, true, true);
+					if (this._markCacheFileDirty && fullPath.startsWith('/cache/')) this._markCacheFileDirty(fullPath);
 				} catch (e) {
 					if (this.debugMode) console.error("Error creating file in FS:", e);
 				}
@@ -1067,6 +1068,7 @@ class VGMPlay_js {
 				const name = fullPath.substring(fullPath.lastIndexOf('/') + 1);
 				const parent = fullPath.substring(0, fullPath.lastIndexOf('/'));
 				FS.createDataFile(parent, name, fileArray, true, true);
+				if (this._markCacheFileDirty && fullPath.startsWith('/cache/')) this._markCacheFileDirty(fullPath);
 				if (this._getRomType) {
 					const romType = this._getRomType(name);
 					if (romType) {
@@ -1335,11 +1337,13 @@ class VGMPlay_js {
 
 			try {
 				FS.createDataFile(game.path, fileName, byteArray, true, true);
+				if (this._markCacheFileDirty && fsPath.startsWith('/cache/')) this._markCacheFileDirty(fsPath);
 			} catch (e) {
 				// If it already exists, overwrite
 				if (e.name === 'ErrnoError' && e.errno === 20) {
 					FS.unlink(fsPath);
 					FS.createDataFile(game.path, fileName, byteArray, true, true);
+					if (this._markCacheFileDirty && fsPath.startsWith('/cache/')) this._markCacheFileDirty(fsPath);
 				}
 			}
 
@@ -1361,14 +1365,14 @@ class VGMPlay_js {
 				}
 			}
 
-			this.checkEverythingReady().then(() => {
+			this.checkEverythingReady().then(async () => {
 				this.showVGMFromZip(game);
 				if (isNsf) {
 					this.games.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 				}
 				this._renderZipGamesNow();
 				if (this._markCached) this._markCached(fingerprint);
-				if (this._saveCache) this._saveCache();
+				if (this._saveCache) await this._saveCache();
 				resolve();
 			});
 		});
@@ -1388,6 +1392,7 @@ class VGMPlay_js {
 
 		const fsPath = gamePath + "/" + fileName;
 		FS.createDataFile(gamePath, fileName, byteArray, true, true);
+		if (this._markCacheFileDirty && fsPath.startsWith('/cache/')) this._markCacheFileDirty(fsPath);
 
 		const fileList = [{ filepath: fsPath }];
 		var game = { files: fileList, path: gamePath, name: this._normalizeGameTitle ? (this._normalizeGameTitle(fileName) || fileName) : fileName };
@@ -1399,7 +1404,7 @@ class VGMPlay_js {
 		this.showVGMFromZip(game);
 
 		if (this._markCached) this._markCached(fingerprint);
-		if (this._saveCache) this._saveCache();
+		if (this._saveCache) await this._saveCache();
 	}
 
 	addHarvestedTracks(urls) {

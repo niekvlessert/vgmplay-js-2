@@ -166,9 +166,11 @@
   }
 
   function dirname(path) {
-    const parts = String(path || '').split(/[\\/]/).filter(Boolean);
-    parts.pop();
-    return parts.join('/');
+    const normalized = String(path || '').replace(/[\\]+/g, '/').replace(/\/+$/g, '');
+    const index = normalized.lastIndexOf('/');
+    if (index < 0) return '';
+    if (index === 0) return normalized.startsWith('/') ? '/' : '';
+    return normalized.substring(0, index);
   }
 
   function parentPath(path) {
@@ -1247,8 +1249,11 @@
       this.statusEl.textContent = 'Hashing archive';
       this.showInfo(entry);
       try {
+        if (this._scanCancelled) return;
         await this.cushionCurrentPlayback(20);
+        if (this._scanCancelled) return;
         const originalBytes = await this.fetchBytes(entry.item.url);
+        if (this._scanCancelled) return;
         const sha = await this.sha256Hex(originalBytes);
         const cached = this.archiveMetaCache.packsBySha[sha];
         if (cached && !options.force && (!options.fullIndex || !cached.lightIndex)) {
@@ -1265,18 +1270,18 @@
         const entrySize = entry.item?.sizeBytes || 0;
         const isVeryLarge = entrySize > 100 * 1024 * 1024;
         let lightIndex = (this.shouldUseLightArchiveIndex() || isVeryLarge) && !options.force && !options.fullIndex && formatOf(entry) !== 'VIGAMUP';
+        if (this._scanCancelled) return;
         let result = await this.extractArchive(entry, originalBytes, { metadataOnly: lightIndex });
+        if (this._scanCancelled) return;
         if (result.metadataOnly && this.isVigamupArchiveShape(entry, result.entries || [])) {
           lightIndex = false;
           result = await this.extractArchive(entry, originalBytes, { metadataOnly: false });
         }
         entry.archiveFiles = result.metadataOnly ? null : result.fileDataByPath;
         const metadata = await this.buildArchiveMetadata(entry, result, sha, { lightIndex });
-        if (!metadata.lightIndex) {
-          this.archiveMetaCache.packsBySha[sha] = metadata;
-          this.rememberArchiveQuickKey(entry, sha);
-          this.saveArchiveMetaCache();
-        }
+        this.archiveMetaCache.packsBySha[sha] = metadata;
+        this.rememberArchiveQuickKey(entry, sha);
+        this.saveArchiveMetaCache();
         this.applyArchiveMetadata(entry, metadata, { expand: !!options.expand, verified: true });
         this.statusEl.textContent = 'Archive ready';
       } catch (e) {
@@ -1380,11 +1385,11 @@
           this.statusEl.textContent = scanned ? `Scanned ${scanned}` : `Archives ready`;
           if (skipped && scanned) this.statusEl.textContent = `Scanned ${scanned}, skipped ${skipped}`;
         }
-        
         if (skippedLargeArchives.length > 0) {
           this.showSkippedArchivesPopup(skippedLargeArchives);
         }
       } finally {
+        this.flushArchiveMetaCache();
         this._scanningArchives = false;
         this._scanCancelled = false;
         if (this.scanArchivesBtn) {
@@ -1409,20 +1414,9 @@
     
     async freeArchiveFilesMemory() {
       for (const entry of this.entries) {
-        if (entry.archiveFiles) {
-          entry.archiveFiles = null;
-        }
-        if (entry.archiveFsFiles) {
-          entry.archiveFsFiles = null;
-        }
+        entry.archiveFiles = null;
+        entry.archiveFsFiles = null;
       }
-      if (this.player && this.player.stop) {
-        this.player.stop();
-      }
-      if (this.player && this.player.StopVGM) {
-        this.player.StopVGM();
-      }
-      await this.yieldToUI();
     }
 
     async extractArchive(entry, bytes, options = {}) {
@@ -1476,6 +1470,7 @@
         if (data || metadataOnly) addUnsupported(rel, data);
       }
       cover = await this.pickArchiveCover(imageCandidates, archiveBase);
+      const coverUrl = this.persistArchiveCover(entry, sha, cover, 'cover');
 
       if (!metadataOnly) {
         const vigamupMeta = await this.buildVigamupMetadata(entry, entries, fileDataByPath, root, archiveTitle, archiveBase, sha);
@@ -1589,6 +1584,7 @@
         mtime: entry.item.mtime || 0,
         trackCount: tracks.length,
         coverDataUrl: cover ? cover.dataUrl : '',
+        coverUrl,
         coverPath: cover ? cover.path : '',
         innerFormats: this.topTrackFormats(tracks, 4),
         lightIndex,
@@ -1626,7 +1622,8 @@
     }
 
     shouldUseLightArchiveIndex() {
-      return !!(this._scanningArchives);
+      const p = this.player;
+      return !!(p && p.isVGMPlaying && !p.isPlaybackPaused);
     }
 
     async buildVigamupMetadata(entry, entries, fileDataByPath, root, archiveTitle, archiveBase, sha) {
@@ -1662,7 +1659,8 @@
         const gameTitle = gameInfo.full_title || gameInfo.title || baseName(rel).replace(/\.[^.]+$/, '');
         const image = imagesByStem.get(stem);
         const coverDataUrl = image ? this.bytesToDataUrl(image.data, this.mimeForImagePath(image.rel)) : '';
-        if (!packCover && coverDataUrl) packCover = { dataUrl: coverDataUrl, path: image.rel };
+        const coverUrl = image ? this.persistArchiveCover(entry, sha, { dataUrl: coverDataUrl, path: image.rel }, `game-${stem}`) : '';
+        if (!packCover && coverDataUrl) packCover = { dataUrl: coverDataUrl, url: coverUrl, path: image.rel };
         const trackInfo = this.parseKssTrackInfo(tracksByStem.get(stem) || '');
         const count = Number(this.player.GetKSSTrackCountDirect ? this.player.GetKSSTrackCountDirect(fsPath) : 0) || 0;
         const trkMin = Number(this.player.GetKSSTrackMinDirect ? this.player.GetKSSTrackMinDirect(fsPath) : 0) || 0;
@@ -1693,7 +1691,8 @@
               container: rel,
               duration: length ? this.formatTime(length) : '',
               lengthSec: length || 0,
-              coverDataUrl
+              coverDataUrl,
+              coverUrl
             }
           };
           tracks.push(track);
@@ -1704,6 +1703,7 @@
           path: rel,
           format: 'KSS',
           coverDataUrl,
+          coverUrl,
           gameInfo,
           trackCount: tracks.length,
           tracks
@@ -1721,6 +1721,7 @@
         mtime: entry.item.mtime || 0,
         trackCount: allTracks.length,
         coverDataUrl: packCover ? packCover.dataUrl : '',
+        coverUrl: packCover ? packCover.url : '',
         coverPath: packCover ? packCover.path : '',
         support: [],
         tracks: allTracks,
@@ -1791,7 +1792,43 @@
       return metadata;
     }
 
+    externalizeArchiveMetaCovers(entry, archiveMeta) {
+      if (!entry || !archiveMeta || !archiveMeta.sha256) return;
+      if (archiveMeta.coverDataUrl && !archiveMeta.coverUrl) {
+        archiveMeta.coverUrl = this.persistArchiveCover(entry, archiveMeta.sha256, {
+          dataUrl: archiveMeta.coverDataUrl,
+          path: archiveMeta.coverPath || 'cover'
+        }, 'cover');
+      }
+      if (Array.isArray(archiveMeta.games)) {
+        archiveMeta.games.forEach((game, index) => {
+          if (!game || !game.coverDataUrl || game.coverUrl) return;
+          game.coverUrl = this.persistArchiveCover(entry, archiveMeta.sha256, {
+            dataUrl: game.coverDataUrl,
+            path: game.coverPath || game.path || `game-${index}`
+          }, `game-${index}`);
+          if (Array.isArray(game.tracks)) {
+            game.tracks.forEach((track) => {
+              if (track && track.metadata && track.metadata.coverDataUrl && !track.metadata.coverUrl) {
+                track.metadata.coverUrl = game.coverUrl;
+              }
+            });
+          }
+        });
+      }
+      if (Array.isArray(archiveMeta.tracks)) {
+        archiveMeta.tracks.forEach((track, index) => {
+          if (!track || !track.metadata || !track.metadata.coverDataUrl || track.metadata.coverUrl) return;
+          track.metadata.coverUrl = this.persistArchiveCover(entry, archiveMeta.sha256, {
+            dataUrl: track.metadata.coverDataUrl,
+            path: track.path || `track-${index}`
+          }, `track-${index}`);
+        });
+      }
+    }
+
     applyArchiveMetadata(entry, archiveMeta, options = {}) {
+      this.externalizeArchiveMetaCovers(entry, archiveMeta);
       entry.archiveSha = archiveMeta.sha256;
       entry.archiveInspected = true;
       entry.archiveVerified = !!options.verified;
@@ -1806,7 +1843,7 @@
         sha256: archiveMeta.sha256,
         trackCount: playableTrackCount,
         coverDataUrl: archiveMeta.coverDataUrl || (entry.metadata && entry.metadata.coverDataUrl) || '',
-        coverUrl: (entry.metadata && entry.metadata.coverUrl) || '',
+        coverUrl: archiveMeta.coverUrl || (entry.metadata && entry.metadata.coverUrl) || '',
         content: (entry.metadata && entry.metadata.content) || 'Archive container',
         backend: 'Archive reader'
       };
@@ -1833,12 +1870,35 @@
       if (archiveMeta.games && archiveMeta.games.length) {
         archiveMeta.games.forEach((game, gameIndex) => {
           const parentId = `${entry.id}:game:${gameIndex}`;
-          const tracks = (game.tracks || []).map((track, trackIndex) => this.archiveTrackFromMeta(entry, track, `${gameIndex}:${trackIndex}`, parentId));
+          const sourceTracks = this.tracksForArchiveGame(game);
+          const tracks = sourceTracks.map((track, trackIndex) => this.archiveTrackFromMeta(entry, track, `${gameIndex}:${trackIndex}`, parentId));
           this.replaceChildren(parentId, tracks);
         });
       }
       if (options.expand) entry.expanded = true;
       this.renderTree();
+    }
+
+    tracksForArchiveGame(game) {
+      if (Array.isArray(game.tracks) && game.tracks.length) return game.tracks;
+      if (!game || !game.syntheticTracks || !this.isKssFormat(game.format)) return [];
+      const count = Math.max(0, Math.min(1024, Number(game.trackCount) || 0));
+      return Array.from({ length: count }, (_, index) => {
+        const title = `Track ${index + 1}`;
+        return {
+          path: game.path,
+          trackPathSuffix: `|track=${index}`,
+          name: title,
+          format: game.format || 'KSS',
+          metadata: {
+            title,
+            trackTitle: title,
+            game: game.name || '',
+            status: 'Playable',
+            trackNumber: index + 1
+          }
+        };
+      });
     }
 
     archiveGameFromMeta(parent, game, index) {
@@ -1860,7 +1920,7 @@
           status: 'Game indexed',
           trackCount: game.trackCount || (game.tracks ? game.tracks.length : 0),
           coverDataUrl: game.coverDataUrl || '',
-          coverUrl: '',
+          coverUrl: game.coverUrl || '',
           content: 'VIGAMUP game',
           backend: 'Archive reader',
           format: game.format || ''
@@ -2228,6 +2288,51 @@
       };
     }
 
+    persistArchiveCover(entry, sha, cover, role = 'cover') {
+      if (!cover || !cover.dataUrl || !entry || !entry.item || !entry.item.nativePath || !sha) return '';
+      const match = String(cover.dataUrl).match(/^data:([^;,]+)?;base64,(.*)$/);
+      if (!match) return '';
+      const nativePath = entry.item.nativePath;
+      const archiveDir = dirname(nativePath);
+      if (!archiveDir || archiveDir === 'root') return '';
+      const ext = this.imageExtensionForPath(cover.path, match[1]);
+      const archiveStem = baseName(nativePath).replace(/\.[^.]+$/, '');
+      const safeStem = this.safeImageFilePart(archiveStem) || 'archive';
+      const safeRole = this.safeImageFilePart(role) || 'cover';
+      const filename = `${safeStem}-${sha.substring(0, 16)}-${safeRole}.${ext}`;
+      const imagePath = `${archiveDir}/.vgmplay_js_images/${filename}`.replace(/[\\]+/g, '/');
+      const imageUrl = this.nativeFileUrl(imagePath);
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeSaveArchiveImage) {
+        window.webkit.messageHandlers.nativeSaveArchiveImage.postMessage({
+          path: imagePath,
+          data: match[2],
+          mime: match[1] || '',
+          archivePath: nativePath,
+          sourcePath: cover.path || ''
+        });
+      }
+      return imageUrl;
+    }
+
+    imageExtensionForPath(path, mime = '') {
+      const ext = extOf(path || '').toLowerCase();
+      if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
+      if (mime === 'image/png') return 'png';
+      if (mime === 'image/webp') return 'webp';
+      if (mime === 'image/gif') return 'gif';
+      if (mime === 'image/bmp') return 'bmp';
+      return 'jpg';
+    }
+
+    safeImageFilePart(value) {
+      return String(value || '').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '').substring(0, 80);
+    }
+
+    nativeFileUrl(path) {
+      const encoded = String(path || '').split('/').map((part, index) => index === 0 ? part : encodeURIComponent(part)).join('/');
+      return `vgmplay://${encoded}`;
+    }
+
     bytesToDataUrl(bytes, mime) {
       let binary = '';
       const chunk = 0x8000;
@@ -2255,20 +2360,158 @@
       return fallback;
     }
 
-    saveArchiveMetaCache() {
-      try {
-        const cache = this.archiveMetaCache || { version: ARCHIVE_META_VERSION, packsBySha: {}, quick: {} };
-        cache.version = ARCHIVE_META_VERSION;
-        if (!cache.packsBySha) cache.packsBySha = {};
-        if (!cache.quick) cache.quick = {};
-        const serializable = {
-          version: cache.version,
-          packsBySha: cache.packsBySha,
-          quick: cache.quick
+    archivePackForStorage(pack) {
+      if (!pack || typeof pack !== 'object') return pack;
+      const compactMetadata = (metadata, context = {}) => {
+        if (!metadata || typeof metadata !== 'object') return {};
+        const compact = { ...metadata };
+        delete compact.coverDataUrl;
+        if (!compact.coverUrl) delete compact.coverUrl;
+        if (compact.status === 'Playable') delete compact.status;
+        if (compact.format === context.format) delete compact.format;
+        if (compact.game === context.game) delete compact.game;
+        if (compact.container === context.path || compact.container === dirname(context.path || '')) delete compact.container;
+        if (compact.title === context.name) delete compact.title;
+        if (compact.trackTitle === context.name) delete compact.trackTitle;
+        if (!compact.duration && !compact.lengthSec) delete compact.duration;
+        for (const key of Object.keys(compact)) {
+          if (compact[key] === '' || compact[key] == null) delete compact[key];
+        }
+        return compact;
+      };
+      const stripTrack = (track, context = {}) => {
+        if (!track || typeof track !== 'object') return track;
+        const trackContext = {
+          ...context,
+          name: track.name || context.name || '',
+          path: track.path || context.path || '',
+          format: track.format || context.format || ''
         };
+        const stored = {
+          path: track.path,
+          name: track.name,
+          format: track.format,
+          trackPathSuffix: track.trackPathSuffix
+        };
+        const metadata = compactMetadata(track.metadata, trackContext);
+        if (Object.keys(metadata).length) stored.metadata = metadata;
+        for (const key of Object.keys(stored)) {
+          if (stored[key] === '' || stored[key] == null) delete stored[key];
+        }
+        return stored;
+      };
+      const stripGame = (game) => {
+        if (!game || typeof game !== 'object') return game;
+        const tracks = Array.isArray(game.tracks) ? game.tracks : [];
+        const generatedKssTracks = this.isKssFormat(game.format) && tracks.length > 0 && tracks.every((track, index) => {
+          const expected = `Track ${index + 1}`;
+          return track && track.name === expected && (!track.metadata || track.metadata.title === expected || track.metadata.trackTitle === expected);
+        });
+        return {
+          name: game.name,
+          path: game.path,
+          format: game.format,
+          coverUrl: game.coverUrl || '',
+          gameInfo: game.gameInfo || undefined,
+          trackCount: game.trackCount || tracks.length,
+          coverDataUrl: '',
+          syntheticTracks: generatedKssTracks ? true : undefined,
+          tracks: generatedKssTracks ? [] : tracks.map((track) => stripTrack(track, {
+            game: game.name || '',
+            path: game.path || '',
+            format: game.format || ''
+          }))
+        };
+      };
+      const hasGames = Array.isArray(pack.games) && pack.games.length > 0;
+      return {
+        ...pack,
+        coverDataUrl: '',
+        tracks: hasGames ? [] : (Array.isArray(pack.tracks) ? pack.tracks.map(stripTrack) : []),
+        games: Array.isArray(pack.games) ? pack.games.map(stripGame) : [],
+        unsupported: Array.isArray(pack.unsupported) ? pack.unsupported : [],
+        support: Array.isArray(pack.support) ? pack.support : []
+      };
+    }
+
+    serializableArchiveMetaCache() {
+      const cache = this.archiveMetaCache || { version: ARCHIVE_META_VERSION, packsBySha: {}, quick: {} };
+      cache.version = ARCHIVE_META_VERSION;
+      if (!cache.packsBySha) cache.packsBySha = {};
+      if (!cache.quick) cache.quick = {};
+      const packsBySha = {};
+      for (const [sha, pack] of Object.entries(cache.packsBySha)) {
+        packsBySha[sha] = this.archivePackForStorage(pack);
+      }
+      return {
+        version: cache.version,
+        packsBySha,
+        quick: cache.quick
+      };
+    }
+
+    sanitizeJsonString(value) {
+      let out = '';
+      for (let i = 0; i < value.length; i++) {
+        const code = value.charCodeAt(i);
+        if (code >= 0xd800 && code <= 0xdbff) {
+          const next = value.charCodeAt(i + 1);
+          if (next >= 0xdc00 && next <= 0xdfff) {
+            out += value[i] + value[i + 1];
+            i++;
+          } else {
+            out += '\ufffd';
+          }
+          continue;
+        }
+        if (code >= 0xdc00 && code <= 0xdfff) {
+          out += '\ufffd';
+          continue;
+        }
+        out += (code < 0x20 || code === 0x7f) ? ' ' : value[i];
+      }
+      return out;
+    }
+
+    sanitizeJsonValue(value) {
+      if (typeof value === 'string') return this.sanitizeJsonString(value);
+      if (!value || typeof value !== 'object') return value;
+      if (Array.isArray(value)) return value.map((item) => this.sanitizeJsonValue(item));
+      const clean = {};
+      for (const [key, item] of Object.entries(value)) {
+        clean[this.sanitizeJsonString(key)] = this.sanitizeJsonValue(item);
+      }
+      return clean;
+    }
+
+    archiveMetaJsonToBase64(json) {
+      const bytes = new TextEncoder().encode(json);
+      let binary = '';
+      const chunk = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    }
+
+    saveArchiveMetaCache(options = {}) {
+      if (this._scanningArchives && !options.immediate) {
+        this._archiveMetaSavePending = true;
+        return;
+      }
+      this.flushArchiveMetaCache();
+    }
+
+    flushArchiveMetaCache() {
+      try {
+        this._archiveMetaSavePending = false;
+        const serializable = this.sanitizeJsonValue(this.serializableArchiveMetaCache());
         const json = JSON.stringify(serializable);
         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeSaveArchiveMeta) {
-          window.webkit.messageHandlers.nativeSaveArchiveMeta.postMessage(serializable);
+          window.webkit.messageHandlers.nativeSaveArchiveMeta.postMessage({
+            encoding: 'base64-json',
+            data: this.archiveMetaJsonToBase64(json)
+          });
         } else {
           try { localStorage.setItem('vgmplayNativeArchiveMeta', json); } catch (e) { console.error('[VGM Native] localStorage save failed', e); }
         }

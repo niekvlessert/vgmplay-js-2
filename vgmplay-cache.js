@@ -65,6 +65,23 @@ export function installCache(VGMPlay_js) {
             this._logWarn && this._logWarn('CACHE', 'Storage getFiles error:', e);
             resolve({ error: String(e) });
           });
+        } else if (action === 'hasFiles' && typeof this._storage.hasFiles === 'function') {
+          this._storage.hasFiles(payload.paths || []).then((result) => {
+            resolve(result || { missing: [] });
+          }).catch((e) => {
+            this._logWarn && this._logWarn('CACHE', 'Storage hasFiles error:', e);
+            resolve({ error: String(e) });
+          });
+        } else if (action === 'getMeta' && typeof this._storage.getMeta === 'function') {
+          this._storage.getMeta().then((meta) => resolve({ meta })).catch((e) => {
+            this._logWarn && this._logWarn('CACHE', 'Storage getMeta error:', e);
+            resolve({ error: String(e) });
+          });
+        } else if (action === 'putMeta' && typeof this._storage.putMeta === 'function') {
+          this._storage.putMeta(payload.meta || null).then(() => resolve({ ok: true })).catch((e) => {
+            this._logWarn && this._logWarn('CACHE', 'Storage putMeta error:', e);
+            resolve({ error: String(e) });
+          });
         } else {
           resolve({ error: `Unsupported action: ${action}` });
         }
@@ -109,6 +126,21 @@ export function installCache(VGMPlay_js) {
         return this._storage.getFiles(payload.paths || []).catch((e) => {
           this._logWarn && this._logWarn('CACHE', 'Storage getFiles error:', e);
           return { files: [], missing: [] };
+        });
+      } else if (action === 'hasFiles' && typeof this._storage.hasFiles === 'function') {
+        return this._storage.hasFiles(payload.paths || []).catch((e) => {
+          this._logWarn && this._logWarn('CACHE', 'Storage hasFiles error:', e);
+          return { missing: [] };
+        });
+      } else if (action === 'getMeta' && typeof this._storage.getMeta === 'function') {
+        return this._storage.getMeta().then((meta) => ({ meta })).catch((e) => {
+          this._logWarn && this._logWarn('CACHE', 'Storage getMeta error:', e);
+          return { error: String(e) };
+        });
+      } else if (action === 'putMeta' && typeof this._storage.putMeta === 'function') {
+        return this._storage.putMeta(payload.meta || null).then(() => ({ ok: true })).catch((e) => {
+          this._logWarn && this._logWarn('CACHE', 'Storage putMeta error:', e);
+          return { error: String(e) };
         });
       }
     }
@@ -376,6 +408,7 @@ export function installCache(VGMPlay_js) {
 		const meta = resp.meta;
 		const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
 		this._cacheFileSizes = meta.fileSizes || {};
+		this._savedCacheFiles = new Set(Object.keys(this._cacheFileSizes));
 		if (meta.version !== 2) {
 			this._logWarn && this._logWarn('CACHE', "Shared cache version mismatch, ignoring shared cache");
 			this._cacheFingerprints.clear();
@@ -713,6 +746,8 @@ export function installCache(VGMPlay_js) {
 			const metaText = FS.readFile(metaPath, { encoding: 'utf8' });
 			const meta = JSON.parse(metaText);
 			const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
+			this._cacheFileSizes = meta.fileSizes || {};
+			this._savedCacheFiles = new Set(Object.keys(this._cacheFileSizes));
 
 			if (meta.version !== 2) {
 				if (this.debugMode) console.warn("[VGM] Cache version mismatch, clearing cache");
@@ -866,15 +901,37 @@ export function installCache(VGMPlay_js) {
 		}
 	};
 
+	VGMPlay_js.prototype._markCacheFileDirty = function (path) {
+		if (!path) return;
+		if (!this._dirtyCacheFiles) this._dirtyCacheFiles = new Set();
+		this._dirtyCacheFiles.add(path);
+	};
+
 	VGMPlay_js.prototype._saveCache = async function () {
 		if (!this._cacheReady) return;
 		if (this._cacheSaveInFlight) {
 			this._cacheSaveQueued = true;
-			return;
+			return this._cacheSavePromise || Promise.resolve();
 		}
 		this._cacheSaveInFlight = true;
-		this._cacheSaveQueued = false;
+		this._cacheSavePromise = (async () => {
+			try {
+				do {
+					this._cacheSaveQueued = false;
+					await this._saveCacheOnce();
+				} while (this._cacheSaveQueued);
+			} finally {
+				this._cacheSaveInFlight = false;
+				this._cacheSaveQueued = false;
+				this._cacheSavePromise = null;
+			}
+		})();
+		return this._cacheSavePromise;
+	};
 
+	VGMPlay_js.prototype._saveCacheOnce = async function () {
+		if (!this._cacheReady) return;
+		const dirtyAtStart = new Set(this._dirtyCacheFiles || []);
 		try {
 			if (!FS.analyzePath('/cache/meta').exists) {
 				FS.mkdir('/cache/meta');
@@ -895,6 +952,7 @@ export function installCache(VGMPlay_js) {
 					const coverMime = g.png.type || 'image/jpeg';
 					const coverExt = this._coverExtForMime ? this._coverExtForMime(coverMime) : 'jpg';
 					const coverPath = `/cache/meta/cover_${i}.${coverExt}`;
+					if (dirtyAtStart) dirtyAtStart.add(coverPath);
 
 					const convertPromise = new Promise((resolve) => {
 						const reader = new FileReader();
@@ -902,6 +960,7 @@ export function installCache(VGMPlay_js) {
 							const arr = new Uint8Array(reader.result);
 							try {
 								FS.writeFile(coverPath, arr);
+								this._markCacheFileDirty(coverPath);
 							} catch (e) {
 								if (this.debugMode) console.error("[VGM] Failed to write cover file:", coverPath, e);
 							}
@@ -937,6 +996,7 @@ export function installCache(VGMPlay_js) {
 			}
 
 			const cacheFiles = this._collectCacheFilePaths().filter((p) => !p.endsWith('/metadata.json'));
+			const dirtyFiles = cacheFiles.filter((p) => dirtyAtStart.has(p) || !this._savedCacheFiles || !this._savedCacheFiles.has(p));
 			const fileSizes = { ...(this._cacheFileSizes || {}) };
 			for (const path of cacheFiles) {
 				try {
@@ -961,14 +1021,16 @@ export function installCache(VGMPlay_js) {
 			FS.writeFile('/cache/meta/metadata.json', JSON.stringify(meta));
 
 			if (this._cacheBridgeAvailable()) {
-				const files = cacheFiles;
+				const files = dirtyFiles;
 				const chunk = [];
 				let chunkBytes = 0;
+				let saveHadErrors = false;
 				const maxChunkBytes = 700 * 1024;
 				const flushChunk = async () => {
 					if (!chunk.length) return;
 					const resp = await this._cacheBridgeRequest('putFiles', { files: chunk.splice(0, chunk.length) });
 					if (resp && resp.error) {
+						saveHadErrors = true;
 						this._logWarn && this._logWarn('CACHE', 'Cache bridge putFiles failed:', resp.error);
 					}
 					chunkBytes = 0;
@@ -999,7 +1061,11 @@ export function installCache(VGMPlay_js) {
 					}
 				}
 				await flushChunk();
-				await this._cacheBridgeRequest('putMeta', { meta });
+				const metaResp = await this._cacheBridgeRequest('putMeta', { meta });
+				if (metaResp && metaResp.error) {
+					saveHadErrors = true;
+					this._logWarn && this._logWarn('CACHE', 'Cache bridge putMeta failed:', metaResp.error);
+				}
 				if (this._cacheBridgeMissing) {
 					const missing = await this._cacheBridgeMissing(files);
 					if (missing && missing.length && this.debugMode) {
@@ -1017,30 +1083,36 @@ export function installCache(VGMPlay_js) {
 					}
 				}
 				if (this.debugMode) console.log("[VGM] Cache saved to shared store");
-				this._cacheSaveInFlight = false;
-				if (this._cacheSaveQueued) {
-					this._cacheSaveQueued = false;
-					this._saveCache();
+				if (!saveHadErrors) {
+					if (!this._savedCacheFiles) this._savedCacheFiles = new Set();
+					for (const path of files) {
+						this._savedCacheFiles.add(path);
+						if (this._dirtyCacheFiles) this._dirtyCacheFiles.delete(path);
+					}
 				}
 				return;
 			}
 
-			FS.syncfs(false, (err) => {
+			let syncOk = true;
+			await new Promise((resolve) => FS.syncfs(false, (err) => {
 				if (err) {
+					syncOk = false;
 					if (this.debugMode) console.error("[VGM] Failed to sync IDBFS (write):", err);
 				} else {
 					if (this.debugMode) console.log("[VGM] Cache saved to IDBFS");
 				}
-				this._cacheSaveInFlight = false;
-				if (this._cacheSaveQueued) {
-					this._cacheSaveQueued = false;
-					this._saveCache();
+				resolve();
+			}));
+			if (syncOk) {
+				if (!this._savedCacheFiles) this._savedCacheFiles = new Set();
+				for (const path of cacheFiles) {
+					this._savedCacheFiles.add(path);
+					if (this._dirtyCacheFiles) this._dirtyCacheFiles.delete(path);
 				}
-			});
+			}
 
 		} catch (e) {
 			if (this.debugMode) console.error("[VGM] Failed to write cache metadata:", e);
-			this._cacheSaveInFlight = false;
 		}
 	};
 

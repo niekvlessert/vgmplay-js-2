@@ -320,7 +320,7 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 		const processResult = await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
 		if (processResult && processResult.anyPlayable) {
 			if (this._markCached) this._markCached(fingerprint);
-			if (this._saveCache) this._saveCache();
+			if (this._saveCache) await this._saveCache();
 		}
 		this._log && this._log('ARCHIVES', 'Worker path COMPLETE for:', cleanName, 'games.length:', this.games.length);
 		return;
@@ -358,7 +358,7 @@ if (this.debugMode) console.log(`[VGM] 7z Extraction done, processing ${workerRe
 const processResult = await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
 if (processResult && processResult.anyPlayable) {
 if (this._markCached) this._markCached(fingerprint);
-if (this._saveCache) this._saveCache();
+if (this._saveCache) await this._saveCache();
 }
 return;
 } catch (e) {
@@ -385,7 +385,7 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 			const processResult = await this._processArchiveEntries(workerResult.entries, workerResult.fileDataByPath, cleanName, workerResult.hasKss);
 			if (processResult && processResult.anyPlayable) {
 				if (this._markCached) this._markCached(fingerprint);
-				if (this._saveCache) this._saveCache();
+				if (this._saveCache) await this._saveCache();
 			}
 			return;
 		} catch (e) {

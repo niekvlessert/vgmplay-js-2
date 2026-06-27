@@ -790,6 +790,31 @@
         if (e.target === popup) popup.remove();
       });
     }
+
+    showQuickScanPopup(workerCount) {
+      const existing = document.querySelector('.native-popup-overlay[data-popup="quick-scan"]');
+      if (existing) existing.remove();
+      const popupHtml = `
+        <div class="native-popup-overlay" data-popup="quick-scan">
+          <div class="native-popup">
+            <div class="native-popup-title">Quick Archive Scan Running</div>
+            <div class="native-popup-message">Playback has been stopped. VGMPlay is scanning archives with ${workerCount} workers, so the app may feel slower until scanning is complete.</div>
+            <button class="native-popup-ok" data-role="popup-ok">OK</button>
+          </div>
+        </div>`;
+      const overlay = document.createElement('div');
+      overlay.innerHTML = popupHtml;
+      const popup = overlay.firstElementChild;
+      document.body.appendChild(popup);
+      popup.querySelector('[data-role="popup-ok"]').addEventListener('click', () => {
+        popup.remove();
+      });
+    }
+
+    quickScanWorkerCount(totalArchives) {
+      const cores = Number(navigator.hardwareConcurrency) || 4;
+      return Math.max(1, Math.min(totalArchives, Math.max(2, Math.min(4, cores - 1))));
+    }
     
     showImageOverview() {
       this.infoMode = 'overview';
@@ -1304,16 +1329,17 @@
         return;
       }
       
-      const batchSize = options.batchSize || 3;
       const forceResume = options.force;
+      const workerCount = options.workerCount || this.quickScanWorkerCount(archives.length);
       
       this._scanningArchives = true;
       this._scanCancelled = false;
       
-      const wasPlaying = this.player && this.player.isVGMPlaying && !this.player.isPlaybackPaused;
-      if (wasPlaying) {
-        this.player.pause();
+      const hadPlayback = this.player && this.player.isVGMPlaying;
+      if (hadPlayback) {
+        this.stop();
       }
+      this.showQuickScanPopup(workerCount);
       
       if (this.scanArchivesBtn) {
         this.scanArchivesBtn.disabled = false;
@@ -1322,7 +1348,8 @@
       
       let scanned = 0;
       let skipped = 0;
-      let batchIndex = 0;
+      let nextIndex = 0;
+      let completed = 0;
       const skippedLargeArchives = [];
       
       const updateStatus = (current, total, msg) => {
@@ -1330,54 +1357,54 @@
       };
       
       try {
-        for (let i = 0; i < archives.length; i++) {
-          if (this._scanCancelled) {
-            this.statusEl.textContent = `Scan cancelled at ${i}/${archives.length}`;
-            break;
+        const scanWorker = async (workerIndex) => {
+          while (!this._scanCancelled) {
+            const i = nextIndex++;
+            if (i >= archives.length) break;
+            const entry = archives[i];
+            const entrySize = entry.item?.sizeBytes || 0;
+            const isLargeArchive = entrySize > 200 * 1024 * 1024;
+            if (isLargeArchive) {
+              skippedLargeArchives.push({ name: entry.name, size: entrySize });
+              skipped++;
+              completed++;
+              updateStatus(completed, archives.length, `Skipping large archive: ${entry.name}`);
+              await this.yieldToUI();
+              continue;
+            }
+
+            const hasCacheEntry = this.archiveMetaCache.packsBySha && this.archiveMetaCache.packsBySha[entry.archiveSha || entry.metadata?.sha256];
+            if ((entry.archiveInspected && entry.archiveVerified && !entry.archiveLightIndex) || (hasCacheEntry && !forceResume)) {
+              skipped++;
+              completed++;
+              updateStatus(completed, archives.length);
+              continue;
+            }
+
+            entry.metadata = { ...(entry.metadata || {}), status: `Quick scanning archive ${i + 1} of ${archives.length}` };
+            updateStatus(completed + 1, archives.length, `Quick scanning ${completed + 1}/${archives.length} (${workerCount} workers)`);
+            if (!this.selectedId || this.selectedId === entry.id) {
+              this.selectedId = entry.id;
+              this.showInfo(entry);
+            }
+            this.renderTree();
+
+            try {
+              const isVeryLarge = entrySize > 100 * 1024 * 1024;
+              await this.inspectArchive(entry, { expand: false, force: false, fullIndex: !isVeryLarge });
+              scanned++;
+            } catch (e) {
+              console.warn('[VGM Native] Scan all archives skipped failed archive', entry && entry.name, e);
+            } finally {
+              completed++;
+              await this.yieldToUI();
+              await this.freeArchiveFilesMemory();
+              updateStatus(completed, archives.length, `Quick scanning ${completed}/${archives.length} (${workerCount} workers)`);
+            }
           }
-          
-          const entry = archives[i];
-          const entrySize = entry.item?.sizeBytes || 0;
-          const isLargeArchive = entrySize > 200 * 1024 * 1024;
-          if (isLargeArchive) {
-            skippedLargeArchives.push({ name: entry.name, size: entrySize });
-            skipped++;
-            this.statusEl.textContent = `Skipping large archive: ${entry.name}`;
-            await this.yieldToUI();
-            continue;
-          }
-          
-          const hasCacheEntry = this.archiveMetaCache.packsBySha && this.archiveMetaCache.packsBySha[entry.archiveSha || entry.metadata?.sha256];
-          if ((entry.archiveInspected && entry.archiveVerified && !entry.archiveLightIndex) || (hasCacheEntry && !forceResume)) {
-            skipped++;
-            continue;
-          }
-          
-          this.selectedId = entry.id;
-          entry.metadata = { ...(entry.metadata || {}), status: `Scanning archive ${i + 1} of ${archives.length}` };
-          updateStatus(i + 1, archives.length);
-          this.showInfo(entry);
-          this.renderTree();
-          
-          try {
-            const isVeryLarge = entrySize > 100 * 1024 * 1024;
-            await this.inspectArchive(entry, { expand: false, force: false, fullIndex: !isVeryLarge });
-            scanned++;
-          } catch (e) {
-            console.warn('[VGM Native] Scan all archives skipped failed archive', entry && entry.name, e);
-          }
-          
-          await this.yieldToUI();
-          await this.freeArchiveFilesMemory();
-          
-          batchIndex++;
-          if (batchIndex >= batchSize) {
-            batchIndex = 0;
-            await this.yieldToUI();
-            this.statusEl.textContent = `Scanning ${i + 1}/${archives.length} (cleaned memory)`;
-            await this.yieldToUI();
-          }
-        }
+        };
+
+        await Promise.all(Array.from({ length: workerCount }, (_, index) => scanWorker(index)));
         
         if (this._scanCancelled) {
           this.statusEl.textContent = `Scan cancelled - scanned ${scanned}, skipped ${skipped}`;
@@ -1397,11 +1424,6 @@
           this.scanArchivesBtn.textContent = 'Scan Archives';
         }
         this.renderTree();
-        
-        if (wasPlaying && this.player && !this.player.isPlaybackPaused) {
-        } else if (wasPlaying && this.player && this.player.isPlaybackPaused) {
-          this.player.play();
-        }
       }
     }
     

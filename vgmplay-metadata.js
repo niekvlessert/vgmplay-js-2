@@ -255,23 +255,32 @@ VGMPlay_js.prototype._setInfoLoading = function (isLoading, message = null) {
 		let name = fallbackName || "Archive";
 		if (this._normalizeGameTitle) name = this._normalizeGameTitle(name) || name;
 		if (!files || !this.GetVGMTagDirect) return name;
+		const invalidGameNames = new Set(['xm', 'mod', 's3m', 'it', 'mptm', 'stm', 'mtm', '669', 'amf', 'dmf', 'far', 'imf', 'med', 'okt', 'ptm', 'ult', 'umx', 'lmp', 'mus', 'vgm', 'vgz', 'psf', 'ssf', 'usf', 'nsf', 'nsfe', 'gbs', 'hes', 'kss', 'kssx', 'kscc', 'spc']);
+		const isMapIdentifier = (s) => /^[A-Z]_?[A-Z0-9]+[A-Z]$/i.test(s) && s.length <= 10;
 		for (const f of files) {
 			if (!f || !f.filepath) continue;
 			const lower = f.filepath.toLowerCase();
 			if (!this.isPlayable(lower)) continue;
 			const gameTag = this.GetVGMTagDirect(f.filepath, 2);
 			if (gameTag && gameTag.trim()) {
-				name = gameTag.trim();
+				const trimmed = gameTag.trim();
+				if (invalidGameNames.has(trimmed.toLowerCase())) continue;
+				if (trimmed.length < 2 || trimmed.length > 50) continue;
+				if (isMapIdentifier(trimmed)) continue;
+				name = trimmed;
 				if (this._normalizeGameTitle) {
 					const normalized = this._normalizeGameTitle(name);
 					if (normalized) name = normalized;
 				}
 				break;
 			}
-			// Fallback to title tag if game tag is missing (common in some PSF/USF sets)
 			const titleTag = this.GetVGMTagDirect(f.filepath, 0);
 			if (titleTag && titleTag.trim()) {
-				name = titleTag.trim();
+				const trimmed = titleTag.trim();
+				if (invalidGameNames.has(trimmed.toLowerCase())) continue;
+				if (trimmed.length < 2 || trimmed.length > 50) continue;
+				if (isMapIdentifier(trimmed)) continue;
+				name = trimmed;
 				if (this._normalizeGameTitle) {
 					const normalized = this._normalizeGameTitle(name);
 					if (normalized) name = normalized;

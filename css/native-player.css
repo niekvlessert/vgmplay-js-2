@@ -694,3 +694,112 @@ body.native-resizing-library {
   border-radius: 6px;
   background: var(--native-accent);
 }
+
+body.vgmplayNativeMode.no-badge-colors .native-badge {
+  background: var(--native-surface-alt) !important;
+  color: var(--native-text) !important;
+}
+
+body.vgmplayNativeMode.light-theme {
+  --native-bg: #f5f5f7;
+  --native-surface: #ffffff;
+  --native-surface-alt: #eaeaec;
+  --native-hover: #e0e0e2;
+  --native-selected: #d0d0d8;
+  --native-border: #c8c8d0;
+  --native-focus: #9090c0;
+  --native-text: #1a1a2e;
+  --native-text-dim: #5a5a78;
+  --native-text-muted: #8a8a9a;
+  --native-accent: #5c5ca0;
+  --native-accent-bright: #4c4c90;
+}
+
+@keyframes native-spin {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+.native-status-loading {
+  animation: native-spin 1s ease-in-out infinite;
+}
+
+.native-popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.native-popup {
+  background: var(--native-surface);
+  border: 1px solid var(--native-border);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.native-popup-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--native-text);
+  margin-bottom: 12px;
+}
+
+.native-popup-message {
+  font-size: 13px;
+  color: var(--native-text-dim);
+  margin-bottom: 16px;
+}
+
+.native-popup-list {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--native-surface-alt);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  max-height: 250px;
+}
+
+.skipped-archive-item {
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--native-text);
+  border-bottom: 1px solid var(--native-border);
+}
+
+.skipped-archive-item:last-child {
+  border-bottom: none;
+}
+
+.skipped-archive-size {
+  color: var(--native-text-muted);
+  font-size: 11px;
+}
+
+.native-popup-ok {
+  background: var(--native-accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 24px;
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.native-popup-ok:hover {
+  background: var(--native-accent-bright);
+}

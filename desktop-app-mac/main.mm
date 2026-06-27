@@ -344,11 +344,20 @@
 - (NSDictionary *)loadNativeConfig {
   NSString *path = [self nativeConfigPath];
   NSData *data = [NSData dataWithContentsOfFile:path];
-  NSDictionary *defaults = @{ @"showUnsupported" : @NO, @"showFilenames" : @NO, @"imageOverview" : @YES, @"volume" : @80 };
+  NSDictionary *defaults = @{
+    @"showUnsupported" : @NO,
+    @"showFilenames" : @NO,
+    @"imageOverview" : @YES,
+    @"volume" : @80,
+    @"libraryWidth" : @440,
+    @"sortByTypeFirst" : @NO,
+    @"noBadgeColors" : @NO,
+    @"lightTheme" : @NO
+  };
   if (!data) return defaults;
   id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
   if (![json isKindOfClass:[NSDictionary class]]) return defaults;
-  NSMutableDictionary *config = [defaults mutableCopy];
+  NSMutableDictionary *config = [NSMutableDictionary dictionaryWithDictionary:defaults];
   [config addEntriesFromDictionary:(NSDictionary *)json];
   return config;
 }
@@ -382,22 +391,17 @@
   NSString *path = [self nativeConfigPath];
   NSString *dir = [path stringByDeletingLastPathComponent];
   [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-  NSMutableDictionary *safeConfig = [@{ @"showUnsupported" : @NO, @"showFilenames" : @NO, @"imageOverview" : @YES, @"volume" : @80 } mutableCopy];
-  if ([config[@"showUnsupported"] respondsToSelector:@selector(boolValue)]) {
-    safeConfig[@"showUnsupported"] = @([config[@"showUnsupported"] boolValue]);
-  }
-  if ([config[@"showFilenames"] respondsToSelector:@selector(boolValue)]) {
-    safeConfig[@"showFilenames"] = @([config[@"showFilenames"] boolValue]);
-  }
-  if ([config[@"imageOverview"] respondsToSelector:@selector(boolValue)]) {
-    safeConfig[@"imageOverview"] = @([config[@"imageOverview"] boolValue]);
-  }
-  if ([config[@"volume"] respondsToSelector:@selector(doubleValue)]) {
-    double volume = [config[@"volume"] doubleValue];
-    if (volume < 0) volume = 0;
-    if (volume > 100) volume = 100;
-    safeConfig[@"volume"] = @(volume);
-  }
+  NSMutableDictionary *safeConfig = [NSMutableDictionary dictionary];
+  
+  safeConfig[@"showUnsupported"] = @([config[@"showUnsupported"] respondsToSelector:@selector(boolValue)] ? [config[@"showUnsupported"] boolValue] : NO);
+  safeConfig[@"showFilenames"] = @([config[@"showFilenames"] respondsToSelector:@selector(boolValue)] ? [config[@"showFilenames"] boolValue] : NO);
+  safeConfig[@"imageOverview"] = @([config[@"imageOverview"] respondsToSelector:@selector(boolValue)] ? [config[@"imageOverview"] boolValue] : YES);
+  safeConfig[@"volume"] = @([config[@"volume"] respondsToSelector:@selector(doubleValue)] ? MIN(100, MAX(0, [config[@"volume"] doubleValue])) : 80);
+  safeConfig[@"libraryWidth"] = @([config[@"libraryWidth"] respondsToSelector:@selector(doubleValue)] ? MIN(800, MAX(440, [config[@"libraryWidth"] doubleValue])) : 440);
+  safeConfig[@"sortByTypeFirst"] = @([config[@"sortByTypeFirst"] respondsToSelector:@selector(boolValue)] ? [config[@"sortByTypeFirst"] boolValue] : NO);
+  safeConfig[@"noBadgeColors"] = @([config[@"noBadgeColors"] respondsToSelector:@selector(boolValue)] ? [config[@"noBadgeColors"] boolValue] : NO);
+  safeConfig[@"lightTheme"] = @([config[@"lightTheme"] respondsToSelector:@selector(boolValue)] ? [config[@"lightTheme"] boolValue] : NO);
+  
   NSData *data = [NSJSONSerialization dataWithJSONObject:safeConfig options:NSJSONWritingPrettyPrinted error:nil];
   if (data) [data writeToFile:path atomically:YES];
 }

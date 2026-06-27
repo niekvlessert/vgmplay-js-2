@@ -1141,8 +1141,9 @@
         const notice = this.latestPlaybackNotice(noticeStart);
         if (notice) throw new Error(notice);
         if (!this.player.isVGMPlaying) {
-          throw new Error(this.latestPlaybackNotice(noticeStart) || 'Playback did not start');
+          throw new Error(this.playbackFailureHint() || 'Playback did not start');
         }
+        this._lastPlaybackResourceError = '';
         this._nativeEndedKey = '';
         this.applyVolume();
         setTimeout(() => {
@@ -1176,12 +1177,40 @@
     nativePlaybackErrorMessage(message) {
       const text = String(message || '');
       if (/yrw801\.rom|YMF278B|OPL4/i.test(text)) {
+        this._lastPlaybackResourceError = 'opl4';
         return 'YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPut yrw801.rom in the root of the current directory or in your home folder, then restart or reopen the folder.';
       }
       if (/waves\.dat|MoonSound/i.test(text)) {
+        this._lastPlaybackResourceError = 'waves';
         return 'MoonSound playback requires the file waves.dat.\n\nPut waves.dat in the root of the current directory or in your home folder, then restart or reopen the folder.';
       }
       return text;
+    }
+
+    playbackFailureHint() {
+      const p = this.player;
+      if (!p) return '';
+      try {
+        if (p.GetLastLoadErrorCode) {
+          const code = p.GetLastLoadErrorCode();
+          if (code === 1) return this.nativePlaybackErrorMessage('yrw801.rom missing');
+          if (code === 2) return this.nativePlaybackErrorMessage('waves.dat missing');
+        }
+      } catch (e) {}
+      try {
+        if (this._lastPlaybackResourceError === 'opl4' && p._hasOpl4RomLoaded && !p._hasOpl4RomLoaded()) {
+          return this.nativePlaybackErrorMessage('yrw801.rom missing');
+        }
+        if (this._lastPlaybackResourceError === 'waves' && p._hasWavesDatLoaded && !p._hasWavesDatLoaded()) {
+          return this.nativePlaybackErrorMessage('waves.dat missing');
+        }
+      } catch (e) {}
+      try {
+        if (p._trackUsesOpl4 && p._trackUsesOpl4() && p._hasOpl4RomLoaded && !p._hasOpl4RomLoaded()) {
+          return this.nativePlaybackErrorMessage('yrw801.rom missing');
+        }
+      } catch (e) {}
+      return '';
     }
 
     async cushionCurrentPlayback(buffers = 12) {
@@ -1234,6 +1263,7 @@
         const msg = String(fresh[i] || '');
         if (/yrw801\.rom|waves\.dat|MT32_/i.test(msg)) {
           const normalized = this.nativePlaybackErrorMessage(msg);
+          this._lastPlaybackResourceError = /waves\.dat|MoonSound/i.test(msg) ? 'waves' : 'opl4';
           const originalIndex = Math.max(0, startIndex) + i;
           if (normalized !== msg) notices[originalIndex] = normalized;
           return normalized;

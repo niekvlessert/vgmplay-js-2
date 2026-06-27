@@ -124,6 +124,7 @@
     RSN: { content: 'SPC archive container', backend: 'Archive reader' },
     VGMPACK: { content: 'Sample pack archive', backend: 'Archive reader' }
   };
+  const TRACKER_FORMATS = new Set(['MOD', 'S3M', 'XM', 'IT', 'MPTM', 'STM', 'MTM', '669', 'AMF', 'DMF', 'FAR', 'IMF', 'MED', 'OKT', 'PTM', 'ULT', 'UMX']);
 
   function extOf(name) {
     const clean = String(name || '').split('?')[0].split('#')[0];
@@ -434,9 +435,35 @@
       this.pageOffsets = {};
       this.selectedId = null;
       this.buildEntries(Array.isArray(items) ? items : []);
+      this.pruneArchiveMetaCache();
       this.renderTree();
       if (this.config.imageOverview !== false) this.showImageOverview();
       else this.showHelp();
+    }
+
+    pruneArchiveMetaCache() {
+      const cache = this.archiveMetaCache;
+      if (!cache || !cache.quick || !cache.packsBySha) return;
+      const root = this.rootUrl || this.rootName || '';
+      const currentKeys = new Set();
+      for (const entry of this.entries) {
+        if (isArchiveEntry(entry)) currentKeys.add(this.archiveQuickKey(entry));
+      }
+      let changed = false;
+      for (const key of Object.keys(cache.quick)) {
+        if (root && key.startsWith(root + '|') && !currentKeys.has(key)) {
+          delete cache.quick[key];
+          changed = true;
+        }
+      }
+      const referenced = new Set(Object.values(cache.quick).filter(Boolean));
+      for (const sha of Object.keys(cache.packsBySha)) {
+        if (!referenced.has(sha)) {
+          delete cache.packsBySha[sha];
+          changed = true;
+        }
+      }
+      if (changed) this.saveArchiveMetaCache({ immediate: true });
     }
 
     buildEntries(items) {
@@ -535,6 +562,7 @@
         if (isArchiveEntry(entry)) this.applyCachedArchivePreview(entry);
         else if (entry.playable) this.applyCachedTrackPreview(entry);
       }
+      this.recomputeAggregateDurations();
     }
 
     warningsFor(item, format) {
@@ -600,7 +628,7 @@
       let list = this.children.get(parentId) || [];
       list = list.filter((entry) => !entry.hidden);
       if (!this.config.showUnsupported) {
-        list = list.filter((entry) => entry.type !== 'unsupported');
+        list = list.filter((entry) => entry.type !== 'unsupported' && !this.isUnsupportedOnlyArchive(entry));
       }
       if (this.matchedIds) list = list.filter((entry) => this.matchedIds.has(entry.id));
 
@@ -622,6 +650,14 @@
       return list;
     }
 
+    isUnsupportedOnlyArchive(entry) {
+      if (!isArchiveEntry(entry) || !entry.archiveInspected) return false;
+      const metadata = entry.metadata || {};
+      const playableTrackCount = Number(metadata.trackCount) || 0;
+      const unsupportedCount = Number(metadata.unsupportedCount) || 0;
+      return playableTrackCount <= 0 && unsupportedCount > 0;
+    }
+
     renderRow(entry, depth, container) {
       const row = document.createElement('div');
       const isMultiTrack = entry.format && FORMAT_INFO[entry.format] && FORMAT_INFO[entry.format].multiTrack;
@@ -629,7 +665,7 @@
       const isInspecting = this.isAncestorInspecting(entry);
       row.className = `native-row ${displayType}${entry.id === this.selectedId ? ' selected' : ''}${entry.warnings && entry.warnings.length ? ' warn' : ''}${isInspecting ? ' disabled-inspecting' : ''}`;
       const displayName = this.displayNameFor(entry);
-      const duration = entry.metadata && entry.metadata.duration ? entry.metadata.duration : '';
+      const duration = this.durationForRow(entry);
       row.innerHTML = `
         <span class="native-indent" style="width:${depth * 16}px"></span>
         <span class="native-expander">${this.hasChildren(entry) ? (entry.expanded ? '&#9662;' : '&#9656;') : ''}</span>
@@ -682,6 +718,13 @@
         if (value && !unique.includes(value)) unique.push(value);
       }
       return unique.slice(0, 4).map((format) => `<span class="native-badge ${BADGE_CLASS[format] || ''}">${escapeHtml(format)}</span>`).join('');
+    }
+
+    durationForRow(entry) {
+      if (!entry || !entry.metadata) return '';
+      const isMultiTrack = entry.format && FORMAT_INFO[entry.format] && FORMAT_INFO[entry.format].multiTrack;
+      if ((entry.pendingExpandable || isMultiTrack) && !this.hasChildren(entry)) return '';
+      return entry.metadata.duration || '';
     }
 
     hover(entry) {
@@ -1225,7 +1268,7 @@
         const comments = this.readTag(path, 10);
         const length = this.readLength(path);
         if (title) metadata.trackTitle = title;
-        if (game) metadata.game = game;
+        if (this.shouldUseGameTag(entry.format, game, title)) metadata.game = game;
         if (system) metadata.system = system;
         if (author) metadata.author = author;
         if (date) metadata.date = date;
@@ -1249,6 +1292,7 @@
         entry.metadata = metadata;
         entry.inspected = true;
         this.saveTrackMetadata(entry);
+        this.recomputeAggregateDurations();
       } catch (e) {
         console.error('[VGM Native] Failed to inspect local entry', e);
         entry.metadata = { ...(entry.metadata || {}), status: 'Metadata unavailable' };
@@ -1801,7 +1845,7 @@
       const comments = this.readTag(fsPath, 10);
       const length = this.readLength(fsPath);
       if (title) metadata.trackTitle = title;
-      if (game && format !== 'MBM') metadata.game = game;
+      if (this.shouldUseGameTag(format, game, title)) metadata.game = game;
       if (system) metadata.system = system;
       if (author) metadata.author = author;
       if (date) metadata.date = date;
@@ -1812,6 +1856,45 @@
         metadata.duration = this.formatTime(length);
       }
       return metadata;
+    }
+
+    isTrackerFormat(format) {
+      return TRACKER_FORMATS.has(String(format || '').toUpperCase());
+    }
+
+    shouldUseGameTag(format, game, title = '') {
+      if (!game) return false;
+      const normalizedFormat = String(format || '').toUpperCase();
+      const normalizedGame = String(game || '').trim().toUpperCase();
+      const normalizedTitle = String(title || '').trim().toUpperCase();
+      if (normalizedFormat === 'MBM' || normalizedFormat === 'LMP' || this.isTrackerFormat(normalizedFormat)) return false;
+      if (normalizedGame === normalizedFormat || normalizedGame === normalizedTitle) return false;
+      return true;
+    }
+
+    isFormatLabel(value) {
+      const label = String(value || '').trim().toUpperCase();
+      return !!label && !!FORMAT_INFO[label];
+    }
+
+    cleanTrackMetadata(metadata, context = {}) {
+      if (!metadata || typeof metadata !== 'object') return {};
+      const format = context.format || metadata.format || '';
+      const name = context.name || '';
+      const clean = { ...metadata };
+      const title = clean.trackTitle || clean.title || name;
+      if (!this.shouldUseGameTag(format, clean.game, title)) delete clean.game;
+      if (format) clean.format = format;
+      return clean;
+    }
+
+    archiveTitleFromMeta(archiveMeta, fallback) {
+      const archiveNameTitle = archiveMeta && archiveMeta.archiveName ? baseName(archiveMeta.archiveName).replace(/\.[^.]+$/, '') : '';
+      let fallbackTitle = fallback || archiveNameTitle;
+      if (this.isFormatLabel(fallbackTitle)) fallbackTitle = archiveNameTitle || fallbackTitle;
+      const title = archiveMeta && archiveMeta.title ? String(archiveMeta.title).trim() : '';
+      if (!title || this.isFormatLabel(title)) return fallbackTitle;
+      return title;
     }
 
     externalizeArchiveMetaCovers(entry, archiveMeta) {
@@ -1856,14 +1939,17 @@
       entry.archiveVerified = !!options.verified;
       entry.archiveLightIndex = !!archiveMeta.lightIndex;
       const playableTrackCount = archiveMeta.trackCount || (archiveMeta.tracks ? archiveMeta.tracks.length : 0);
-      entry.hidden = playableTrackCount <= 0;
+      const unsupportedCount = archiveMeta.unsupported ? archiveMeta.unsupported.length : 0;
+      const archiveTitle = this.archiveTitleFromMeta(archiveMeta, (entry.metadata && entry.metadata.title) || entry.name);
+      entry.hidden = playableTrackCount <= 0 && unsupportedCount <= 0;
       entry.metadata = {
         ...(entry.metadata || {}),
-        title: archiveMeta.title || (entry.metadata && entry.metadata.title) || entry.name,
-        gameTitle: archiveMeta.title || '',
+        title: archiveTitle,
+        gameTitle: archiveTitle,
         status: options.verified ? 'Archive indexed' : 'Archive preview from cache',
         sha256: archiveMeta.sha256,
         trackCount: playableTrackCount,
+        unsupportedCount,
         coverDataUrl: archiveMeta.coverDataUrl || (entry.metadata && entry.metadata.coverDataUrl) || '',
         coverUrl: archiveMeta.coverUrl || (entry.metadata && entry.metadata.coverUrl) || '',
         content: (entry.metadata && entry.metadata.content) || 'Archive container',
@@ -1898,7 +1984,23 @@
         });
       }
       if (options.expand) entry.expanded = true;
+      this.recomputeAggregateDurations();
       this.renderTree();
+    }
+
+    recomputeAggregateDurations(parentId = 'root') {
+      const children = this.children.get(parentId) || [];
+      let total = 0;
+      for (const child of children) {
+        const childTotal = this.recomputeAggregateDurations(child.id);
+        const direct = Number(child.metadata && child.metadata.lengthSec) || 0;
+        total += childTotal || direct;
+      }
+      const entry = this.byId.get(parentId);
+      if (entry && total > 0 && (this.hasChildren(entry) || entry.type === 'folder' || isArchiveEntry(entry) || entry.type === 'archiveGame')) {
+        entry.metadata = { ...(entry.metadata || {}), lengthSec: total, duration: this.formatTime(total) };
+      }
+      return total;
     }
 
     tracksForArchiveGame(game) {
@@ -1953,11 +2055,13 @@
 
     archiveTrackFromMeta(parent, track, index, parentId = parent.id) {
       const format = track.format || formatOf({ name: track.path });
+      const name = track.name || baseName(track.path);
+      const metadata = this.cleanTrackMetadata(track.metadata, { format, name, path: track.path });
       return {
         id: `${parent.id}:archive:${index}`,
         parentId,
         type: 'archiveTrack',
-        name: track.name || baseName(track.path),
+        name,
         format,
         playable: true,
         inspectable: false,
@@ -1968,12 +2072,12 @@
         archivePath: track.path,
         archiveTrackPathSuffix: track.trackPathSuffix || '',
         metadata: {
-          ...(track.metadata || {}),
-          title: track.name || (track.metadata && track.metadata.title) || baseName(track.path),
+          ...metadata,
+          title: name || metadata.title || baseName(track.path),
           status: 'Playable',
           container: `${parent.name} / ${dirname(track.path)}`,
-          coverDataUrl: (track.metadata && track.metadata.coverDataUrl) || (parent.metadata && parent.metadata.coverDataUrl) || '',
-          coverUrl: (track.metadata && track.metadata.coverUrl) || (parent.metadata && parent.metadata.coverUrl) || ''
+          coverDataUrl: metadata.coverDataUrl || (parent.metadata && parent.metadata.coverDataUrl) || '',
+          coverUrl: metadata.coverUrl || (parent.metadata && parent.metadata.coverUrl) || ''
         },
         warnings: parent.warnings || []
       };
@@ -2005,8 +2109,10 @@
       const counts = new Map();
       for (const track of tracks || []) {
         const m = track.metadata || {};
+        const format = track.format || formatOf({ name: track.path });
         const value = (m.game || '').trim();
         const trackTitle = (m.trackTitle || m.title || track.name || '').trim();
+        if (!this.shouldUseGameTag(format, value, trackTitle)) continue;
         if (value && trackTitle && value === trackTitle) continue;
         if (!value || value.length < 2) continue;
         counts.set(value, (counts.get(value) || 0) + 1);
@@ -2374,19 +2480,31 @@
     loadArchiveMetaCache() {
       const fallback = { version: ARCHIVE_META_VERSION, packsBySha: {}, quick: {} };
       const raw = window.VGMPLAY_NATIVE_ARCHIVE_META;
-      if (raw && raw.version === ARCHIVE_META_VERSION && raw.packsBySha && raw.quick) return raw;
+      if (raw && raw.version === ARCHIVE_META_VERSION && raw.packsBySha && raw.quick) return this.normalizeArchiveMetaCache(raw);
       try {
         const local = JSON.parse(localStorage.getItem('vgmplayNativeArchiveMeta') || 'null');
-        if (local && local.version === ARCHIVE_META_VERSION && local.packsBySha && local.quick) return local;
+        if (local && local.version === ARCHIVE_META_VERSION && local.packsBySha && local.quick) return this.normalizeArchiveMetaCache(local);
       } catch (e) {}
       return fallback;
+    }
+
+    normalizeArchiveMetaCache(cache) {
+      const normalized = {
+        version: ARCHIVE_META_VERSION,
+        packsBySha: {},
+        quick: cache.quick || {}
+      };
+      for (const [sha, pack] of Object.entries(cache.packsBySha || {})) {
+        normalized.packsBySha[sha] = this.archivePackForStorage(pack);
+      }
+      return normalized;
     }
 
     archivePackForStorage(pack) {
       if (!pack || typeof pack !== 'object') return pack;
       const compactMetadata = (metadata, context = {}) => {
         if (!metadata || typeof metadata !== 'object') return {};
-        const compact = { ...metadata };
+        const compact = this.cleanTrackMetadata(metadata, context);
         delete compact.coverDataUrl;
         if (!compact.coverUrl) delete compact.coverUrl;
         if (compact.status === 'Playable') delete compact.status;
@@ -2407,12 +2525,12 @@
           ...context,
           name: track.name || context.name || '',
           path: track.path || context.path || '',
-          format: track.format || context.format || ''
+          format: track.format || context.format || formatOf({ name: track.path || context.path || '' })
         };
         const stored = {
           path: track.path,
           name: track.name,
-          format: track.format,
+          format: trackContext.format,
           trackPathSuffix: track.trackPathSuffix
         };
         const metadata = compactMetadata(track.metadata, trackContext);
@@ -2446,11 +2564,15 @@
         };
       };
       const hasGames = Array.isArray(pack.games) && pack.games.length > 0;
+      const storedTracks = hasGames ? [] : (Array.isArray(pack.tracks) ? pack.tracks.map(stripTrack) : []);
+      const storedGames = Array.isArray(pack.games) ? pack.games.map(stripGame) : [];
+      const fallbackTitle = pack.archiveName ? baseName(pack.archiveName).replace(/\.[^.]+$/, '') : pack.title;
       return {
         ...pack,
+        title: this.isFormatLabel(pack.title) ? fallbackTitle : pack.title,
         coverDataUrl: '',
-        tracks: hasGames ? [] : (Array.isArray(pack.tracks) ? pack.tracks.map(stripTrack) : []),
-        games: Array.isArray(pack.games) ? pack.games.map(stripGame) : [],
+        tracks: storedTracks,
+        games: storedGames,
         unsupported: Array.isArray(pack.unsupported) ? pack.unsupported : [],
         support: Array.isArray(pack.support) ? pack.support : []
       };

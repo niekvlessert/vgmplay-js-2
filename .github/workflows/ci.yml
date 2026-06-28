@@ -59,6 +59,14 @@ jobs:
             git clone --depth 1 https://github.com/Thealexbarney/LibAtrac9 modules/vgmstream/dependencies/LibAtrac9
           fi
 
+      - name: Fetch Ogg
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
+        run: |
+          if [ ! -d modules/vgmstream/dependencies/ogg ]; then
+            git clone https://github.com/xiph/ogg modules/vgmstream/dependencies/ogg
+          fi
+          git -C modules/vgmstream/dependencies/ogg checkout fa80aae9d50096160f2b56ada35527d7aee3f746
+
       - name: Build WASM
         if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: |
@@ -70,7 +78,8 @@ jobs:
             -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG" \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_HAVE_LIBC_PTHREAD=1 \
-            -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9"
+            -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9" \
+            -DOGG_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/ogg"
           emmake make -j4
 
       - name: Verify SSF Emscripten fix

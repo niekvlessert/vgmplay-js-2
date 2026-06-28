@@ -611,7 +611,7 @@ static void VGMLog(NSString *format, ...) {
     @"png", @"jpg", @"jpeg", @"webp", @"gif", @"bmp"
   ]];
   NSSet *supportExtensions = [NSSet setWithArray:@[
-    @"mwk", @"psflib", @"usflib", @"m3u", @"txt", @"trackinfo", @"gameinfo"
+    @"mwk", @"psflib", @"ssflib", @"usflib", @"m3u", @"txt", @"trackinfo", @"gameinfo"
   ]];
   NSSet *playableExtensions = [NSSet setWithArray:@[
     @"vgm", @"vgz", @"spc", @"nsf", @"nsfe", @"gbs", @"hes", @"sap",

@@ -37,6 +37,11 @@ set(MOONSOUND_USE_SYSTEM_LIBVGM ON CACHE BOOL "Use external libvgm for libmoonso
 set(MOONSOUND_BUILD_CLI OFF CACHE BOOL "Disable libmoonsound CLI" FORCE)
 add_subdirectory(modules/libmoonsound)
 add_subdirectory(modules/sexypsf)
+set(SSFPLAY_BUILD_CLI OFF CACHE BOOL "Disable ssfplay command-line tools" FORCE)
+set(SSFPLAY_BUILD_PLAYER OFF CACHE BOOL "Disable ssfplay playback tool" FORCE)
+set(SSFPLAY_BUILD_LIBVGM_AB_PLAYER OFF CACHE BOOL "Disable ssfplay libvgm comparison tools" FORCE)
+set(SSFPLAY_BUILD_WASM OFF CACHE BOOL "Disable standalone ssfplay wasm wrapper" FORCE)
+add_subdirectory(modules/ssfplay_tools)
 set(GME_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
 set(GME_BUILD_STATIC ON CACHE BOOL "Build static library" FORCE)
 add_subdirectory(modules/game-music-emu)
@@ -126,7 +131,7 @@ add_executable(vgmplay-js
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -msimd128 -msse -msse2")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msimd128 -msse -msse2")
 
-target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf)
+target_link_libraries(vgmplay-js vgm-player vgm-emu vgm-utils sexypsf lazyusf ssfplay::ssfplay)
 target_link_libraries(vgmplay-js gme::gme)
 target_link_libraries(vgmplay-js kss)
 target_link_libraries(vgmplay-js musdoom)
@@ -209,6 +214,8 @@ target_link_libraries(vgmplay-js libmac)
 add_dependencies(vgmplay-js openmpt_build)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
+target_compile_options(vgmplay-js PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
+target_link_options(vgmplay-js PRIVATE "SHELL:-sDISABLE_EXCEPTION_CATCHING=0")
 target_compile_definitions(vgmplay-js PRIVATE BUILD_CROSS_PLATFORM)
 
 # Include directories
@@ -220,6 +227,7 @@ target_include_directories(vgmplay-js PRIVATE
 )
 target_include_directories(vgmplay-js PRIVATE
     modules/sexypsf
+    modules/ssfplay_tools/include
     modules/game-music-emu/gme
     modules/libkss/src
     modules/libkss/src/kss

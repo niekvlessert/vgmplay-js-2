@@ -64,8 +64,26 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          emcmake cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_HAVE_LIBC_PTHREAD=1 -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9"
+          emcmake cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG" \
+            -DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_HAVE_LIBC_PTHREAD=1 \
+            -DATRAC9_PATH="${GITHUB_WORKSPACE}/modules/vgmstream/dependencies/LibAtrac9"
           emmake make -j4
+
+      - name: Verify SSF Emscripten fix
+        if: steps.wasm-cache.outputs.cache-hit != 'true'
+        run: |
+          if [ ! -d modules/ssfplay_tools ]; then
+            echo "Error: modules/ssfplay_tools submodule is missing"
+            exit 1
+          fi
+          if ! grep -F 'mednafen/src/hw_cpu/m68k/m68k.cpp' build/compile_commands.json | grep -F -- '-fno-jump-tables'; then
+            echo "Error: SSF m68k.cpp is not being built with -fno-jump-tables"
+            exit 1
+          fi
 
       - name: Verify Build Output
         run: |

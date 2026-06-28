@@ -30,6 +30,7 @@
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
 #include "../modules/libmoonsound/src/libmoonsound.h"
+#include "../modules/ssfplay_tools/include/ssfplay/ssfplay.h"
 
 extern "C" {
 #ifdef INLINE
@@ -95,6 +96,11 @@ static usf_state_t *usfState = nullptr;
 static PSFINFO *usfInfo = nullptr;
 static std::vector<int16_t> usfBuffer;
 static int32_t usfSampleRate = 44100;
+static bool isSSF = false;
+static ssfplay_decoder *ssfDecoder = nullptr;
+static int64_t ssfLengthMs = 0;
+static uint64_t ssfRenderedSamples = 0;
+static bool ssfEnded = false;
 static openmpt_module *gOpenMpt = nullptr;
 static bool isOpenMPT = false;
 static bool openmptEnded = false;
@@ -644,6 +650,22 @@ static int usf_load_psf(const char *path, void *state, int level) {
   return 0;
 }
 
+static bool isSsfFormatPath(const std::string &lowerPath) {
+  return (lowerPath.size() > 4 &&
+          lowerPath.substr(lowerPath.size() - 4) == ".ssf") ||
+         (lowerPath.size() > 8 &&
+          lowerPath.substr(lowerPath.size() - 8) == ".minissf");
+}
+
+static void configureSsfDefaults(ssfplay_config &config) {
+  config.sample_rate = gSampleRate;
+  config.resampler_quality = 10;
+  if (config.length_ms < 0)
+    config.length_ms = 180000;
+  if (config.fade_ms < 0)
+    config.fade_ms = 10000;
+}
+
 extern "C" {
 void sexyd_update(unsigned char *p, long l) {
   short *pcm = (short *)p;
@@ -748,6 +770,16 @@ static void cleanup(bool keepVGMPlayer) {
     }
     isUSF = false;
     usfBuffer.clear();
+  }
+  if (isSSF) {
+    if (ssfDecoder) {
+      ssfplay_close(ssfDecoder);
+      ssfDecoder = nullptr;
+    }
+    isSSF = false;
+    ssfLengthMs = 0;
+    ssfRenderedSamples = 0;
+    ssfEnded = false;
   }
   if (isOpenMPT) {
     if (gOpenMpt) {
@@ -1089,6 +1121,32 @@ void Seek(unsigned int sec, unsigned int ms) {
     }
     return;
   }
+  if (isSSF) {
+    if (!ssfDecoder)
+      return;
+    if (ssfplay_reset(ssfDecoder) != SSFPLAY_OK)
+      return;
+    ssfRenderedSamples = 0;
+    ssfEnded = false;
+    uint64_t remaining = (uint64_t)sample;
+    std::vector<int16_t> scratch(2048 * 2);
+    while (remaining > 0 && !ssfEnded) {
+      size_t request = remaining > 2048 ? 2048 : (size_t)remaining;
+      size_t rendered = 0;
+      ssfplay_result result = ssfplay_render(ssfDecoder, scratch.data(), request, &rendered);
+      ssfRenderedSamples += rendered;
+      if (result == SSFPLAY_EOF || rendered == 0) {
+        ssfEnded = true;
+        break;
+      }
+      if (result != SSFPLAY_OK) {
+        ssfEnded = true;
+        break;
+      }
+      remaining -= rendered;
+    }
+    return;
+  }
   if (isPSF) {
     psfBufferL.clear();
     psfBufferR.clear();
@@ -1202,6 +1260,25 @@ int OpenVGMFile(const char *path) {
     isUSF = true;
     sampcount = 0;
     usfBuffer.clear();
+    return 1;
+  }
+
+  if (isSsfFormatPath(lowerPath)) {
+    ssfplay_config config;
+    ssfplay_config_init(&config);
+    configureSsfDefaults(config);
+    ssfplay_result result = ssfplay_open(basePath.c_str(), &config, &ssfDecoder);
+    if (result != SSFPLAY_OK) {
+      printf("SSF: Failed to load %s: %s%s%s\n", basePath.c_str(),
+             ssfplay_result_string(result),
+             ssfplay_last_error()[0] ? ": " : "", ssfplay_last_error());
+      ssfDecoder = nullptr;
+      return 0;
+    }
+    isSSF = true;
+    ssfLengthMs = ssfplay_length_ms(ssfDecoder);
+    ssfRenderedSamples = 0;
+    ssfEnded = false;
     return 1;
   }
 
@@ -1743,6 +1820,15 @@ int VGMEnded(void) {
   if (isUSF) {
     return (usfInfo && sampcount >= usfInfo->length * 44.1) ? 1 : 0;
   }
+  if (isSSF) {
+    if (!ssfDecoder) return 1;
+    if (ssfEnded) return 1;
+    if (ssfLengthMs > 0) {
+      uint64_t totalSamples = (uint64_t)((double)ssfLengthMs * (double)gSampleRate / 1000.0);
+      return ssfRenderedSamples >= totalSamples ? 1 : 0;
+    }
+    return 0;
+  }
   if (isAPE) {
     if (!apeDecompress) return 1;
     const int currentBlock = (int)apeDecompress->GetInfo(APE_DECOMPRESS_CURRENT_BLOCK);
@@ -1817,6 +1903,9 @@ int GetTrackLength(void) {
   if (isUSF) {
     return usfInfo ? (int)(usfInfo->length * 44.1) : 0;
   }
+  if (isSSF) {
+    return ssfLengthMs > 0 ? (int)((double)ssfLengthMs * 44.1) : 0;
+  }
   if (isMoonsound) {
     return msTotalSamples > 0 ? (int)msTotalSamples : 0;
   }
@@ -1880,6 +1969,19 @@ int GetTrackLengthDirect(const char *path) {
     int len = (int)(info->length * 44.1);
     sexy_freepsfinfo(info);
     return len;
+  }
+
+  if (isSsfFormatPath(lowerPath)) {
+    ssfplay_config config;
+    ssfplay_config_init(&config);
+    configureSsfDefaults(config);
+    ssfplay_decoder *decoder = nullptr;
+    ssfplay_result result = ssfplay_open(basePath.c_str(), &config, &decoder);
+    if (result != SSFPLAY_OK || !decoder)
+      return 0;
+    int64_t lengthMs = ssfplay_length_ms(decoder);
+    ssfplay_close(decoder);
+    return lengthMs > 0 ? (int)((double)lengthMs * 44.1) : 0;
   }
 
   if (lowerPath.size() > 4 &&
@@ -2169,6 +2271,34 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     }
     sexy_freepsfinfo(info);
     return "";
+  }
+
+  if (isSsfFormatPath(lowerPath)) {
+    ssfplay_config config;
+    ssfplay_config_init(&config);
+    configureSsfDefaults(config);
+    ssfplay_decoder *decoder = nullptr;
+    ssfplay_result result = ssfplay_open(basePath.c_str(), &config, &decoder);
+    if (result != SSFPLAY_OK || !decoder)
+      return "";
+
+    ssfplay_metadata_field field;
+    switch (tagIndex) {
+      case 0: field = SSFPLAY_METADATA_TITLE; break;
+      case 2: field = SSFPLAY_METADATA_GAME; break;
+      case 6: field = SSFPLAY_METADATA_ARTIST; break;
+      case 8: field = SSFPLAY_METADATA_YEAR; break;
+      case 10: field = SSFPLAY_METADATA_GENRE; break;
+      default:
+        ssfplay_close(decoder);
+        return "";
+    }
+    static char tagResult[256];
+    const char *value = ssfplay_metadata(decoder, field);
+    strncpy(tagResult, value ? value : "", 255);
+    tagResult[255] = '\0';
+    ssfplay_close(decoder);
+    return tagResult;
   }
 
   if (isOpenMptFormatPath(lowerPath)) {
@@ -2765,6 +2895,35 @@ void FillBuffer2(float *left, float *right, int n) {
     return;
   }
 
+  if (isSSF) {
+    if (!ssfDecoder) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    std::vector<int16_t> ssfBuffer(n * 2);
+    size_t rendered = 0;
+    ssfplay_result result = ssfplay_render(ssfDecoder, ssfBuffer.data(), (size_t)n, &rendered);
+    if (result != SSFPLAY_OK && result != SSFPLAY_EOF) {
+      printf("SSF Error: %s%s%s\n", ssfplay_result_string(result),
+             ssfplay_error(ssfDecoder)[0] ? ": " : "", ssfplay_error(ssfDecoder));
+      ssfEnded = true;
+      rendered = 0;
+    }
+    for (size_t i = 0; i < rendered; i++) {
+      left[i] = (float)(ssfBuffer[i * 2] / 32768.0f);
+      right[i] = (float)(ssfBuffer[i * 2 + 1] / 32768.0f);
+    }
+    for (int i = (int)rendered; i < n; i++) {
+      left[i] = 0.0f;
+      right[i] = 0.0f;
+    }
+    ssfRenderedSamples += rendered;
+    if (result == SSFPLAY_EOF)
+      ssfEnded = true;
+    return;
+  }
+
   if (isVGMStream) {
     if (!vgmstreamContext || !vgmstreamConverterInitialized) {
       memset(left, 0, n * sizeof(float));
@@ -2904,6 +3063,31 @@ void FillBuffer2(float *left, float *right, int n) {
 /* format: "TrkE|||TrkJ|||GmE|||GmJ|||SysE|||SysJ|||AutE|||AutJ|||Cre|||Notes"
  */
 char *ShowTitle(void) {
+  if (isSSF) {
+    if (!ssfDecoder)
+      return nullptr;
+    std::string s;
+    const ssfplay_metadata_field fields[] = {
+      SSFPLAY_METADATA_TITLE, SSFPLAY_METADATA_GAME, SSFPLAY_METADATA_ARTIST,
+      SSFPLAY_METADATA_COPYRIGHT, SSFPLAY_METADATA_YEAR, SSFPLAY_METADATA_GENRE
+    };
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      const char *value = "";
+      if (i == 0) value = ssfplay_metadata(ssfDecoder, fields[0]);
+      else if (i == 2) value = ssfplay_metadata(ssfDecoder, fields[1]);
+      else if (i == 6) value = ssfplay_metadata(ssfDecoder, fields[2]);
+      else if (i == 8) value = ssfplay_metadata(ssfDecoder, fields[4]);
+      else if (i == 10) value = ssfplay_metadata(ssfDecoder, fields[5]);
+      s += value ? value : "";
+      s += "|||";
+    }
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
+
   if (isPSF || isUSF) {
     PSFINFO *info = isPSF ? psfInfo : usfInfo;
     if (!info)

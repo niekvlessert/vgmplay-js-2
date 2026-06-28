@@ -38,3 +38,6 @@
 [submodule "modules/libmoonsound"]
 	path = modules/libmoonsound
 	url = https://github.com/niekvlessert/libmoonsound.git
+[submodule "modules/ssfplay_tools"]
+	path = modules/ssfplay_tools
+	url = https://github.com/niekvlessert/ssfplay_tools

@@ -11,7 +11,7 @@ WebKitWebView *web_view;
 
 static const char *archive_extensions[] = {".zip", ".7z", ".rar", ".rsn", ".vgmz", ".vgmdz", ".vgmpack", ".vigamup", NULL};
 static const char *image_extensions[] = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", NULL};
-static const char *support_extensions[] = {".mwk", ".psflib", ".usflib", ".m3u", ".txt", ".trackinfo", ".gameinfo", NULL};
+static const char *support_extensions[] = {".mwk", ".psflib", ".ssflib", ".usflib", ".m3u", ".txt", ".trackinfo", ".gameinfo", NULL};
 static const char *playable_extensions[] = {
     ".vgm", ".vgz", ".spc", ".nsf", ".nsfe", ".gbs", ".hes", ".sap",
     ".ay", ".kss", ".kssx", ".kscc", ".psf", ".minipsf", ".ssf",

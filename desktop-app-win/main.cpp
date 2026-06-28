@@ -169,7 +169,7 @@ std::wstring KindForExtension(const std::wstring &ext) {
   static const std::vector<std::wstring> images = {
       L".png", L".jpg", L".jpeg", L".webp", L".gif", L".bmp"};
   static const std::vector<std::wstring> support = {
-      L".mwk", L".psflib", L".usflib", L".m3u", L".txt", L".trackinfo", L".gameinfo"};
+      L".mwk", L".psflib", L".ssflib", L".usflib", L".m3u", L".txt", L".trackinfo", L".gameinfo"};
   static const std::vector<std::wstring> playable = {
       L".vgm", L".vgz", L".spc", L".nsf", L".nsfe", L".gbs", L".hes", L".sap",
       L".ay", L".kss", L".kssx", L".kscc", L".psf", L".minipsf", L".ssf",

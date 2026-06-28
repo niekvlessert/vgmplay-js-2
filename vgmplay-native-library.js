@@ -83,8 +83,8 @@
     VGM: { content: 'VGM command stream', backend: 'libvgm' },
     VGZ: { content: 'Compressed VGM command stream', backend: 'libvgm' },
     PSF: { content: 'PlayStation sequenced music', backend: 'Highly Experimental' },
-    SSF: { content: 'Saturn sequenced music', backend: 'LazyUSF/SSF' },
-    MINISSF: { content: 'Saturn sequenced music', backend: 'LazyUSF/SSF' },
+    SSF: { content: 'Saturn sequenced music', backend: 'ssfplay' },
+    MINISSF: { content: 'Saturn sequenced music', backend: 'ssfplay' },
     MIDI: { content: 'MIDI sequence', backend: 'MIDI synthesizer' },
     MBM: { content: 'MSX MoonBlaster module', backend: 'KSS' },
     MGS: { content: 'MSX music sequence', backend: 'KSS' },
@@ -1120,6 +1120,8 @@
         }
         const path = await this.ensureEntryInFs(entry);
         if (this._playSequence !== seq) return;
+        const gameFiles = entry.archiveGameFiles || await this.ensureLocalPlaybackSupportFiles(entry, path);
+        if (this._playSequence !== seq) return;
         const playPath = entry.trackPath || path;
         await this.player.checkEverythingReady();
         if (this._playSequence !== seq) return;
@@ -1128,7 +1130,7 @@
         this.player._nativeLibraryApp = this;
         const noticeStart = Array.isArray(this.player.noPlayableNotices) ? this.player.noPlayableNotices.length : 0;
         const game = {
-          files: entry.archiveGameFiles || [{ filepath: path }],
+          files: gameFiles,
           path: dirname(path),
           name: dirname(entry.path) || this.rootName,
           nativeCoverUrl: entry.metadata && (entry.metadata.coverDataUrl || entry.metadata.coverUrl || ''),
@@ -2304,6 +2306,36 @@
       return path;
     }
 
+    isPsfFamilyPath(path) {
+      const lower = String(path || '').toLowerCase().split('|track=')[0];
+      return lower.endsWith('.psf') || lower.endsWith('.minipsf') ||
+        lower.endsWith('.ssf') || lower.endsWith('.minissf') ||
+        lower.endsWith('.usf') || lower.endsWith('.miniusf');
+    }
+
+    isPsfSupportPath(path) {
+      const lower = String(path || '').toLowerCase();
+      return lower.endsWith('.psflib') || lower.endsWith('.ssflib') || lower.endsWith('.usflib');
+    }
+
+    async ensureLocalPlaybackSupportFiles(entry, primaryPath) {
+      const files = [{ filepath: primaryPath }];
+      if (!this.isPsfFamilyPath(entry.path)) return files;
+      const dir = dirname(entry.path).replace(/[\\]+/g, '/');
+      let count = 0;
+      for (const candidate of this.entries || []) {
+        if (!candidate || candidate === entry || !candidate.item || !candidate.item.url) continue;
+        if (!this.isPsfSupportPath(candidate.path)) continue;
+        const candidateDir = dirname(candidate.path).replace(/[\\]+/g, '/');
+        if (candidateDir !== dir) continue;
+        const supportPath = await this.ensureEntryInFs(candidate);
+        files.push({ filepath: supportPath });
+        count++;
+        if (count % 10 === 0) await this.yieldToUI();
+      }
+      return files;
+    }
+
     async ensureArchiveTrackInFs(entry) {
       const parent = this.byId.get(entry.archiveParentId);
       if (!parent) throw new Error('Archive parent missing');
@@ -2339,7 +2371,7 @@
       const selected = String(entry.archivePath || '').toLowerCase();
       for (const relPath of parent.archiveFiles.keys()) {
         const lower = String(relPath || '').toLowerCase();
-        if (lower.endsWith('.psflib') || lower.endsWith('.usflib')) paths.add(relPath);
+        if (this.isPsfSupportPath(lower)) paths.add(relPath);
         if ((selected.endsWith('.mus') || selected.endsWith('.lmp')) && lower.endsWith('genmidi.lmp')) paths.add(relPath);
       }
       return Array.from(paths);

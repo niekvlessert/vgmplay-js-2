@@ -206,6 +206,8 @@
       this.homeRomsLoaded = false;
       this._loadingTrack = false;
       this._playSequence = 0;
+      this.maxResidentArchives = 2;
+      this.residentArchiveIds = [];
       this.mount();
     }
 
@@ -434,6 +436,7 @@
       this.pathEl.textContent = this.rootUrl || this.rootName;
       this.pageOffsets = {};
       this.selectedId = null;
+      this.clearResidentArchiveCache();
       this.buildEntries(Array.isArray(items) ? items : []);
       this.pruneArchiveMetaCache();
       this.renderTree();
@@ -663,6 +666,7 @@
       const isMultiTrack = entry.format && FORMAT_INFO[entry.format] && FORMAT_INFO[entry.format].multiTrack;
       const displayType = isMultiTrack ? 'archive' : entry.type;
       const isInspecting = this.isAncestorInspecting(entry);
+      const isRowLoading = this.isEntryLoading(entry);
       row.className = `native-row ${displayType}${entry.id === this.selectedId ? ' selected' : ''}${entry.warnings && entry.warnings.length ? ' warn' : ''}${isInspecting ? ' disabled-inspecting' : ''}`;
       const displayName = this.displayNameFor(entry);
       const duration = this.durationForRow(entry);
@@ -670,6 +674,7 @@
         <span class="native-indent" style="width:${depth * 16}px"></span>
         <span class="native-expander">${this.hasChildren(entry) ? (entry.expanded ? '&#9662;' : '&#9656;') : ''}</span>
         <span class="native-name">${escapeHtml(displayName)}</span>
+        <span class="native-row-spinner-slot">${isRowLoading ? '<span class="native-row-spinner" title="Working"></span>' : ''}</span>
         ${duration ? `<span class="native-duration">${escapeHtml(duration)}</span>` : ''}
         ${this.renderFormatBadges(entry)}
         ${entry.warnings && entry.warnings.length ? '<span class="native-warning-mark">!</span>' : ''}`;
@@ -680,6 +685,25 @@
       row.addEventListener('dblclick', () => this.open(entry));
       container.appendChild(row);
       if (entry.expanded) this.renderChildren(entry.id, depth + 1, container);
+    }
+
+    isEntryLoading(entry) {
+      if (!entry) return false;
+      if (entry.archiveInspecting || entry.inspecting) return true;
+      if (entry.type !== 'folder') return false;
+      return this.hasLoadingDescendant(entry.id);
+    }
+
+    hasLoadingDescendant(parentId, seen = new Set()) {
+      if (!parentId || seen.has(parentId)) return false;
+      seen.add(parentId);
+      const children = this.children.get(parentId) || [];
+      for (const child of children) {
+        if (!child || child.hidden) continue;
+        if (child.archiveInspecting || child.inspecting) return true;
+        if (this.hasLoadingDescendant(child.id, seen)) return true;
+      }
+      return false;
     }
 
     renderPager(parentId, depth, total, offset, container) {
@@ -1117,6 +1141,9 @@
         if (entry.type === 'archiveTrack') {
           await this.cushionCurrentPlayback();
           if (this._playSequence !== seq) return;
+          if (this.player && this.player.isVGMPlaying && this.player.stop) {
+            this.player.stop();
+          }
         }
         const path = await this.ensureEntryInFs(entry);
         if (this._playSequence !== seq) return;
@@ -1287,6 +1314,7 @@
       entry.inspecting = true;
       entry.metadata = { ...(entry.metadata || {}), status: 'Inspecting...' };
       this.showInfo(entry);
+      this.renderTree();
       try {
         const path = await this.ensureEntryInFs(entry);
         await this.player.checkEverythingReady();
@@ -1344,28 +1372,31 @@
         return;
       }
 
+      let archiveSha = '';
+      const keepArchiveFiles = !!options.keepArchiveFiles;
       entry.archiveInspecting = true;
       this.statusEl.classList.add('native-status-loading');
       entry.metadata = { ...(entry.metadata || {}), status: 'Hashing archive...' };
       this.statusEl.textContent = 'Hashing archive';
       this.showInfo(entry);
+      this.renderTree();
       try {
         if (this._scanCancelled) return;
         await this.cushionCurrentPlayback(20);
         if (this._scanCancelled) return;
         const originalBytes = await this.fetchBytes(entry.item.url);
         if (this._scanCancelled) return;
-        const sha = await this.sha256Hex(originalBytes);
-        const cached = this.archiveMetaCache.packsBySha[sha];
+        archiveSha = await this.sha256Hex(originalBytes);
+        const cached = this.archiveMetaCache.packsBySha[archiveSha];
         if (cached && !options.force && (!options.fullIndex || !cached.lightIndex)) {
           this.applyArchiveMetadata(entry, cached, { expand: !!options.expand, verified: true });
-          this.rememberArchiveQuickKey(entry, sha);
+          this.rememberArchiveQuickKey(entry, archiveSha);
           this.saveArchiveMetaCache();
           this.statusEl.textContent = 'Archive ready';
           return;
         }
 
-        entry.metadata = { ...(entry.metadata || {}), status: 'Indexing archive in background...', sha256: sha };
+        entry.metadata = { ...(entry.metadata || {}), status: 'Indexing archive in background...', sha256: archiveSha };
         this.statusEl.textContent = 'Indexing archive';
         this.showInfo(entry);
         const entrySize = entry.item?.sizeBytes || 0;
@@ -1379,9 +1410,9 @@
           result = await this.extractArchive(entry, originalBytes, { metadataOnly: false });
         }
         entry.archiveFiles = result.metadataOnly ? null : result.fileDataByPath;
-        const metadata = await this.buildArchiveMetadata(entry, result, sha, { lightIndex });
-        this.archiveMetaCache.packsBySha[sha] = metadata;
-        this.rememberArchiveQuickKey(entry, sha);
+        const metadata = await this.buildArchiveMetadata(entry, result, archiveSha, { lightIndex });
+        this.archiveMetaCache.packsBySha[archiveSha] = metadata;
+        this.rememberArchiveQuickKey(entry, archiveSha);
         this.saveArchiveMetaCache();
         this.applyArchiveMetadata(entry, metadata, { expand: !!options.expand, verified: true });
         this.statusEl.textContent = 'Archive ready';
@@ -1390,6 +1421,7 @@
         entry.metadata = { ...(entry.metadata || {}), status: 'Archive metadata unavailable' };
         this.statusEl.textContent = 'Archive failed';
       } finally {
+        if (!keepArchiveFiles) this.releaseArchiveInspectionMemory(entry, archiveSha);
         entry.archiveInspecting = false;
         this.statusEl.classList.remove('native-status-loading');
         this.showInfo(entry);
@@ -1515,6 +1547,140 @@
         entry.archiveFiles = null;
         entry.archiveFsFiles = null;
       }
+      this.purgeNativeArchiveFs();
+    }
+
+    releaseArchiveInspectionMemory(entry, sha) {
+      if (entry) {
+        entry.archiveFiles = null;
+        entry.archiveFsFiles = null;
+        this.forgetResidentArchive(entry);
+      }
+      if (sha) this.purgeNativeArchiveFsRoot(sha);
+    }
+
+    purgeNativeArchiveFsRoot(sha) {
+      if (!sha || !this.player || !this.player._rmRecursive) return;
+      const root = `/native-archives/${sha}`;
+      try {
+        if (FS.analyzePath(root).exists) this.player._rmRecursive(root);
+      } catch (e) {
+        if (this.player.debugMode) console.warn('[VGM Native] Failed to purge archive MEMFS root', root, e);
+      }
+    }
+
+    purgeNativeArchiveFs() {
+      if (!this.player || !this.player._rmRecursive) return;
+      try {
+        if (FS.analyzePath('/native-archives').exists) this.player._rmRecursive('/native-archives');
+      } catch (e) {
+        if (this.player.debugMode) console.warn('[VGM Native] Failed to purge native archive MEMFS', e);
+      }
+    }
+
+    clearResidentArchiveCache() {
+      for (const entry of this.entries || []) {
+        if (entry) {
+          entry.archiveFiles = null;
+          entry.archiveFsFiles = null;
+        }
+      }
+      this.residentArchiveIds = [];
+      this.purgeNativeArchiveFs();
+    }
+
+    forgetResidentArchive(entry) {
+      if (!entry || !this.residentArchiveIds) return;
+      this.residentArchiveIds = this.residentArchiveIds.filter((id) => id !== entry.id);
+    }
+
+    rememberResidentArchive(entry) {
+      if (!entry || !entry.id) return;
+      if (!Array.isArray(this.residentArchiveIds)) this.residentArchiveIds = [];
+      this.residentArchiveIds = this.residentArchiveIds.filter((id) => id !== entry.id);
+      this.residentArchiveIds.push(entry.id);
+      this.evictResidentArchives(entry.id);
+    }
+
+    evictResidentArchives(activeId = '') {
+      const limit = Math.max(1, Number(this.maxResidentArchives) || 2);
+      while (this.residentArchiveIds.length > limit) {
+        let evictId = this.residentArchiveIds[0];
+        const protectedIds = new Set([activeId, this.currentPlayingArchiveId()].filter(Boolean));
+        if (protectedIds.has(evictId) && this.residentArchiveIds.length > 1) {
+          this.residentArchiveIds.push(this.residentArchiveIds.shift());
+          evictId = this.residentArchiveIds[0];
+        }
+        if (protectedIds.has(evictId)) break;
+        this.residentArchiveIds.shift();
+        const entry = this.byId.get(evictId);
+        if (!entry) continue;
+        const sha = entry.archiveSha || (entry.metadata && entry.metadata.sha256);
+        entry.archiveFiles = null;
+        entry.archiveFsFiles = null;
+        this.clearArchiveChildFsState(entry);
+        if (sha) this.purgeNativeArchiveFsRoot(sha);
+      }
+    }
+
+    currentPlayingArchiveId() {
+      if (!this.playingEntry || !this.player || !this.player.isVGMPlaying) return '';
+      return this.playingEntry.archiveParentId || '';
+    }
+
+    clearArchiveChildFsState(parent) {
+      if (!parent) return;
+      const stack = [...(this.children.get(parent.id) || [])];
+      while (stack.length) {
+        const child = stack.pop();
+        if (!child) continue;
+        child.fsPath = '';
+        child.trackPath = '';
+        child.archiveGameFiles = null;
+        const nested = this.children.get(child.id) || [];
+        for (const nestedChild of nested) stack.push(nestedChild);
+      }
+    }
+
+    archiveFsRoot(entry) {
+      const sha = entry && (entry.archiveSha || (entry.metadata && entry.metadata.sha256));
+      return sha ? `/native-archives/${sha}` : '';
+    }
+
+    archiveFsPath(entry, relPath) {
+      const root = this.archiveFsRoot(entry);
+      return root ? `${root}/${relPath}`.replace(/[\\]+/g, '/') : '';
+    }
+
+    isArchiveResident(entry, relPath = '') {
+      const root = this.archiveFsRoot(entry);
+      if (!root) return false;
+      const probe = relPath ? this.archiveFsPath(entry, relPath) : root;
+      try {
+        return FS.analyzePath(probe).exists;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async writeFullArchiveToFs(entry) {
+      if (!entry || !entry.archiveFiles) return false;
+      const root = this.archiveFsRoot(entry);
+      if (!root) return false;
+      this.purgeNativeArchiveFsRoot(entry.archiveSha || (entry.metadata && entry.metadata.sha256));
+      entry.archiveFsFiles = [];
+      let count = 0;
+      for (const [relPath, bytes] of entry.archiveFiles.entries()) {
+        if (!relPath || !bytes) continue;
+        const fullPath = this.archiveFsPath(entry, relPath);
+        this.writeBytesToFs(fullPath, bytes);
+        entry.archiveFsFiles.push({ filepath: fullPath });
+        count++;
+        if (count % 25 === 0) await this.yieldToUI();
+      }
+      entry.archiveFiles = null;
+      this.rememberResidentArchive(entry);
+      return count > 0;
     }
 
     async extractArchive(entry, bytes, options = {}) {
@@ -2282,7 +2448,7 @@
     }
 
     async ensureEntryInFs(entry) {
-      if (entry.type === 'archiveTrack') {
+      if (entry.type === 'archiveTrack' || entry.archiveParentId) {
         return this.ensureArchiveTrackInFs(entry);
       }
       if (entry.trackPath) {
@@ -2339,42 +2505,18 @@
     async ensureArchiveTrackInFs(entry) {
       const parent = this.byId.get(entry.archiveParentId);
       if (!parent) throw new Error('Archive parent missing');
-      if (!parent.archiveFiles) {
-        await this.inspectArchive(parent, { expand: false, force: true, fullIndex: true });
+      if (!this.isArchiveResident(parent, entry.archivePath)) {
+        await this.inspectArchive(parent, { expand: false, force: true, fullIndex: true, keepArchiveFiles: true });
+        await this.writeFullArchiveToFs(parent);
       }
-      const data = parent.archiveFiles && parent.archiveFiles.get(entry.archivePath);
-      if (!data) throw new Error('Archive track bytes missing');
-      const sha = parent.archiveSha || (parent.metadata && parent.metadata.sha256) || 'unverified';
-      const fsPath = `/native-archives/${sha}/${entry.archivePath}`.replace(/[\\]+/g, '/');
-      const root = `/native-archives/${sha}`;
+      const fsPath = this.archiveFsPath(parent, entry.archivePath);
+      if (!fsPath || !this.isArchiveResident(parent, entry.archivePath)) throw new Error('Archive track bytes missing');
       this.statusEl.textContent = 'Preparing track';
-      const playbackPaths = this.archivePlaybackPaths(entry, parent);
-      parent.archiveFsFiles = [];
-      let count = 0;
-      for (const relPath of playbackPaths) {
-        const bytes = parent.archiveFiles.get(relPath);
-        if (!relPath || !bytes) continue;
-        const fullPath = `${root}/${relPath}`.replace(/[\\]+/g, '/');
-        this.writeBytesToFs(fullPath, bytes);
-        parent.archiveFsFiles.push({ filepath: fullPath });
-        count++;
-        if (count % 25 === 0) await this.yieldToUI();
-      }
       entry.fsPath = fsPath;
       if (entry.archiveTrackPathSuffix) entry.trackPath = fsPath + entry.archiveTrackPathSuffix;
       entry.archiveGameFiles = parent.archiveFsFiles && parent.archiveFsFiles.length ? parent.archiveFsFiles : [{ filepath: fsPath }];
+      this.rememberResidentArchive(parent);
       return fsPath;
-    }
-
-    archivePlaybackPaths(entry, parent) {
-      const paths = new Set([entry.archivePath]);
-      const selected = String(entry.archivePath || '').toLowerCase();
-      for (const relPath of parent.archiveFiles.keys()) {
-        const lower = String(relPath || '').toLowerCase();
-        if (this.isPsfSupportPath(lower)) paths.add(relPath);
-        if ((selected.endsWith('.mus') || selected.endsWith('.lmp')) && lower.endsWith('genmidi.lmp')) paths.add(relPath);
-      }
-      return Array.from(paths);
     }
 
     readTag(path, index) {

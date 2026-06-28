@@ -509,12 +509,77 @@ class VGMPlay_js {
 				<div>Memory</div>
 				<div>Alloc In-Use: ${usedMB} MB</div>
 				<div>Alloc Free: ${freeMB} MB</div>
-				<div>Heap Size: ${totalMB} MB</div>
+				<div>Wasm Heap Current: ${totalMB} MB</div>
 				<div>Heap Top Free: ${heapTopFreeMB} MB</div>
 				<div>Delta: ${deltaMB} MB</div>
 			`;
 		}
 	}
+
+	_addInfoNotice(msg) {
+		if (!msg) return;
+		if (!Array.isArray(this.noPlayableNotices)) this.noPlayableNotices = [];
+		if (!this.noPlayableNotices.includes(msg)) this.noPlayableNotices.push(msg);
+	}
+
+	_removeInfoNotice(msg) {
+		if (!msg || !Array.isArray(this.noPlayableNotices)) return;
+		const idx = this.noPlayableNotices.indexOf(msg);
+		if (idx !== -1) this.noPlayableNotices.splice(idx, 1);
+	}
+
+	_addNoPlayableNotice(name, opts = null) {
+		if (!Array.isArray(this.noPlayableNotices)) this.noPlayableNotices = [];
+		const safeName = name || 'File';
+		let msg = `${safeName} did not contain playable music for VGMPlay!`;
+		if (opts && opts.isMuntRom) {
+			msg = opts.fromCache
+				? `Munt ROM file ${safeName} loaded from cache.`
+				: `Munt ROM file ${safeName} uploaded and saved to root.`;
+		} else if (opts && opts.isMoonsoundSample) {
+			msg = `MWK sample library ${safeName} loaded for MWM playback.`;
+		} else if (opts && opts.isRom) {
+			const lower = String(safeName).toLowerCase();
+			if (lower === 'yrw801.rom') {
+				msg = opts.fromCache
+					? `yrw801.rom loaded from cache, playback of VGM files using YMF278B will work now.`
+					: `yrw801.rom loaded, playback of VGM files using YMF278B will work now.`;
+			} else if (lower === 'waves.dat') {
+				msg = opts.fromCache
+					? `waves.dat loaded from cache, playback of MWM files using MoonSound will work now.`
+					: `waves.dat loaded, playback of MWM files using MoonSound will work now.`;
+			}
+		} else if ((opts && opts.isMidi) || (this._isMidiFile && this._isMidiFile(safeName))) {
+			const typeLabel = (opts && opts.typeLabel) ? opts.typeLabel : 'MIDI';
+			msg = `${safeName} is ${typeLabel}. Playback not supported yet.`;
+		}
+		if (!this.noPlayableNotices.includes(msg)) this.noPlayableNotices.push(msg);
+	}
+
+	_showMuntRomError() {
+		this._addNoPlayableNotice('MT32_CONTROL.ROM / MT32_PCM.ROM missing');
+	}
+
+	_showOpl4RomError() {
+		this._addInfoNotice(this.nativeMode
+			? "YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPut yrw801.rom in the root of the current directory or in your home folder, then restart or reopen the folder."
+			: "YMF278B (OPL4) playback requires the ROM file yrw801.rom.\n\nPlease upload it by dragging the file onto the 'Insert music files/archives here!' field.");
+	}
+
+	_showWavesDatError() {
+		this._addInfoNotice("MoonSound playback requires the file waves.dat.\n\nPlease upload it by dragging the file onto the 'Insert music files/archives here!' field.");
+	}
+
+	_showMoonsoundSampleError() {
+		this._addInfoNotice("This MWM track requires a MWK sample library that is not loaded.\n\nPlease upload the matching .mwk file by dragging it onto the 'Insert music files/archives here!' field.");
+	}
+
+	_setInfoLoading() { }
+	_setMemoryStatsVisible() { }
+	_startSpectrumAnimation() { }
+	_stopSpectrumAnimation() { }
+	_clearSpectrum() { }
+	_drawSpectrum() { }
 
 	_resetMobileIdleTimer() {
 		if (!this.isMobile) return;
@@ -2497,6 +2562,7 @@ class VGMPlay_js {
 	}
 
 	_initStandaloneAnalyzer(forceRecreate = false) {
+		if (this.nativeMode || (typeof window !== 'undefined' && window.VGMPLAY_NATIVE_PLAYER)) return;
 		if (!this.standalone || !this.standaloneAnalyzerEl) return;
 		if (typeof window === 'undefined' || !window.AudioMotionAnalyzer) return;
 		this.standaloneAnalyzerEl.style.background = '#000';
@@ -2560,6 +2626,7 @@ class VGMPlay_js {
 	}
 
 	async _ensureAudioMotion() {
+		if (this.nativeMode || (typeof window !== 'undefined' && window.VGMPLAY_NATIVE_PLAYER)) return;
 		if (!this.standalone) return;
 		if (typeof window === 'undefined') return;
 		if (window.AudioMotionAnalyzer) return;
@@ -3669,6 +3736,7 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 	if (window.VGMPLAY_NATIVE_PLAYER) {
 		options.useAsLibrary = true;
 		options.autoScanDist = false;
+		options.moduleSet = 'native';
 	}
 	if (!window.VGMPLAY_EXTENSION_OPTIONS) {
 		// Only add standalone from data if not using extension options
@@ -3724,18 +3792,33 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 			}
 		};
 
-		await loadModule('./vgmplay-spectrum.js', 'installSpectrum', 'spectrum');
-		await loadModule('./vgmplay-ui.js', 'installUi', 'ui');
-		await loadModule('./vgmplay-metadata.js', 'installMetadata', 'metadata');
-		await loadModule('./vgmplay-midi.js', 'installMidi', 'midi');
-		await loadModule('./vgmplay-layout.js', 'installLayout', 'layout');
-		await loadModule('./vgmplay-library.js', 'installLibrary', 'library');
-		await loadModule('./vgmplay-kss.js', 'installKss', 'kss');
-		await loadModule('./vgmplay-archives.js', 'installArchives', 'archives');
-		await loadModule('./vgmplay-audio.js', 'installAudio', 'audio');
-		await loadModule('./vgmplay-queue.js', 'installQueue', 'queue');
-		await loadModule('./vgmplay-harvester.js', 'installHarvester', 'harvester');
-		await loadModule('./vgmplay-cache.js', 'installCache', 'cache');
+		const moduleSets = {
+			web: [
+				['./vgmplay-spectrum.js', 'installSpectrum', 'spectrum'],
+				['./vgmplay-ui.js', 'installUi', 'ui'],
+				['./vgmplay-metadata.js', 'installMetadata', 'metadata'],
+				['./vgmplay-midi.js', 'installMidi', 'midi'],
+				['./vgmplay-layout.js', 'installLayout', 'layout'],
+				['./vgmplay-library.js', 'installLibrary', 'library'],
+				['./vgmplay-kss.js', 'installKss', 'kss'],
+				['./vgmplay-archives.js', 'installArchives', 'archives'],
+				['./vgmplay-audio.js', 'installAudio', 'audio'],
+				['./vgmplay-queue.js', 'installQueue', 'queue'],
+				['./vgmplay-harvester.js', 'installHarvester', 'harvester'],
+				['./vgmplay-cache.js', 'installCache', 'cache'],
+			],
+			native: [
+				['./vgmplay-metadata.js', 'installMetadata', 'metadata'],
+				['./vgmplay-midi.js', 'installMidi', 'midi'],
+				['./vgmplay-kss.js', 'installKss', 'kss'],
+				['./vgmplay-archives.js', 'installArchives', 'archives'],
+				['./vgmplay-audio.js', 'installAudio', 'audio'],
+			],
+		};
+		const moduleSetName = options.moduleSet && moduleSets[options.moduleSet] ? options.moduleSet : 'web';
+		for (const [path, fnName, label] of moduleSets[moduleSetName]) {
+			await loadModule(path, fnName, label);
+		}
 
 		installers.forEach((fn) => fn(VGMPlay_js));
 		console.log('[VGM] All modules loaded, creating VGMPlay instance, installers count:', installers.length);

@@ -226,8 +226,7 @@ jobs:
         run: |
           mkdir -p desktop-app-lin/package
           cp -a desktop-app-lin/build/VGMPlay desktop-app-lin/package/
-          ./scripts/sync_web_assets.sh copy desktop-app-lin/package
-          ./scripts/sync_web_assets.sh --manifest web-desktop-assets.txt copy desktop-app-lin/package
+          ./scripts/sync_web_assets.sh --manifest native-assets.txt copy desktop-app-lin/package
           cd desktop-app-lin/package
           zip -r ../VGMPlay-linux.zip .
 

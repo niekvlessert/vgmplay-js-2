@@ -279,6 +279,25 @@ body.native-resizing-library {
   color: var(--native-text);
 }
 
+.native-row-spinner-slot {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.native-row-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border: 2px solid var(--native-border);
+  border-top-color: var(--native-accent-bright);
+  border-radius: 50%;
+  animation: native-spinner-rotate 0.75s linear infinite;
+}
+
 .native-row.disabled-inspecting {
   opacity: 0.4;
   pointer-events: none;
@@ -719,6 +738,10 @@ body.vgmplayNativeMode.light-theme {
   0% { opacity: 1; }
   50% { opacity: 0.3; }
   100% { opacity: 1; }
+}
+
+@keyframes native-spinner-rotate {
+  to { transform: rotate(360deg); }
 }
 
 .native-status-loading {

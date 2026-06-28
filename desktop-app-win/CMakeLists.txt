@@ -40,5 +40,5 @@ target_link_libraries(VGMPlay
 
 set(ROOT_DIR "${CMAKE_SOURCE_DIR}/..")
 include("${ROOT_DIR}/cmake/WebAssets.cmake")
-stage_web_assets(VGMPlay "${ROOT_DIR}")
-stage_web_assets(VGMPlay "${ROOT_DIR}" "web-desktop-assets.txt")
+prune_web_assets(VGMPlay "${ROOT_DIR}" "native-assets.txt" "web-assets.txt" "web-desktop-assets.txt")
+stage_web_assets(VGMPlay "${ROOT_DIR}" "native-assets.txt")

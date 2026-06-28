@@ -1,0 +1,21 @@
+# Runtime/assets staged into native desktop app bundles.
+native-index.html
+vgmplay-native-library.js
+css/native-player.css
+vgmplay-js-glue.js
+vgmplay-js.js
+vgmplay-js.wasm
+vgmplay-js.data
+vgmplay-audio.js
+vgmplay-audio-processor.js
+vgmplay-metadata.js
+vgmplay-midi.js
+vgmplay-kss.js
+vgmplay-archives.js
+archive-worker.js
+libarchive.js
+libarchive.wasm
+unrar-worker.js
+unrar.js
+unrar.wasm
+dist/

@@ -4,6 +4,8 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -47,6 +49,7 @@ public class MainActivity extends Activity {
     private static final int REQUEST_OPEN_TREE = 10;
     private static final String ASSET_BASE = "https://vgmplay.local/assets/";
     private static final String START_PAGE = ASSET_BASE + "native-index.html";
+    private static final String PREF_LIBRARY_TREE_URI = "libraryTreeUri";
 
     private final Map<String, Uri> fileHandles = new HashMap<>();
     private final AtomicInteger nextFileId = new AtomicInteger(1);
@@ -54,6 +57,7 @@ public class MainActivity extends Activity {
     private WebView webView;
     private WebViewAssetLoader assetLoader;
     private SharedPreferences prefs;
+    private boolean initialLibraryLoaded;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -104,6 +108,12 @@ public class MainActivity extends Activity {
                 if (imageResponse != null) return imageResponse;
                 return assetLoader.shouldInterceptRequest(request.getUrl());
             }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                loadInitialLibrary();
+            }
         });
 
         root.addView(toolbar, new LinearLayout.LayoutParams(
@@ -146,7 +156,95 @@ public class MainActivity extends Activity {
         } catch (SecurityException err) {
             Log.w(TAG, "Could not persist folder permission", err);
         }
+        prefs.edit().putString(PREF_LIBRARY_TREE_URI, treeUri.toString()).apply();
         loadMusicTree(treeUri);
+    }
+
+    private void loadInitialLibrary() {
+        if (initialLibraryLoaded) return;
+        initialLibraryLoaded = true;
+
+        String savedTree = prefs.getString(PREF_LIBRARY_TREE_URI, "");
+        if (savedTree != null && !savedTree.isEmpty()) {
+            try {
+                Uri treeUri = Uri.parse(savedTree);
+                DocumentFile root = DocumentFile.fromTreeUri(this, treeUri);
+                if (root != null && root.isDirectory() && root.canRead()) {
+                    loadMusicTree(treeUri);
+                    return;
+                }
+            } catch (RuntimeException err) {
+                Log.w(TAG, "Saved Android music folder is no longer readable", err);
+            }
+            prefs.edit().remove(PREF_LIBRARY_TREE_URI).apply();
+        }
+
+        loadBundledDistLibrary();
+    }
+
+    private void loadBundledDistLibrary() {
+        JSONArray items = new JSONArray();
+        try {
+            scanAssetDirectory("dist", "", items);
+        } catch (IOException err) {
+            Log.e(TAG, "Could not scan bundled dist assets", err);
+            return;
+        }
+
+        JSONObject payload = new JSONObject();
+        try {
+            JSONObject options = new JSONObject();
+            options.put("rootName", "Bundled Music");
+            options.put("rootPath", "apk://assets/dist");
+            payload.put("items", items);
+            payload.put("options", options);
+        } catch (JSONException err) {
+            Log.e(TAG, "Failed to build bundled library payload", err);
+            return;
+        }
+
+        loadNativeLibraryPayload(payload);
+    }
+
+    private void scanAssetDirectory(String assetDir, String relativePrefix, JSONArray items) throws IOException {
+        AssetManager assets = getAssets();
+        String[] names = assets.list(assetDir);
+        if (names == null) return;
+        for (String name : names) {
+            if (name == null || name.isEmpty() || name.startsWith(".")) continue;
+            String assetPath = assetDir + "/" + name;
+            String relativePath = relativePrefix + name;
+            String[] children = assets.list(assetPath);
+            if (children != null && children.length > 0) {
+                scanAssetDirectory(assetPath, relativePath + "/", items);
+            } else {
+                addAssetLibraryItem(assetPath, relativePath, name, items);
+            }
+        }
+    }
+
+    private void addAssetLibraryItem(String assetPath, String relativePath, String name, JSONArray items) {
+        JSONObject item = new JSONObject();
+        try {
+            item.put("url", ASSET_BASE + Uri.encode(assetPath, "/"));
+            item.put("name", name);
+            item.put("relativePath", relativePath);
+            item.put("nativePath", "apk/assets/" + assetPath);
+            item.put("kind", classifyFile(name));
+            item.put("sizeBytes", assetSize(assetPath));
+            item.put("mtime", 0);
+            items.put(item);
+        } catch (JSONException err) {
+            Log.w(TAG, "Skipping bundled asset with invalid metadata: " + assetPath, err);
+        }
+    }
+
+    private long assetSize(String assetPath) {
+        try (AssetFileDescriptor descriptor = getAssets().openFd(assetPath)) {
+            return Math.max(0, descriptor.getLength());
+        } catch (IOException err) {
+            return 0;
+        }
     }
 
     private void loadMusicTree(Uri treeUri) {
@@ -171,6 +269,10 @@ public class MainActivity extends Activity {
             return;
         }
 
+        loadNativeLibraryPayload(payload);
+    }
+
+    private void loadNativeLibraryPayload(JSONObject payload) {
         String script = "(function(payload){"
             + "if(window.vgmPlayInstance&&window.vgmPlayInstance.loadNativeLibraryIndex){"
             + "window.vgmPlayInstance.loadNativeLibraryIndex(payload.items,payload.options||{});"

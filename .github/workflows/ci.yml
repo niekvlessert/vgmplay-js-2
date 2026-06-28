@@ -276,8 +276,55 @@ jobs:
           if-no-files-found: error
           path: desktop-app-win/VGMPlay-windows.zip
 
+  build-android:
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download WASM Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: .
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK Packages
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Build Android app
+        run: |
+          cd desktop-app-android
+          gradle :app:assembleRelease
+
+      - name: Package Android APK
+        run: |
+          cp desktop-app-android/app/build/outputs/apk/release/app-release.apk desktop-app-android/VGMPlay-android-arm64.apk
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VGMPlay-android-arm64.apk
+          if-no-files-found: error
+          path: desktop-app-android/VGMPlay-android-arm64.apk
+
   release:
-    needs: [build-wasm, build-mac, build-linux, build-windows]
+    needs: [build-wasm, build-mac, build-linux, build-windows, build-android]
     runs-on: ubuntu-latest
     steps:
       - name: Download Extension Artifacts
@@ -304,6 +351,12 @@ jobs:
           name: VGMPlay-windows.zip
           path: .
 
+      - name: Download Android Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VGMPlay-android-arm64.apk
+          path: .
+
       - name: Release Note Payload
         run: |
           echo "Automated CI build from commit ${{ github.sha }}" > release_notes.txt
@@ -319,6 +372,7 @@ jobs:
             VGMPlay-macOS.dmg
             VGMPlay-linux.zip
             VGMPlay-windows.zip
+            VGMPlay-android-arm64.apk
             extension.zip
             ff_extension.zip
           draft: false

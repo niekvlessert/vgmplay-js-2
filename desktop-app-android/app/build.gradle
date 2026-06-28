@@ -1,0 +1,89 @@
+plugins {
+    id "com.android.application"
+}
+
+def repoRoot = rootProject.projectDir.parentFile
+def nativeManifest = new File(repoRoot, "native-assets.txt")
+def generatedAssets = layout.projectDirectory.dir("src/main/assets")
+
+android {
+    namespace "com.vgmplay.nativeplayer"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.vgmplay.nativeplayer"
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+        }
+    }
+
+    androidResources {
+        noCompress += [
+            "7z", "ay", "bin", "bz2", "data", "dsf", "gz", "hes", "it", "kss",
+            "lha", "lmp", "lzh", "minidsf", "minigsf", "miniqsf", "minissf",
+            "miniusf", "mod", "mptm", "nsf", "nsfe", "psf", "psf2", "qsf",
+            "rar", "s3m", "sap", "ssf", "tar", "tgz", "usf", "vgm", "vgz",
+            "wasm", "xm", "xz", "zip"
+        ]
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation "androidx.documentfile:documentfile:1.0.1"
+    implementation "androidx.webkit:webkit:1.12.1"
+}
+
+tasks.register("syncNativeAssets") {
+    inputs.file(nativeManifest)
+    inputs.files(provider {
+        nativeManifest.readLines()
+            .collect { it.replaceFirst(/#.*/, "").trim() }
+            .findAll { it }
+            .collect { new File(repoRoot, it) }
+    })
+    outputs.dir(generatedAssets)
+
+    doLast {
+        delete(generatedAssets.asFile)
+        nativeManifest.readLines()
+            .collect { it.replaceFirst(/#.*/, "").trim() }
+            .findAll { it }
+            .each { entry ->
+                def source = new File(repoRoot, entry)
+                if (!source.exists()) {
+                    throw new GradleException("Native asset is missing: ${entry}")
+                }
+                if (source.directory) {
+                    copy {
+                        from source
+                        into new File(generatedAssets.asFile, entry.replaceFirst(/\/+$/, ""))
+                    }
+                } else {
+                    def parent = new File(entry).parent
+                    copy {
+                        from source
+                        into parent == null ? generatedAssets.asFile : new File(generatedAssets.asFile, parent)
+                    }
+                }
+            }
+    }
+}
+
+preBuild.dependsOn("syncNativeAssets")

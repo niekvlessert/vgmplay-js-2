@@ -96,6 +96,11 @@ desktop-app-win/build/
 desktop-app-win/package/
 desktop-app-win/packages/
 desktop-app-win/VGMPlay-windows.zip
+desktop-app-android/.gradle/
+desktop-app-android/build/
+desktop-app-android/app/build/
+desktop-app-android/app/src/main/assets/
+desktop-app-android/VGMPlay-android-arm64.apk
 
 # Local tool state
 .kilo/package-lock.json

@@ -1,5 +1,6 @@
 # Runtime/assets staged into native desktop app bundles.
 native-index.html
+native-platform.js
 vgmplay-native-library.js
 css/native-player.css
 vgmplay-js-glue.js

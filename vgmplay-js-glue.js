@@ -824,12 +824,15 @@ class VGMPlay_js {
 		this.elms = document.getElementsByTagName("a");
 		this.len = this.elms.length;
 		for (var ii = 0; ii < this.len; ii++) {
-			const lower = this.elms[ii].href.toLowerCase();
 			try {
 				const rawName = this.elms[ii].href.split('/').pop().split('?')[0].split('#')[0];
 				const decoded = decodeURIComponent(rawName);
 				if (decoded) scanNames.add(decoded.toLowerCase());
 			} catch (e) { }
+		}
+		this._currentScanNames = scanNames;
+		for (var ii = 0; ii < this.len; ii++) {
+			const lower = this.elms[ii].href.toLowerCase();
 			const isMidi = (this._isMidiFile && this._isMidiFile(lower)) || this._isMidiExt(lower);
 			let rawName = '';
 			try { rawName = this.elms[ii].href.split('/').pop().split('?')[0].split('#')[0]; } catch (e) { }
@@ -857,7 +860,6 @@ class VGMPlay_js {
 				}
 			}
 		}
-		this._currentScanNames = scanNames;
 		if (this._renderZipGamesNow && this.games && this.games.length) {
 			this._renderZipGamesNow();
 		}
@@ -2128,8 +2130,13 @@ class VGMPlay_js {
 			return;
 		}
 
-		// If no matching image is listed on the page, try all image extensions as fallback
-		// This handles cases where the image exists on the server but isn't linked on the page
+		// If the page/manifest listing is known and the image was not listed, do not
+		// guess sidecar names. GitHub Pages logs each 404 loudly, and archive covers
+		// may legitimately live inside the archive instead.
+		if (scanNames && scanNames.size > 0) return;
+
+		// If no listing is known, try all image extensions as fallback. This handles
+		// plain directory pages where the image exists on the server but is not linked.
 		if (this._suppressImageGuesses) return;
 
 		if (!this._imageProbePromise) this._imageProbePromise = Promise.resolve();
@@ -2163,7 +2170,7 @@ class VGMPlay_js {
 					this._suppressImageGuesses = true;
 					this._log && this._log('ARCHIVES', 'Image guessing suppressed for session.');
 				} else {
-					this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+					return this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
 				}
 			}
 		} catch (e) {
@@ -2174,7 +2181,7 @@ class VGMPlay_js {
 				this._suppressImageGuesses = true;
 				this._log && this._log('ARCHIVES', 'Image guessing suppressed for session.');
 			} else {
-				this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
+				return this._tryFetchImageWithFallbacks(directory, baseName, extensions, startIndex + 1);
 			}
 		}
 	}

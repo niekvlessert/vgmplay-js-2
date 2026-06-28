@@ -120,6 +120,12 @@ export function installQueue(VGMPlay_js) {
 		};
 
 		const classContext = this;
+		const finishJobPromise = (promise, label) => {
+			Promise.resolve(promise).then(next).catch((err) => {
+				console.error('[VGM] Archive queue job failed:', label || job.name || job.data, err);
+				next();
+			});
+		};
 		this.checkEverythingReady().then(() => {
 			if (job.type === 'url') {
 				classContext._shouldDownload(job.data, job.forceLarge).then((ok) => {
@@ -137,20 +143,20 @@ export function installQueue(VGMPlay_js) {
 								var byteArray = new Uint8Array(arrayBuffer);
 								const lower = job.data.toLowerCase();
 								if (lower.endsWith('.7z')) {
-									classContext.process7zBuffer(byteArray, job.data).then(next);
+									finishJobPromise(classContext.process7zBuffer(byteArray, job.data), job.data);
 								} else if (lower.endsWith('.rar') || lower.endsWith('.rsn') || lower.endsWith('.cbr')) {
 									if (typeof classContext.processRarBuffer === 'function') {
-										classContext.processRarBuffer(byteArray, job.data).then(next);
+										finishJobPromise(classContext.processRarBuffer(byteArray, job.data), job.data);
 									} else {
 										console.error('[VGM] processRarBuffer is not available. Archive modules may not be loaded yet.');
 										next();
 									}
 								} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.ssf') || lower.endsWith('.minissf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-									classContext.processPSFBuffer(byteArray, job.data).then(next);
+									finishJobPromise(classContext.processPSFBuffer(byteArray, job.data), job.data);
 								} else if (lower.endsWith('.zip')) {
-									classContext.processZipBuffer(byteArray, job.data).then(next);
+									finishJobPromise(classContext.processZipBuffer(byteArray, job.data), job.data);
 								} else {
-									classContext.processSingleBuffer(byteArray, job.name || job.data).then(next);
+									finishJobPromise(classContext.processSingleBuffer(byteArray, job.name || job.data), job.name || job.data);
 								}
 								classContext.zipURLLoaded.push(job.data);
 							} else {
@@ -160,28 +166,46 @@ export function installQueue(VGMPlay_js) {
 							classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
 						}
 					}
+					xhr.onerror = function () {
+						console.error('[VGM] Network error loading archive:', job.data);
+						classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
+						next();
+					};
+					xhr.ontimeout = function () {
+						console.error('[VGM] Timeout loading archive:', job.data);
+						classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
+						next();
+					};
 					xhr.open('GET', job.data, true);
 					xhr.send(null);
+				}).catch((err) => {
+					console.error('[VGM] Download check failed:', job.data, err);
+					classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
+					next();
 				});
 			} else if (job.type === 'file') {
 				const lower = (job.name || '').toLowerCase();
 				if (lower.endsWith('.7z')) {
-					classContext.process7zBuffer(job.data, job.name).then(next);
+					finishJobPromise(classContext.process7zBuffer(job.data, job.name), job.name);
 				} else if (lower.endsWith('.rar') || lower.endsWith('.rsn') || lower.endsWith('.cbr')) {
 					if (typeof classContext.processRarBuffer === 'function') {
-						classContext.processRarBuffer(job.data, job.name).then(next);
+						finishJobPromise(classContext.processRarBuffer(job.data, job.name), job.name);
 					} else {
 						console.error('[VGM] processRarBuffer is not available. Archive modules may not be loaded yet.');
 						next();
 					}
 				} else if (lower.endsWith('.psf') || lower.endsWith('.minipsf') || lower.endsWith('.ssf') || lower.endsWith('.minissf') || lower.endsWith('.usf') || lower.endsWith('.miniusf') || lower.endsWith('.mus') || lower.endsWith('.lmp')) {
-					classContext.processPSFBuffer(job.data, job.name).then(next);
+					finishJobPromise(classContext.processPSFBuffer(job.data, job.name), job.name);
 				} else if (lower.endsWith('.zip')) {
-					classContext.processZipBuffer(job.data, job.name).then(next);
+					finishJobPromise(classContext.processZipBuffer(job.data, job.name), job.name);
 				} else {
-					classContext.processSingleBuffer(job.data, job.name).then(next);
+					finishJobPromise(classContext.processSingleBuffer(job.data, job.name), job.name);
 				}
 			}
+		}).catch((err) => {
+			console.error('[VGM] Queue initialization failed:', err);
+			classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
+			next();
 		});
 	};
 }

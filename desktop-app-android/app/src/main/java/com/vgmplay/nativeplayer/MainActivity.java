@@ -274,9 +274,14 @@ public class MainActivity extends Activity {
 
     private void loadNativeLibraryPayload(JSONObject payload) {
         String script = "(function(payload){"
-            + "if(window.vgmPlayInstance&&window.vgmPlayInstance.loadNativeLibraryIndex){"
-            + "window.vgmPlayInstance.loadNativeLibraryIndex(payload.items,payload.options||{});"
-            + "}else{window.__pendingNativeLibraryPayload=payload;}"
+            + "var attempts=0;"
+            + "function deliver(){"
+            + "if(window.loadNativeLibraryIndex){window.loadNativeLibraryIndex(payload.items,payload.options||{});return;}"
+            + "if(window.vgmPlayInstance&&window.vgmPlayInstance.loadNativeLibraryIndex){window.vgmPlayInstance.loadNativeLibraryIndex(payload.items,payload.options||{});return;}"
+            + "window.__pendingNativeLibraryPayload=payload;"
+            + "if(++attempts<80)setTimeout(deliver,100);"
+            + "}"
+            + "deliver();"
             + "})(" + payload + ");";
         webView.post(() -> webView.evaluateJavascript(script, null));
     }

@@ -3344,6 +3344,15 @@
     player._nativeLibraryApp = app;
     player.loadNativeLibraryIndex = (items, options) => app.loadIndex(items, options);
     window.loadNativeLibraryIndex = (items, options) => app.loadIndex(items, options);
+    if (window.__pendingNativeLibraryPayload) {
+      const payload = window.__pendingNativeLibraryPayload;
+      window.__pendingNativeLibraryPayload = null;
+      try {
+        app.loadIndex(payload.items || [], payload.options || {});
+      } catch (e) {
+        console.error('[VGM Native] failed to load pending native library payload', e);
+      }
+    }
   }
 
   installWhenReady();

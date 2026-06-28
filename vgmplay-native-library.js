@@ -208,6 +208,7 @@
       this._playSequence = 0;
       this.maxResidentArchives = 2;
       this.residentArchiveIds = [];
+      this.nativeStepTimeoutMs = 15000;
       this.mount();
     }
 
@@ -262,6 +263,7 @@
         </div>`;
       document.body.appendChild(this.root);
       this.root.addEventListener('contextmenu', (e) => e.preventDefault());
+      this.root.addEventListener('pointerdown', () => this.primeAudioEngine(), { capture: true });
       this.treeEl = this.root.querySelector('[data-role="tree"]');
       this.infoEl = this.root.querySelector('[data-role="info"]');
       this.libraryEl = this.root.querySelector('.native-library');
@@ -1138,6 +1140,9 @@
       this._loadingTrack = true;
 
       try {
+        console.log('[VGM Native] play entry', entry.name, entry.item.url);
+        const initialReady = await this.withTimeout(this.primeAudioEngine(), this.nativeStepTimeoutMs, 'Timed out starting audio engine');
+        if (!initialReady) throw new Error('Audio engine failed to initialize');
         if (entry.type === 'archiveTrack') {
           await this.cushionCurrentPlayback();
           if (this._playSequence !== seq) return;
@@ -1145,14 +1150,15 @@
             this.player.stop();
           }
         }
-        const path = await this.ensureEntryInFs(entry);
+        const path = await this.withTimeout(this.ensureEntryInFs(entry), this.nativeStepTimeoutMs, 'Timed out loading file');
         if (this._playSequence !== seq) return;
-        const gameFiles = entry.archiveGameFiles || await this.ensureLocalPlaybackSupportFiles(entry, path);
+        const gameFiles = entry.archiveGameFiles || await this.withTimeout(this.ensureLocalPlaybackSupportFiles(entry, path), this.nativeStepTimeoutMs, 'Timed out loading support files');
         if (this._playSequence !== seq) return;
         const playPath = entry.trackPath || path;
-        await this.player.checkEverythingReady();
+        const ready = await this.withTimeout(this.player.checkEverythingReady(), this.nativeStepTimeoutMs, 'Timed out starting audio engine');
+        if (!ready) throw new Error('Audio engine failed to initialize');
         if (this._playSequence !== seq) return;
-        await this.preloadNativeHomeRoms();
+        await this.withTimeout(this.preloadNativeHomeRoms(), this.nativeStepTimeoutMs, 'Timed out loading ROM files');
         if (this._playSequence !== seq) return;
         this.player._nativeLibraryApp = this;
         const noticeStart = Array.isArray(this.player.noPlayableNotices) ? this.player.noPlayableNotices.length : 0;
@@ -1165,7 +1171,7 @@
         };
         this.player.games = [game];
         this.player.activeGame = game;
-        await this.player.playFileFromFS(false, playPath, 1, 0);
+        await this.withTimeout(this.player.playFileFromFS(false, playPath, 1, 0), this.nativeStepTimeoutMs, 'Timed out starting playback');
         if (this._playSequence !== seq) return;
         const notice = this.latestPlaybackNotice(noticeStart);
         if (notice) throw new Error(notice);
@@ -1199,8 +1205,36 @@
       } finally {
         if (this._playSequence === seq) {
           this._loadingTrack = false;
+          this.renderTree();
         }
       }
+    }
+
+    withTimeout(promise, timeoutMs, message) {
+      let timer = null;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message || 'Operation timed out')), timeoutMs || 15000);
+      });
+      return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+        if (timer) clearTimeout(timer);
+      });
+    }
+
+    primeAudioEngine() {
+      if (!this.player || !this.player.checkEverythingReady) return Promise.resolve(false);
+      if (!this._primeAudioPromise) {
+        console.log('[VGM Native] prime audio engine');
+        this._primeAudioPromise = this.player.checkEverythingReady().then((ready) => {
+          if (ready && this.player.context && this.player.context.state === 'suspended') {
+            return this.player.context.resume().then(() => ready).catch(() => ready);
+          }
+          return ready;
+        }).catch((err) => {
+          this._primeAudioPromise = null;
+          throw err;
+        });
+      }
+      return this._primeAudioPromise;
     }
 
     nativePlaybackErrorMessage(message) {
@@ -3060,9 +3094,25 @@
     }
 
     async fetchBytes(url) {
-      const response = await fetch(url);
+      console.log('[VGM Native] fetch bytes', url);
+      let controller = null;
+      let timer = null;
+      const options = {};
+      if (typeof AbortController !== 'undefined') {
+        controller = new AbortController();
+        options.signal = controller.signal;
+        timer = setTimeout(() => controller.abort(), this.nativeStepTimeoutMs || 15000);
+      }
+      let response;
+      try {
+        response = await fetch(url, options);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
       if (!response.ok) throw new Error(String(response.status));
-      return new Uint8Array(await response.arrayBuffer());
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      console.log('[VGM Native] fetched bytes', url, bytes.length);
+      return bytes;
     }
 
     ensureDir(path) {

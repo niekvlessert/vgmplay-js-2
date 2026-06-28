@@ -16,6 +16,7 @@ import android.view.Gravity;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
+import android.webkit.ConsoleMessage;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -100,7 +101,27 @@ public class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
 
         webView.addJavascriptInterface(new Bridge(), "AndroidBridge");
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage consoleMessage) {
+                if (consoleMessage == null) return false;
+                String message = "JS Console [" + consoleMessage.messageLevel() + "]: "
+                    + consoleMessage.message() + " @ "
+                    + consoleMessage.sourceId() + ":" + consoleMessage.lineNumber();
+                switch (consoleMessage.messageLevel()) {
+                    case ERROR:
+                        Log.e(TAG, message);
+                        break;
+                    case WARNING:
+                        Log.w(TAG, message);
+                        break;
+                    default:
+                        Log.i(TAG, message);
+                        break;
+                }
+                return true;
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {

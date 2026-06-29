@@ -3935,6 +3935,8 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 						runtimeReady: !!window.__VGM_RUNTIME_READY__,
 						moduleCalledRun: typeof Module !== 'undefined' ? !!Module.calledRun : false,
 						fsReady: typeof FS !== 'undefined',
+						audioInitStarted: !!vgm._initPromise,
+						audioInitialized: !!vgm.isWebAudioInitialized,
 						currentScanNames: vgm._currentScanNames ? vgm._currentScanNames.size : 0,
 						lastHarvestedCandidates: vgm.lastHarvestedCandidates ? vgm.lastHarvestedCandidates.length : 0,
 						standalone: !!vgm.standalone,

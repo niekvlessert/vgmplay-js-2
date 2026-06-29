@@ -3,7 +3,9 @@ export function installAudio(VGMPlay_js) {
 		// Wait for Emscripten to be fully loaded and FS to be ready
 		await new Promise(resolve => {
 			const check = () => {
-				if (typeof Module !== 'undefined' && Module.calledRun && typeof FS !== 'undefined') {
+				const runtimeReady = (typeof window !== 'undefined' && window.__VGM_RUNTIME_READY__) ||
+					(typeof Module !== 'undefined' && Module.calledRun);
+				if (runtimeReady && typeof FS !== 'undefined') {
 					resolve();
 				} else {
 					setTimeout(check, 100);

@@ -2,6 +2,11 @@ export function installHarvester(VGMPlay_js) {
     console.log('[VGM Harvester] Installing harvester module...');
     VGMPlay_js.prototype.loadWhenReady = async function () {
         if (this.debugMode) console.log('[VGM Harvester] loadWhenReady called');
+        if (this.standalone && this.autoScanDist) {
+            if (this.setKeyBindings) this.setKeyBindings();
+            if (this.debugMode) console.log('[VGM Harvester] standalone autoScanDist owns startup; skipping page harvest');
+            return;
+        }
 
         // Wait for cache restoration before filtering.
         // If _cacheInitPromise doesn't exist yet (audio init hasn't run), start it ourselves.

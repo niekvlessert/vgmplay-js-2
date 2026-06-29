@@ -2319,6 +2319,33 @@ class VGMPlay_js {
 		}
 	}
 
+	_getDistFilesFromDocumentLinks(distBase) {
+		if (typeof document === 'undefined') return [];
+		const out = [];
+		try {
+			const baseUrl = new URL(distBase, typeof window !== 'undefined' ? window.location.href : undefined);
+			const distPath = new URL('.', baseUrl).pathname;
+			const anchors = document.getElementsByTagName('a');
+			for (let ii = 0; ii < anchors.length; ii++) {
+				const href = anchors[ii].getAttribute('href') || anchors[ii].href;
+				if (!href) continue;
+				let url;
+				try {
+					url = new URL(href, typeof window !== 'undefined' ? window.location.href : baseUrl.toString());
+				} catch (e) {
+					continue;
+				}
+				if (url.origin !== baseUrl.origin) continue;
+				if (!url.pathname.startsWith(distPath)) continue;
+				if (url.pathname.endsWith('/')) continue;
+				out.push(url.toString());
+			}
+		} catch (e) {
+			return [];
+		}
+		return Array.from(new Set(out));
+	}
+
 	async _fetchUrlAsUint8(url) {
 		this._log && this._log('ARCHIVES', '_fetchUrlAsUint8 called for:', url);
 		try {
@@ -2359,11 +2386,19 @@ class VGMPlay_js {
 		} catch (e) { }
 
 		// auto-scan /dist
-		let files = await this._getDistFilesFromListing(distBase);
+		this._autoScanDistSource = 'none';
+		let files = await this._getDistFilesFromManifest(distBase);
+		if (files.length) this._autoScanDistSource = 'manifest';
 		if (!files.length) {
-			files = await this._getDistFilesFromManifest(distBase);
+			files = await this._getDistFilesFromListing(distBase);
+			if (files.length) this._autoScanDistSource = 'listing';
+		}
+		if (!files.length) {
+			files = this._getDistFilesFromDocumentLinks(distBase);
+			if (files.length) this._autoScanDistSource = 'document';
 		}
 		// discovered files
+		this._autoScanDistFileCount = files.length;
 		if (!files.length) return;
 
 		const seen = new Set();
@@ -3894,6 +3929,11 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 						zipURLPending: vgm.zipURLPending ? vgm.zipURLPending.length : 0,
 						zipURLLoaded: vgm.zipURLLoaded ? vgm.zipURLLoaded.length : 0,
 						autoScanDist: !!vgm.autoScanDist,
+						autoScanDistDone: !!vgm._autoScanDistDone,
+						autoScanDistFileCount: vgm._autoScanDistFileCount || 0,
+						autoScanDistSource: vgm._autoScanDistSource || null,
+						currentScanNames: vgm._currentScanNames ? vgm._currentScanNames.size : 0,
+						lastHarvestedCandidates: vgm.lastHarvestedCandidates ? vgm.lastHarvestedCandidates.length : 0,
 						standalone: !!vgm.standalone,
 						isExtension: !!vgm.isExtension,
 						sharedCache: !!vgm.sharedCache
@@ -3950,13 +3990,18 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 		}
 		if (vgmplay_js && vgmplay_js._autoScanDist) {
 			setTimeout(() => {
-				vgmplay_js.checkEverythingReady().then(() => {
-					vgmplay_js._autoScanDist();
-					if (vgmplay_js._tryLoadMiscImageFromFS) {
-						vgmplay_js._tryLoadMiscImageFromFS();
-					}
-				});
+				vgmplay_js._autoScanDist();
 			}, 0);
+		}
+		if (vgmplay_js && vgmplay_js._tryLoadMiscImageFromFS) {
+			const tryMisc = () => {
+				if (typeof window !== 'undefined' && window.__VGM_RUNTIME_READY__) {
+					vgmplay_js._tryLoadMiscImageFromFS();
+				} else {
+					setTimeout(tryMisc, 100);
+				}
+			};
+			setTimeout(tryMisc, 0);
 		}
 	})();
 }

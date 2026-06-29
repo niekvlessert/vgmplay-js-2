@@ -2342,12 +2342,15 @@ class VGMPlay_js {
 		if (this._cacheInitPromise) {
 			try {
 				this._log && this._log('ARCHIVES', 'Auto-scan waiting for cache init');
-				await this._cacheInitPromise;
+				if (this._withTimeout) await this._withTimeout(this._cacheInitPromise, 8000, 'auto-scan cache init');
+				else await this._cacheInitPromise;
 			} catch (e) { }
 		} else if (this._initCache && !this._cacheReady) {
 			try {
 				this._log && this._log('ARCHIVES', 'Auto-scan initializing cache');
-				await this._initCache();
+				const init = this._initCache();
+				if (this._withTimeout) await this._withTimeout(init, 8000, 'auto-scan cache init');
+				else await init;
 			} catch (e) { }
 		}
 		let distBase = this.autoScanDistBase || 'dist/';

@@ -1,4 +1,19 @@
 export function installCache(VGMPlay_js) {
+  const CACHE_SCHEMA_VERSION = 3;
+
+  VGMPlay_js.prototype._withTimeout = function (promise, timeoutMs, label) {
+    let timer = null;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => {
+        this._logWarn && this._logWarn('CACHE', `${label || 'operation'} timed out`);
+        resolve({ error: `${label || 'operation'} timed out`, timedOut: true });
+      }, timeoutMs || 10000);
+    });
+    return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  };
+
   VGMPlay_js.prototype._now = function () {
     if (typeof performance !== 'undefined' && performance.now) return performance.now();
     return Date.now();
@@ -397,7 +412,7 @@ export function installCache(VGMPlay_js) {
 	VGMPlay_js.prototype._restoreCacheFromBridge = async function () {
 		const tStart = this._now();
 		this._log && this._log('CACHE', '_restoreCacheFromBridge starting');
-		const resp = await this._cacheBridgeRequest('getMeta');
+		const resp = await this._withTimeout(this._cacheBridgeRequest('getMeta'), 5000, 'cache metadata restore');
 		const tMeta = this._now();
 		if (!resp || !resp.meta) {
 			this._log && this._log('CACHE', 'No shared cache metadata found');
@@ -409,7 +424,7 @@ export function installCache(VGMPlay_js) {
 		const metaHost = (meta && meta.cacheHost) ? String(meta.cacheHost) : '';
 		this._cacheFileSizes = meta.fileSizes || {};
 		this._savedCacheFiles = new Set(Object.keys(this._cacheFileSizes));
-		if (meta.version !== 2) {
+		if (meta.version !== CACHE_SCHEMA_VERSION) {
 			this._logWarn && this._logWarn('CACHE', "Shared cache version mismatch, ignoring shared cache");
 			this._cacheFingerprints.clear();
 			this.games = [];
@@ -425,7 +440,7 @@ export function installCache(VGMPlay_js) {
 		// Restore ROM files FIRST before any games are loaded
 		// This ensures OPL4 and Munt ROMs are available when VGM files are loaded
 		if (this._restoreRomsFromCache) {
-			await this._restoreRomsFromCache();
+			await this._withTimeout(this._restoreRomsFromCache(), 5000, 'ROM cache restore');
 		}
 		const tRoms = this._now();
 
@@ -459,7 +474,7 @@ export function installCache(VGMPlay_js) {
 				if (g && g.coverPath) coverPaths.push(g.coverPath);
 			}
 		}
-		await this._bridgeFetchFiles(coverPaths);
+		await this._withTimeout(this._bridgeFetchFiles(coverPaths), 5000, 'cover cache restore');
 		const tCovers = this._now();
 
 		// Restore games
@@ -700,14 +715,26 @@ export function installCache(VGMPlay_js) {
 				this._ensureCacheDirs();
 				if (this._cacheBridgeAvailable()) {
 					this._cacheReady = true;
-					this._restoreCacheFromBridge().then(() => resolve());
+					this._withTimeout(this._restoreCacheFromBridge(), 8000, 'cache restore').then(() => resolve()).catch(() => resolve());
 					return;
 				}
 				FS.mount(FS.filesystems.IDBFS, {}, '/cache');
+				let settled = false;
+				const finish = () => {
+					if (settled) return;
+					settled = true;
+					resolve();
+				};
+				const syncTimer = setTimeout(() => {
+					this._logWarn && this._logWarn('CACHE', 'IDBFS sync timed out; continuing without cache restore');
+					this._cacheReady = false;
+					finish();
+				}, 8000);
 				FS.syncfs(true, (err) => {
+					clearTimeout(syncTimer);
 					if (err) {
 						if (this.debugMode) console.error("[VGM] Failed to sync IDBFS (read):", err);
-						resolve();
+						finish();
 						return;
 					}
 
@@ -726,7 +753,7 @@ export function installCache(VGMPlay_js) {
 						}
 					}
 					this._restoreCache();
-					resolve();
+					finish();
 				});
 			} catch (e) {
 				if (this.debugMode) console.error("[VGM] Failed to init IDBFS:", e);
@@ -749,7 +776,7 @@ export function installCache(VGMPlay_js) {
 			this._cacheFileSizes = meta.fileSizes || {};
 			this._savedCacheFiles = new Set(Object.keys(this._cacheFileSizes));
 
-			if (meta.version !== 2) {
+			if (meta.version !== CACHE_SCHEMA_VERSION) {
 				if (this.debugMode) console.warn("[VGM] Cache version mismatch, clearing cache");
 				this.clearCache();
 				return;
@@ -1009,7 +1036,7 @@ export function installCache(VGMPlay_js) {
 			if (this._updateSkippedCacheSize) this._updateSkippedCacheSize();
 
 			const meta = {
-				version: 2,
+				version: CACHE_SCHEMA_VERSION,
 				cacheHost: currentHost || '',
 				amountOfGamesLoaded: this.amountOfGamesLoaded,
 				fingerprints: Array.from(this._cacheFingerprints),

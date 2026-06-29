@@ -120,15 +120,37 @@ export function installQueue(VGMPlay_js) {
 		};
 
 		const classContext = this;
+		const withQueueTimeout = (promise, timeoutMs, label) => {
+			if (this._withTimeout) return this._withTimeout(promise, timeoutMs, label);
+			let timer = null;
+			const timeout = new Promise((resolve) => {
+				timer = setTimeout(() => resolve({ error: `${label || 'queue operation'} timed out`, timedOut: true }), timeoutMs || 10000);
+			});
+			return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+				if (timer) clearTimeout(timer);
+			});
+		};
 		const finishJobPromise = (promise, label) => {
 			Promise.resolve(promise).then(next).catch((err) => {
 				console.error('[VGM] Archive queue job failed:', label || job.name || job.data, err);
 				next();
 			});
 		};
-		this.checkEverythingReady().then(() => {
+		withQueueTimeout(this.checkEverythingReady(), 12000, 'player initialization').then((ready) => {
+			if (ready === false || (ready && ready.error)) {
+				const message = ready && ready.error ? ready.error : 'audio engine failed to initialize';
+				console.error('[VGM] Player initialization failed or timed out:', message);
+				if (this._addNoPlayableNotice) this._addNoPlayableNotice(`Player initialization failed: ${message}`);
+				classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
+				next();
+				return;
+			}
 			if (job.type === 'url') {
-				classContext._shouldDownload(job.data, job.forceLarge).then((ok) => {
+				withQueueTimeout(classContext._shouldDownload(job.data, job.forceLarge), 8000, 'download size check').then((ok) => {
+					if (ok && ok.error) {
+						console.warn('[VGM] Download size check timed out; continuing:', job.data);
+						ok = true;
+					}
 					if (!ok) {
 						classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
 						next();

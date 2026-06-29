@@ -136,15 +136,27 @@ export function installQueue(VGMPlay_js) {
 				next();
 			});
 		};
-		withQueueTimeout(this.checkEverythingReady(), 12000, 'player initialization').then((ready) => {
+		const retryWhenReady = (message) => {
+			if (this.debugMode) console.warn('[VGM] Player not ready yet, retrying queued archive:', message || job.name || job.data);
+			if (this._addInfoNotice) this._addInfoNotice('Player is still initializing; queued music will load shortly.');
+			this.zipQueue.unshift(job);
+			this.isProcessingQueue = false;
+			setTimeout(() => this._processQueue(), 1000);
+		};
+		withQueueTimeout(this.checkEverythingReady(), 60000, 'player initialization').then((ready) => {
 			if (ready === false || (ready && ready.error)) {
 				const message = ready && ready.error ? ready.error : 'audio engine failed to initialize';
-				console.error('[VGM] Player initialization failed or timed out:', message);
-				if (this._addNoPlayableNotice) this._addNoPlayableNotice(`Player initialization failed: ${message}`);
-				classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
-				next();
+				if (ready && ready.timedOut) {
+					retryWhenReady(message);
+				} else {
+					console.error('[VGM] Player initialization failed:', message);
+					if (this._addNoPlayableNotice) this._addNoPlayableNotice(`Player initialization failed: ${message}`);
+					classContext.zipURLPending = classContext.zipURLPending.filter((u) => u !== job.data);
+					next();
+				}
 				return;
 			}
+			if (this._removeInfoNotice) this._removeInfoNotice('Player is still initializing; queued music will load shortly.');
 			if (job.type === 'url') {
 				withQueueTimeout(classContext._shouldDownload(job.data, job.forceLarge), 8000, 'download size check').then((ok) => {
 					if (ok && ok.error) {

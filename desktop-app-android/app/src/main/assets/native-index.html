@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VGMPlay Native</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #1a1b26;
+      color: #c8cad8;
+    }
+  </style>
+  <link rel="stylesheet" href="css/native-player.css">
+</head>
+<body class="vgmplayNativeMode">
+  <script>
+    window.VGMPLAY_EXTENSION_OPTIONS = { standalone: true, useAsLibrary: true, autoScanDist: false };
+    window.VGMPLAY_NATIVE_PLAYER = true;
+  </script>
+  <script src="native-platform.js"></script>
+  <script src="vgmplay-js-glue.js"></script>
+  <script src="vgmplay-native-library.js"></script>
+</body>
+</html>

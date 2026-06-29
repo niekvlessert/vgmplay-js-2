@@ -65,6 +65,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        WebView.setWebContentsDebuggingEnabled(true);
+
         prefs = getSharedPreferences("vgmplay-native", MODE_PRIVATE);
         assetLoader = new WebViewAssetLoader.Builder()
             .setDomain("vgmplay.local")
@@ -94,6 +96,7 @@ public class MainActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
@@ -137,6 +140,8 @@ public class MainActivity extends Activity {
             }
         });
 
+        webView.clearCache(true);
+
         root.addView(toolbar, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -148,7 +153,7 @@ public class MainActivity extends Activity {
         ));
         setContentView(root);
 
-        webView.loadUrl(START_PAGE);
+        webView.loadUrl(START_PAGE + "?v=" + System.currentTimeMillis());
     }
 
     private int dp(int value) {

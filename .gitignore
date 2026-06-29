@@ -97,10 +97,15 @@ desktop-app-win/package/
 desktop-app-win/packages/
 desktop-app-win/VGMPlay-windows.zip
 desktop-app-android/.gradle/
+desktop-app-android/.idea/
+desktop-app-android/local.properties
 desktop-app-android/build/
 desktop-app-android/app/build/
-desktop-app-android/app/src/main/assets/
+desktop-app-android/app/src/main/assets/dist/
 desktop-app-android/VGMPlay-android-arm64.apk
+!desktop-app-android/app/src/main/assets/vgmplay-js.js
+!desktop-app-android/app/src/main/assets/vgmplay-js.wasm
+!desktop-app-android/app/src/main/assets/vgmplay-js.data
 
 # Local tool state
 .kilo/package-lock.json

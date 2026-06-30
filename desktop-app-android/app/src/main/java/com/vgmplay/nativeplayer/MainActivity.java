@@ -9,7 +9,6 @@ import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.DocumentsContract;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
@@ -51,6 +50,12 @@ public class MainActivity extends Activity {
     private static final String ASSET_BASE = "https://vgmplay.local/assets/";
     private static final String START_PAGE = ASSET_BASE + "native-index.html";
     private static final String PREF_LIBRARY_TREE_URI = "libraryTreeUri";
+    private static final String PREF_LIBRARY_DIRS = "libraryDirs";
+    private static final String PREF_SHOW_INCLUDED_MUSIC = "showIncludedMusic";
+    private static final String PREF_INCLUDED_MUSIC_DELETED = "includedMusicDeleted";
+    private static final String COMBINED_ROOT_NAME = "Music Libraries";
+    private static final String COMBINED_ROOT_PATH = "android://libraries";
+    private static final String INCLUDED_LABEL = "Included Music";
 
     private final Map<String, Uri> fileHandles = new HashMap<>();
     private final AtomicInteger nextFileId = new AtomicInteger(1);
@@ -182,50 +187,107 @@ public class MainActivity extends Activity {
         } catch (SecurityException err) {
             Log.w(TAG, "Could not persist folder permission", err);
         }
-        prefs.edit().putString(PREF_LIBRARY_TREE_URI, treeUri.toString()).apply();
-        loadMusicTree(treeUri);
+        addLibraryFolder(treeUri);
+        loadVisibleLibraries();
     }
 
     private void loadInitialLibrary() {
         if (initialLibraryLoaded) return;
         initialLibraryLoaded = true;
+        migrateLegacyLibraryFolder();
+        loadVisibleLibraries();
+    }
 
+    private void migrateLegacyLibraryFolder() {
         String savedTree = prefs.getString(PREF_LIBRARY_TREE_URI, "");
         if (savedTree != null && !savedTree.isEmpty()) {
-            try {
+            JSONArray dirs = loadLibraryDirs();
+            if (findLibraryDir(dirs, savedTree) < 0) {
                 Uri treeUri = Uri.parse(savedTree);
                 DocumentFile root = DocumentFile.fromTreeUri(this, treeUri);
-                if (root != null && root.isDirectory() && root.canRead()) {
-                    loadMusicTree(treeUri);
-                    return;
+                if (root != null && root.isDirectory()) {
+                    JSONObject dir = new JSONObject();
+                    try {
+                        dir.put("uri", savedTree);
+                        dir.put("name", safeLibraryName(root.getName(), "Android Music"));
+                        dir.put("enabled", true);
+                        dirs.put(dir);
+                        saveLibraryDirs(dirs);
+                    } catch (JSONException err) {
+                        Log.w(TAG, "Could not migrate saved music folder", err);
+                    }
                 }
-            } catch (RuntimeException err) {
-                Log.w(TAG, "Saved Android music folder is no longer readable", err);
             }
             prefs.edit().remove(PREF_LIBRARY_TREE_URI).apply();
         }
-
-        loadBundledDistLibrary();
     }
 
-    private void loadBundledDistLibrary() {
-        JSONArray items = new JSONArray();
+    private void addLibraryFolder(Uri treeUri) {
+        String uriText = treeUri.toString();
+        JSONArray dirs = loadLibraryDirs();
+        int existing = findLibraryDir(dirs, uriText);
+        DocumentFile root = DocumentFile.fromTreeUri(this, treeUri);
+        String name = safeLibraryName(root == null ? "" : root.getName(), "Android Music");
         try {
-            scanAssetDirectory("dist", "", items);
-        } catch (IOException err) {
-            Log.e(TAG, "Could not scan bundled dist assets", err);
-            return;
+            if (existing >= 0) {
+                JSONObject dir = dirs.getJSONObject(existing);
+                dir.put("name", name);
+                dir.put("enabled", true);
+            } else {
+                JSONObject dir = new JSONObject();
+                dir.put("uri", uriText);
+                dir.put("name", name);
+                dir.put("enabled", true);
+                dirs.put(dir);
+            }
+            saveLibraryDirs(dirs);
+        } catch (JSONException err) {
+            Log.w(TAG, "Could not save selected music folder", err);
+        }
+    }
+
+    private void loadVisibleLibraries() {
+        fileHandles.clear();
+        nextFileId.set(1);
+
+        JSONArray dirs = loadLibraryDirs();
+        JSONObject payload = new JSONObject();
+        JSONArray items = new JSONArray();
+        JSONObject settings = buildLibrarySettings(dirs);
+        boolean showIncluded = settings.optBoolean("includedVisible", true)
+            && !settings.optBoolean("includedDeleted", false);
+
+        if (showIncluded) {
+            try {
+                scanAssetDirectory("dist", INCLUDED_LABEL + "/", items);
+            } catch (IOException err) {
+                Log.e(TAG, "Could not scan bundled dist assets", err);
+            }
         }
 
-        JSONObject payload = new JSONObject();
+        for (int i = 0; i < dirs.length(); i++) {
+            try {
+                JSONObject dir = dirs.getJSONObject(i);
+                if (!dir.optBoolean("enabled", true)) continue;
+                Uri uri = Uri.parse(dir.optString("uri", ""));
+                DocumentFile root = DocumentFile.fromTreeUri(this, uri);
+                if (root == null || !root.isDirectory() || !root.canRead()) continue;
+                String label = safeLibraryName(dir.optString("prefix", ""), safeLibraryName(dir.optString("name", root.getName()), "Android Music"));
+                scanDocumentFile(root, label + "/", items);
+            } catch (RuntimeException | JSONException err) {
+                Log.w(TAG, "Could not scan stored music folder", err);
+            }
+        }
+
         try {
             JSONObject options = new JSONObject();
-            options.put("rootName", "Bundled Music");
-            options.put("rootPath", "apk://assets/dist");
+            options.put("rootName", COMBINED_ROOT_NAME);
+            options.put("rootPath", COMBINED_ROOT_PATH);
+            options.put("librarySettings", settings);
             payload.put("items", items);
             payload.put("options", options);
         } catch (JSONException err) {
-            Log.e(TAG, "Failed to build bundled library payload", err);
+            Log.e(TAG, "Failed to build library payload", err);
             return;
         }
 
@@ -273,35 +335,211 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void loadMusicTree(Uri treeUri) {
-        DocumentFile root = DocumentFile.fromTreeUri(this, treeUri);
-        if (root == null || !root.isDirectory()) return;
-
-        fileHandles.clear();
-        nextFileId.set(1);
-
-        JSONArray items = new JSONArray();
-        scanDocumentFile(root, "", items);
-
-        JSONObject payload = new JSONObject();
+    private JSONArray loadLibraryDirs() {
+        String raw = prefs.getString(PREF_LIBRARY_DIRS, "[]");
         try {
-            JSONObject options = new JSONObject();
-            options.put("rootName", root.getName() == null ? "Android Music" : root.getName());
-            options.put("rootPath", "android://" + DocumentsContract.getTreeDocumentId(treeUri));
-            payload.put("items", items);
-            payload.put("options", options);
+            return new JSONArray(raw == null || raw.isEmpty() ? "[]" : raw);
         } catch (JSONException err) {
-            Log.e(TAG, "Failed to build library payload", err);
-            return;
+            Log.w(TAG, "Ignoring invalid library folder list", err);
+            return new JSONArray();
         }
+    }
 
-        loadNativeLibraryPayload(payload);
+    private void saveLibraryDirs(JSONArray dirs) {
+        prefs.edit().putString(PREF_LIBRARY_DIRS, dirs == null ? "[]" : dirs.toString()).apply();
+    }
+
+    private int findLibraryDir(JSONArray dirs, String uriText) {
+        if (dirs == null || uriText == null) return -1;
+        for (int i = 0; i < dirs.length(); i++) {
+            JSONObject dir = dirs.optJSONObject(i);
+            if (dir != null && uriText.equals(dir.optString("uri", ""))) return i;
+        }
+        return -1;
+    }
+
+    private String safeLibraryName(String value, String fallback) {
+        String name = value == null ? "" : value.trim();
+        return name.isEmpty() ? fallback : name;
+    }
+
+    private String uniqueLibraryLabel(String baseName, Map<String, Integer> counts) {
+        String base = safeLibraryName(baseName, "Android Music");
+        int count = counts.containsKey(base) ? counts.get(base) + 1 : 1;
+        counts.put(base, count);
+        return count <= 1 ? base : base + " (" + count + ")";
+    }
+
+    private JSONObject buildLibrarySettings(JSONArray dirs) {
+        JSONObject settings = new JSONObject();
+        JSONArray outDirs = new JSONArray();
+        boolean hasPersonalMusic = false;
+        Map<String, Integer> labelCounts = new HashMap<>();
+        try {
+            for (int i = 0; i < dirs.length(); i++) {
+                JSONObject dir = dirs.getJSONObject(i);
+                String uriText = dir.optString("uri", "");
+                Uri uri = Uri.parse(uriText);
+                DocumentFile root = DocumentFile.fromTreeUri(this, uri);
+                boolean readable = root != null && root.isDirectory() && root.canRead();
+                String name = safeLibraryName(dir.optString("name", readable ? root.getName() : ""), "Android Music");
+                String prefix = uniqueLibraryLabel(name, labelCounts);
+                int musicCount = readable ? countMusicFiles(root) : 0;
+                if (musicCount > 0) hasPersonalMusic = true;
+                JSONObject out = new JSONObject();
+                out.put("uri", uriText);
+                out.put("name", name);
+                out.put("prefix", prefix);
+                out.put("enabled", dir.optBoolean("enabled", true));
+                out.put("readable", readable);
+                out.put("musicCount", musicCount);
+                outDirs.put(out);
+                dir.put("name", name);
+                dir.put("prefix", prefix);
+            }
+            saveLibraryDirs(dirs);
+            settings.put("includedAvailable", bundledDistAvailable());
+            settings.put("includedVisible", prefs.getBoolean(PREF_SHOW_INCLUDED_MUSIC, true));
+            settings.put("includedDeleted", prefs.getBoolean(PREF_INCLUDED_MUSIC_DELETED, false));
+            settings.put("includedControlsEnabled", hasPersonalMusic);
+            settings.put("hasPersonalMusic", hasPersonalMusic);
+            settings.put("dirs", outDirs);
+        } catch (JSONException err) {
+            Log.w(TAG, "Could not build library settings", err);
+        }
+        return settings;
+    }
+
+    private boolean bundledDistAvailable() {
+        try {
+            String[] names = getAssets().list("dist");
+            return names != null && names.length > 0;
+        } catch (IOException err) {
+            return false;
+        }
+    }
+
+    private int countMusicFiles(DocumentFile node) {
+        if (node == null) return 0;
+        if (node.isFile()) {
+            String kind = classifyFile(node.getName() == null ? "" : node.getName());
+            return ("archive".equals(kind) || "playable".equals(kind)) ? 1 : 0;
+        }
+        if (!node.isDirectory()) return 0;
+        int count = 0;
+        for (DocumentFile child : node.listFiles()) {
+            count += countMusicFiles(child);
+            if (count > 0) return count;
+        }
+        return count;
+    }
+
+    private void handleLibraryCommand(JSONObject payload) {
+        String command = payload.optString("command", "");
+        if ("setIncludedVisible".equals(command)) {
+            prefs.edit().putBoolean(PREF_SHOW_INCLUDED_MUSIC, payload.optBoolean("visible", true)).apply();
+            loadVisibleLibraries();
+        } else if ("deleteIncludedMusic".equals(command)) {
+            prefs.edit()
+                .putBoolean(PREF_INCLUDED_MUSIC_DELETED, true)
+                .putBoolean(PREF_SHOW_INCLUDED_MUSIC, false)
+                .apply();
+            pruneMetadataForPrefix(INCLUDED_LABEL + "/");
+            pruneMetadataForKeyPrefix("Bundled Music|");
+            pruneMetadataForKeyPrefix("apk://assets/dist|");
+            loadVisibleLibraries();
+        } else if ("setFolderVisible".equals(command)) {
+            updateLibraryFolder(payload.optString("uri", ""), "", payload.optBoolean("visible", true), false);
+            loadVisibleLibraries();
+        } else if ("deleteFolder".equals(command)) {
+            updateLibraryFolder(payload.optString("uri", ""), payload.optString("prefix", ""), false, true);
+            loadVisibleLibraries();
+        }
+    }
+
+    private void updateLibraryFolder(String uriText, String prefix, boolean visible, boolean remove) {
+        JSONArray dirs = loadLibraryDirs();
+        JSONArray next = new JSONArray();
+        for (int i = 0; i < dirs.length(); i++) {
+            JSONObject dir = dirs.optJSONObject(i);
+            if (dir == null) continue;
+            if (uriText.equals(dir.optString("uri", ""))) {
+                if (remove) {
+                    String deletePrefix = safeLibraryName(prefix, dir.optString("prefix", ""));
+                    pruneMetadataForPrefix(safeLibraryName(deletePrefix, safeLibraryName(dir.optString("name", ""), "Android Music")) + "/");
+                    pruneMetadataForKeyPrefix(safeLibraryName(dir.optString("name", ""), "Android Music") + "|");
+                    continue;
+                }
+                try {
+                    dir.put("enabled", visible);
+                } catch (JSONException err) {
+                    Log.w(TAG, "Could not update library folder visibility", err);
+                }
+            }
+            next.put(dir);
+        }
+        saveLibraryDirs(next);
+    }
+
+    private void pruneMetadataForPrefix(String prefix) {
+        pruneMetadataForKeyPrefix(COMBINED_ROOT_PATH + "|" + prefix);
+        pruneMetadataForKeyPrefix(COMBINED_ROOT_NAME + "|" + prefix);
+    }
+
+    private void pruneMetadataForKeyPrefix(String keyPrefix) {
+        pruneArchiveMetaForPrefix(keyPrefix);
+        pruneTrackMetaForPrefix(keyPrefix);
+    }
+
+    private void pruneArchiveMetaForPrefix(String keyPrefix) {
+        JSONObject archiveMeta = parseObjectPref("archiveMeta");
+        JSONObject quick = archiveMeta.optJSONObject("quick");
+        JSONObject packs = archiveMeta.optJSONObject("packsBySha");
+        if (quick == null || packs == null) return;
+        JSONArray names = quick.names();
+        if (names == null) return;
+        for (int i = 0; i < names.length(); i++) {
+            String key = names.optString(i, "");
+            if (key.startsWith(keyPrefix)) quick.remove(key);
+        }
+        JSONArray packNames = packs.names();
+        if (packNames != null) {
+            for (int i = 0; i < packNames.length(); i++) {
+                String sha = packNames.optString(i, "");
+                if (!quickReferencesSha(quick, sha)) packs.remove(sha);
+            }
+        }
+        prefs.edit().putString("archiveMeta", archiveMeta.toString()).apply();
+    }
+
+    private boolean quickReferencesSha(JSONObject quick, String sha) {
+        JSONArray names = quick.names();
+        if (names == null) return false;
+        for (int i = 0; i < names.length(); i++) {
+            if (sha.equals(quick.optString(names.optString(i, ""), ""))) return true;
+        }
+        return false;
+    }
+
+    private void pruneTrackMetaForPrefix(String keyPrefix) {
+        JSONObject trackMeta = parseObjectPref("trackMeta");
+        JSONObject tracks = trackMeta.optJSONObject("tracks");
+        if (tracks == null) return;
+        JSONArray names = tracks.names();
+        if (names == null) return;
+        for (int i = 0; i < names.length(); i++) {
+            String key = names.optString(i, "");
+            if (key.startsWith(keyPrefix)) tracks.remove(key);
+        }
+        prefs.edit().putString("trackMeta", trackMeta.toString()).apply();
     }
 
     private void loadNativeLibraryPayload(JSONObject payload) {
         String script = "(function(payload){"
             + "var attempts=0;"
             + "function deliver(){"
+            + "window.VGMPLAY_ANDROID_LIBRARY_SETTINGS=(payload.options&&payload.options.librarySettings)||null;"
+            + "if(window.__vgmNativeLibraryApp&&window.__vgmNativeLibraryApp.updateAndroidLibrarySettings)window.__vgmNativeLibraryApp.updateAndroidLibrarySettings(window.VGMPLAY_ANDROID_LIBRARY_SETTINGS);"
             + "if(window.loadNativeLibraryIndex){window.loadNativeLibraryIndex(payload.items,payload.options||{});return;}"
             + "if(window.vgmPlayInstance&&window.vgmPlayInstance.loadNativeLibraryIndex){window.vgmPlayInstance.loadNativeLibraryIndex(payload.items,payload.options||{});return;}"
             + "window.__pendingNativeLibraryPayload=payload;"
@@ -315,15 +553,15 @@ public class MainActivity extends Activity {
     private void scanDocumentFile(DocumentFile node, String relativePrefix, JSONArray items) {
         if (node == null) return;
         if (node.isDirectory()) {
-            String name = node.getName();
-            String nextPrefix = relativePrefix;
-            if (name != null && !relativePrefix.isEmpty()) {
-                nextPrefix = relativePrefix + name + "/";
-            } else if (name != null && node.getParentFile() != null) {
-                nextPrefix = name + "/";
-            }
             for (DocumentFile child : node.listFiles()) {
-                scanDocumentFile(child, nextPrefix, items);
+                String childPrefix = relativePrefix;
+                if (child != null && child.isDirectory()) {
+                    String childName = child.getName();
+                    if (childName != null && !childName.isEmpty()) {
+                        childPrefix = relativePrefix + childName + "/";
+                    }
+                }
+                scanDocumentFile(child, childPrefix, items);
             }
             return;
         }
@@ -465,6 +703,7 @@ public class MainActivity extends Activity {
                 state.put("config", parseObjectPref("config"));
                 state.put("archiveMeta", parseObjectPref("archiveMeta"));
                 state.put("trackMeta", parseObjectPref("trackMeta"));
+                state.put("librarySettings", buildLibrarySettings(loadLibraryDirs()));
                 state.put("homeRoms", new JSONArray());
             } catch (JSONException err) {
                 Log.w(TAG, "Failed to build initial bridge state", err);
@@ -484,6 +723,8 @@ public class MainActivity extends Activity {
                     prefs.edit().putString("trackMeta", payload.toString()).apply();
                 } else if ("nativeSaveArchiveImage".equals(name)) {
                     saveArchiveImage(payload);
+                } else if ("nativeLibraryCommand".equals(name)) {
+                    handleLibraryCommand(payload);
                 } else if ("nativeOpenFile".equals(name)) {
                     Log.i(TAG, "nativeOpenFile is not used on Android");
                 }

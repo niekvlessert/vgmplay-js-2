@@ -4,7 +4,8 @@
     <application
         android:allowBackup="true"
         android:hardwareAccelerated="true"
-        android:label="VGMPlay"
+        android:icon="@mipmap/ic_launcher"
+        android:label="VGMPlay-JS"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity

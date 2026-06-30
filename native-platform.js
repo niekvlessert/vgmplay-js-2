@@ -17,6 +17,8 @@
   window.VGMPLAY_NATIVE_ARCHIVE_META = initialState.archiveMeta || {};
   window.VGMPLAY_NATIVE_TRACK_META = initialState.trackMeta || {};
   window.VGMPLAY_NATIVE_HOME_ROMS = initialState.homeRoms || [];
+  window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = initialState.librarySettings || null;
+  window.VGMPLAY_ANDROID_LIBRARY_SETTINGS = window.VGMPLAY_NATIVE_LIBRARY_SETTINGS;
 
   window.webkit = window.webkit || {};
   window.webkit.messageHandlers = window.webkit.messageHandlers || {};
@@ -38,6 +40,7 @@
     "nativeSaveArchiveMeta",
     "nativeSaveArchiveImage",
     "nativeSaveTrackMeta",
+    "nativeLibraryCommand",
     "nativeOpenFile"
   ].forEach(installHandler);
 

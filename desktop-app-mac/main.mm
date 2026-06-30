@@ -172,17 +172,23 @@ static void VGMLog(NSString *format, ...) {
     : NSWindowController <WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, NSWindowDelegate>
 @property(strong) WKWebView *webView;
 @property(strong) LocalFileHandler *handler;
-- (void)loadMusicFromFolder:(NSString *)dirPath;
+- (void)addMusicFolder:(NSString *)dirPath;
+- (void)loadVisibleLibraries;
 - (NSString *)nativeConfigPath;
 - (NSString *)nativeArchiveMetaPath;
+- (NSString *)nativeTrackMetaPath;
 - (NSDictionary *)loadNativeConfig;
 - (NSDictionary *)loadNativeArchiveMeta;
+- (NSDictionary *)loadNativeTrackMeta;
+- (NSDictionary *)nativeLibrarySettings;
 - (NSArray *)loadNativeHomeRoms;
 - (void)saveNativeConfig:(NSDictionary *)config;
 - (void)saveNativeArchiveMeta:(NSDictionary *)metadata;
 - (void)saveNativeArchiveMetaJson:(NSString *)json;
 - (void)saveNativeArchiveMetaBase64Json:(NSString *)base64Json;
+- (void)saveNativeTrackMeta:(NSDictionary *)metadata;
 - (void)saveNativeArchiveImage:(NSDictionary *)payload;
+- (void)handleNativeLibraryCommand:(NSDictionary *)payload;
 @end
 
 @implementation AppWindowController
@@ -231,17 +237,25 @@ static void VGMLog(NSString *format, ...) {
 
     NSDictionary *nativeConfig = [self loadNativeConfig];
     NSDictionary *nativeArchiveMeta = [self loadNativeArchiveMeta];
+    NSDictionary *nativeTrackMeta = [self loadNativeTrackMeta];
+    NSDictionary *nativeLibrarySettings = [self nativeLibrarySettings];
     NSArray *nativeHomeRoms = [self loadNativeHomeRoms];
     NSData *nativeConfigData = [NSJSONSerialization dataWithJSONObject:nativeConfig options:0 error:nil];
     NSData *nativeArchiveMetaData = [NSJSONSerialization dataWithJSONObject:nativeArchiveMeta options:0 error:nil];
+    NSData *nativeTrackMetaData = [NSJSONSerialization dataWithJSONObject:nativeTrackMeta options:0 error:nil];
+    NSData *nativeLibrarySettingsData = [NSJSONSerialization dataWithJSONObject:nativeLibrarySettings options:0 error:nil];
     NSData *nativeHomeRomsData = [NSJSONSerialization dataWithJSONObject:nativeHomeRoms options:0 error:nil];
     NSString *nativeConfigJson = nativeConfigData ? [[NSString alloc] initWithData:nativeConfigData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeArchiveMetaJson = nativeArchiveMetaData ? [[NSString alloc] initWithData:nativeArchiveMetaData encoding:NSUTF8StringEncoding] : @"{}";
+    NSString *nativeTrackMetaJson = nativeTrackMetaData ? [[NSString alloc] initWithData:nativeTrackMetaData encoding:NSUTF8StringEncoding] : @"{}";
+    NSString *nativeLibrarySettingsJson = nativeLibrarySettingsData ? [[NSString alloc] initWithData:nativeLibrarySettingsData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeHomeRomsJson = nativeHomeRomsData ? [[NSString alloc] initWithData:nativeHomeRomsData encoding:NSUTF8StringEncoding] : @"[]";
     NSString *nativeConfigScript = [NSString stringWithFormat:
-      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@; window.VGMPLAY_NATIVE_HOME_ROMS = %@;",
+      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@; window.VGMPLAY_NATIVE_TRACK_META = %@; window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = %@; window.VGMPLAY_NATIVE_HOME_ROMS = %@;",
       nativeConfigJson ?: @"{}",
       nativeArchiveMetaJson ?: @"{}",
+      nativeTrackMetaJson ?: @"{}",
+      nativeLibrarySettingsJson ?: @"{}",
       nativeHomeRomsJson ?: @"[]"];
     WKUserScript *nativeConfigUserScript = [[WKUserScript alloc] initWithSource:nativeConfigScript
                                                                   injectionTime:WKUserScriptInjectionTimeAtDocumentStart
@@ -281,6 +295,8 @@ static void VGMLog(NSString *format, ...) {
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveConfig"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveArchiveMeta"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveArchiveImage"];
+    [config.userContentController addScriptMessageHandler:self name:@"nativeSaveTrackMeta"];
+    [config.userContentController addScriptMessageHandler:self name:@"nativeLibraryCommand"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeOpenFile"];
     NSLog(@"Console logging bridge injected");
 
@@ -313,11 +329,12 @@ static void VGMLog(NSString *format, ...) {
   NSString *lastPath =
       [[NSUserDefaults standardUserDefaults] stringForKey:@"LastFolderPath"];
   if (lastPath) {
-    NSLog(@"Auto-loading last used folder: %@", lastPath);
-    [self loadMusicFromFolder:lastPath];
+    NSLog(@"Migrating last used folder: %@", lastPath);
+    [self addMusicFolder:lastPath];
   } else {
     NSLog(@"No last folder path found in user defaults");
   }
+  [self loadVisibleLibraries];
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
@@ -337,7 +354,11 @@ static void VGMLog(NSString *format, ...) {
 
 - (void)webView:(WKWebView *)webView runJavaScriptConfirmPanelWithMessage:(NSString *)message initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(BOOL result))completionHandler {
   NSLog(@"JS Confirm: %@", message);
-  completionHandler(YES);
+  NSAlert *alert = [[NSAlert alloc] init];
+  alert.messageText = message.length ? message : @"Confirm";
+  [alert addButtonWithTitle:@"OK"];
+  [alert addButtonWithTitle:@"Cancel"];
+  completionHandler([alert runModal] == NSAlertFirstButtonReturn);
 }
 
 - (void)webView:(WKWebView *)webView runJavaScriptTextInputPanelWithPrompt:(NSString *)prompt defaultText:(NSString *)defaultText initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSString * _Nullable result))completionHandler {
@@ -376,6 +397,14 @@ static void VGMLog(NSString *format, ...) {
     } else {
       VGMLog(@"nativeSaveArchiveImage ignored unexpected body type: %@", NSStringFromClass([message.body class]));
     }
+  } else if ([message.name isEqualToString:@"nativeSaveTrackMeta"]) {
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+      [self saveNativeTrackMeta:(NSDictionary *)message.body];
+    }
+  } else if ([message.name isEqualToString:@"nativeLibraryCommand"]) {
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+      [self handleNativeLibraryCommand:(NSDictionary *)message.body];
+    }
   } else if ([message.name isEqualToString:@"nativeOpenFile"]) {
     NSString *path = nil;
     if ([message.body isKindOfClass:[NSDictionary class]]) {
@@ -398,6 +427,10 @@ static void VGMLog(NSString *format, ...) {
   return [VGMStateDirectory() stringByAppendingPathComponent:@"archive-meta.json"];
 }
 
+- (NSString *)nativeTrackMetaPath {
+  return [VGMStateDirectory() stringByAppendingPathComponent:@"track-meta.json"];
+}
+
 - (NSDictionary *)loadNativeConfig {
   NSString *path = [self nativeConfigPath];
   NSData *data = [NSData dataWithContentsOfFile:path];
@@ -408,6 +441,8 @@ static void VGMLog(NSString *format, ...) {
     @"volume" : @80,
     @"libraryWidth" : @440,
     @"sortByTypeFirst" : @NO,
+    @"sortArchiveContents" : @NO,
+    @"mixNativeLibraries" : @NO,
     @"noBadgeColors" : @NO,
     @"lightTheme" : @NO
   };
@@ -457,6 +492,105 @@ static void VGMLog(NSString *format, ...) {
   return (NSDictionary *)json;
 }
 
+- (NSDictionary *)loadNativeTrackMeta {
+  NSString *path = [self nativeTrackMetaPath];
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data) return @{ @"version" : @2, @"tracks" : @{} };
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![json isKindOfClass:[NSDictionary class]]) return @{ @"version" : @2, @"tracks" : @{} };
+  return (NSDictionary *)json;
+}
+
+- (NSArray *)libraryDirectories {
+  NSArray *dirs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"LibraryDirectories"];
+  return [dirs isKindOfClass:[NSArray class]] ? dirs : @[];
+}
+
+- (void)saveLibraryDirectories:(NSArray *)dirs {
+  [[NSUserDefaults standardUserDefaults] setObject:dirs ?: @[] forKey:@"LibraryDirectories"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (NSString *)displayNameForPath:(NSString *)path fallback:(NSString *)fallback {
+  NSString *name = path.lastPathComponent;
+  return name.length ? name : fallback;
+}
+
+- (BOOL)pathHasMusic:(NSString *)path {
+  NSFileManager *fm = [NSFileManager defaultManager];
+  BOOL isDir = NO;
+  if (![fm fileExistsAtPath:path isDirectory:&isDir] || !isDir) return NO;
+  NSSet *musicExtensions = [NSSet setWithArray:@[
+    @"zip", @"7z", @"rar", @"rsn", @"vgmz", @"vgmdz", @"vgmpack", @"vigamup",
+    @"vgm", @"vgz", @"spc", @"nsf", @"nsfe", @"gbs", @"hes", @"sap", @"ay",
+    @"kss", @"kssx", @"kscc", @"psf", @"minipsf", @"ssf", @"minissf", @"dsf",
+    @"minidsf", @"usf", @"miniusf", @"mus", @"lmp", @"mid", @"midi", @"rmi",
+    @"s3m", @"it", @"mod", @"xm", @"mptm", @"mp3", @"ogg", @"flac", @"wav",
+    @"ape", @"m4a", @"aac", @"opus"
+  ]];
+  NSDirectoryEnumerator<NSURL *> *enumerator =
+      [fm enumeratorAtURL:[NSURL fileURLWithPath:path]
+includingPropertiesForKeys:@[NSURLIsRegularFileKey]
+                  options:0
+             errorHandler:nil];
+  for (NSURL *fileURL in enumerator) {
+    NSNumber *isRegular = nil;
+    [fileURL getResourceValue:&isRegular forKey:NSURLIsRegularFileKey error:nil];
+    if (isRegular && !isRegular.boolValue) continue;
+    if ([musicExtensions containsObject:fileURL.pathExtension.lowercaseString]) return YES;
+  }
+  return NO;
+}
+
+- (NSString *)uniquePrefixForName:(NSString *)name counts:(NSMutableDictionary *)counts {
+  NSString *base = name.length ? name : @"Music";
+  NSNumber *raw = counts[base];
+  NSInteger count = raw ? raw.integerValue + 1 : 1;
+  counts[base] = @(count);
+  return count <= 1 ? base : [NSString stringWithFormat:@"%@ (%ld)", base, (long)count];
+}
+
+- (NSDictionary *)nativeLibrarySettings {
+  NSArray *dirs = [self libraryDirectories];
+  NSMutableArray *outDirs = [NSMutableArray array];
+  NSMutableDictionary *counts = [NSMutableDictionary dictionary];
+  BOOL hasPersonalMusic = NO;
+  NSFileManager *fm = [NSFileManager defaultManager];
+  for (NSDictionary *dir in dirs) {
+    if (![dir isKindOfClass:[NSDictionary class]]) continue;
+    NSString *path = [dir[@"path"] isKindOfClass:[NSString class]] ? dir[@"path"] : @"";
+    NSString *name = [self displayNameForPath:path fallback:@"Music"];
+    NSString *prefix = [self uniquePrefixForName:name counts:counts];
+    BOOL isDir = NO;
+    BOOL readable = [fm fileExistsAtPath:path isDirectory:&isDir] && isDir && [fm isReadableFileAtPath:path];
+    BOOL hasMusic = readable && [self pathHasMusic:path];
+    if (hasMusic) hasPersonalMusic = YES;
+    [outDirs addObject:@{
+      @"uri" : path ?: @"",
+      @"name" : name ?: @"Music",
+      @"prefix" : prefix ?: name ?: @"Music",
+      @"enabled" : @(![dir[@"enabled"] respondsToSelector:@selector(boolValue)] || [dir[@"enabled"] boolValue]),
+      @"readable" : @(readable),
+      @"musicCount" : @(hasMusic ? 1 : 0)
+    }];
+  }
+  BOOL includedDeleted = [[NSUserDefaults standardUserDefaults] boolForKey:@"IncludedMusicDeleted"];
+  id showIncludedRaw = [[NSUserDefaults standardUserDefaults] objectForKey:@"ShowIncludedMusic"];
+  BOOL showIncluded = showIncludedRaw ? [showIncludedRaw boolValue] : YES;
+  NSString *distPath = [[[NSBundle mainBundle] executablePath] stringByDeletingLastPathComponent];
+  distPath = [distPath stringByAppendingPathComponent:@"dist"];
+  BOOL distIsDir = NO;
+  BOOL includedAvailable = [fm fileExistsAtPath:distPath isDirectory:&distIsDir] && distIsDir;
+  return @{
+    @"includedAvailable" : @(includedAvailable),
+    @"includedVisible" : @(showIncluded),
+    @"includedDeleted" : @(includedDeleted),
+    @"includedControlsEnabled" : @(hasPersonalMusic),
+    @"hasPersonalMusic" : @(hasPersonalMusic),
+    @"dirs" : outDirs
+  };
+}
+
 - (NSArray *)loadNativeHomeRoms {
   NSString *romDir = [NSHomeDirectory() stringByAppendingPathComponent:@"vgmplay-js"];
   NSArray<NSString *> *names = @[ @"yrw801.rom", @"waves.dat", @"MT32_CONTROL.ROM", @"MT32_PCM.ROM" ];
@@ -485,6 +619,8 @@ static void VGMLog(NSString *format, ...) {
   safeConfig[@"volume"] = @([config[@"volume"] respondsToSelector:@selector(doubleValue)] ? MIN(100, MAX(0, [config[@"volume"] doubleValue])) : 80);
   safeConfig[@"libraryWidth"] = @([config[@"libraryWidth"] respondsToSelector:@selector(doubleValue)] ? MIN(800, MAX(440, [config[@"libraryWidth"] doubleValue])) : 440);
   safeConfig[@"sortByTypeFirst"] = @([config[@"sortByTypeFirst"] respondsToSelector:@selector(boolValue)] ? [config[@"sortByTypeFirst"] boolValue] : NO);
+  safeConfig[@"sortArchiveContents"] = @([config[@"sortArchiveContents"] respondsToSelector:@selector(boolValue)] ? [config[@"sortArchiveContents"] boolValue] : NO);
+  safeConfig[@"mixNativeLibraries"] = @([config[@"mixNativeLibraries"] respondsToSelector:@selector(boolValue)] ? [config[@"mixNativeLibraries"] boolValue] : NO);
   safeConfig[@"noBadgeColors"] = @([config[@"noBadgeColors"] respondsToSelector:@selector(boolValue)] ? [config[@"noBadgeColors"] boolValue] : NO);
   safeConfig[@"lightTheme"] = @([config[@"lightTheme"] respondsToSelector:@selector(boolValue)] ? [config[@"lightTheme"] boolValue] : NO);
   
@@ -546,6 +682,45 @@ static void VGMLog(NSString *format, ...) {
   VGMLog(@"saved native archive metadata base64 JSON to %@ (%lu bytes)", path, (unsigned long)data.length);
 }
 
+- (void)saveNativeTrackMeta:(NSDictionary *)metadata {
+  NSString *path = [self nativeTrackMetaPath];
+  NSString *dir = [path stringByDeletingLastPathComponent];
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  if (![NSJSONSerialization isValidJSONObject:metadata]) return;
+  NSData *data = [NSJSONSerialization dataWithJSONObject:metadata options:NSJSONWritingPrettyPrinted error:nil];
+  if (data) [data writeToFile:path atomically:YES];
+}
+
+- (void)pruneMetadataForKeyPrefix:(NSString *)prefix {
+  if (prefix.length == 0) return;
+  NSMutableDictionary *archiveMeta = [[self loadNativeArchiveMeta] mutableCopy];
+  NSMutableDictionary *quick = [archiveMeta[@"quick"] isKindOfClass:[NSDictionary class]] ? [archiveMeta[@"quick"] mutableCopy] : [NSMutableDictionary dictionary];
+  NSMutableDictionary *packs = [archiveMeta[@"packsBySha"] isKindOfClass:[NSDictionary class]] ? [archiveMeta[@"packsBySha"] mutableCopy] : [NSMutableDictionary dictionary];
+  for (NSString *key in [quick.allKeys copy]) {
+    if ([key hasPrefix:prefix]) [quick removeObjectForKey:key];
+  }
+  NSSet *referenced = [NSSet setWithArray:quick.allValues];
+  for (NSString *sha in [packs.allKeys copy]) {
+    if (![referenced containsObject:sha]) [packs removeObjectForKey:sha];
+  }
+  archiveMeta[@"quick"] = quick;
+  archiveMeta[@"packsBySha"] = packs;
+  [self saveNativeArchiveMeta:archiveMeta];
+
+  NSMutableDictionary *trackMeta = [[self loadNativeTrackMeta] mutableCopy];
+  NSMutableDictionary *tracks = [trackMeta[@"tracks"] isKindOfClass:[NSDictionary class]] ? [trackMeta[@"tracks"] mutableCopy] : [NSMutableDictionary dictionary];
+  for (NSString *key in [tracks.allKeys copy]) {
+    if ([key hasPrefix:prefix]) [tracks removeObjectForKey:key];
+  }
+  trackMeta[@"tracks"] = tracks;
+  [self saveNativeTrackMeta:trackMeta];
+}
+
+- (void)pruneMetadataForLibraryPrefix:(NSString *)prefix {
+  [self pruneMetadataForKeyPrefix:[NSString stringWithFormat:@"native://libraries|%@", prefix ?: @""]];
+  [self pruneMetadataForKeyPrefix:[NSString stringWithFormat:@"Music Libraries|%@", prefix ?: @""]];
+}
+
 - (void)saveNativeArchiveImage:(NSDictionary *)payload {
   NSString *path = [payload[@"path"] isKindOfClass:[NSString class]] ? payload[@"path"] : nil;
   NSString *base64 = [payload[@"data"] isKindOfClass:[NSString class]] ? payload[@"data"] : nil;
@@ -595,12 +770,37 @@ static void VGMLog(NSString *format, ...) {
       }
 
       NSString *dirPath = panel.URL.path;
-      [self loadMusicFromFolder:dirPath];
+      [self addMusicFolder:dirPath];
     }];
   });
 }
 
-- (void)loadMusicFromFolder:(NSString *)dirPath {
+- (void)addMusicFolder:(NSString *)dirPath {
+  if (dirPath.length == 0) return;
+  NSFileManager *fm = [NSFileManager defaultManager];
+  BOOL isDir = NO;
+  if (![fm fileExistsAtPath:dirPath isDirectory:&isDir] || !isDir) return;
+
+  NSMutableArray *dirs = [[self libraryDirectories] mutableCopy];
+  BOOL exists = NO;
+  for (NSDictionary *dir in dirs) {
+    if (![dir isKindOfClass:[NSDictionary class]]) continue;
+    NSString *path = [dir[@"path"] isKindOfClass:[NSString class]] ? dir[@"path"] : @"";
+    if ([path isEqualToString:dirPath]) {
+      exists = YES;
+      break;
+    }
+  }
+  if (!exists) {
+    [dirs addObject:@{ @"path" : dirPath, @"enabled" : @YES }];
+    [self saveLibraryDirectories:dirs];
+  }
+  [[NSUserDefaults standardUserDefaults] setObject:dirPath forKey:@"LastFolderPath"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+  [self loadVisibleLibraries];
+}
+
+- (void)appendMusicFolder:(NSString *)dirPath prefix:(NSString *)prefix items:(NSMutableArray *)items {
   NSURL *dirURL = [NSURL fileURLWithPath:dirPath];
   NSFileManager *fm = [NSFileManager defaultManager];
 
@@ -629,7 +829,6 @@ static void VGMLog(NSString *format, ...) {
     @"vab", @"vas", @"xwb", @"xwm", @"ymf", @"zsm"
   ]];
 
-  NSMutableArray *items = [NSMutableArray array];
   NSDirectoryEnumerator<NSURL *> *enumerator =
       [fm enumeratorAtURL:dirURL
   includingPropertiesForKeys:@[NSURLFileSizeKey, NSURLContentModificationDateKey, NSURLIsRegularFileKey]
@@ -659,6 +858,9 @@ static void VGMLog(NSString *format, ...) {
       relativePath = [relativePath substringFromIndex:dirPath.length];
       if ([relativePath hasPrefix:@"/"]) relativePath = [relativePath substringFromIndex:1];
     }
+    if (prefix.length > 0) {
+      relativePath = relativePath.length ? [prefix stringByAppendingPathComponent:relativePath] : prefix;
+    }
     NSNumber *size = nil;
     NSDate *mtime = nil;
     [fileURL getResourceValue:&size forKey:NSURLFileSizeKey error:nil];
@@ -677,45 +879,123 @@ static void VGMLog(NSString *format, ...) {
     if (mtime) item[@"mtime"] = @((long long)mtime.timeIntervalSince1970);
     [items addObject:item];
   }
+}
+
+- (void)loadVisibleLibraries {
+  NSMutableArray *items = [NSMutableArray array];
+  NSDictionary *settings = [self nativeLibrarySettings];
+  NSFileManager *fm = [NSFileManager defaultManager];
+
+  BOOL showIncluded = ![settings[@"includedDeleted"] boolValue] && [settings[@"includedVisible"] boolValue] && [settings[@"includedAvailable"] boolValue];
+  if (showIncluded) {
+    NSString *distPath = [[[NSBundle mainBundle] executablePath] stringByDeletingLastPathComponent];
+    distPath = [distPath stringByAppendingPathComponent:@"dist"];
+    BOOL isDir = NO;
+    if ([fm fileExistsAtPath:distPath isDirectory:&isDir] && isDir) {
+      [self appendMusicFolder:distPath prefix:@"Included Music" items:items];
+    }
+  }
+
+  NSArray *dirs = [settings[@"dirs"] isKindOfClass:[NSArray class]] ? settings[@"dirs"] : @[];
+  for (NSDictionary *dir in dirs) {
+    if (![dir isKindOfClass:[NSDictionary class]]) continue;
+    if (![dir[@"enabled"] boolValue] || ![dir[@"readable"] boolValue]) continue;
+    NSString *path = [dir[@"uri"] isKindOfClass:[NSString class]] ? dir[@"uri"] : @"";
+    NSString *prefix = [dir[@"prefix"] isKindOfClass:[NSString class]] ? dir[@"prefix"] : [self displayNameForPath:path fallback:@"Music"];
+    [self appendMusicFolder:path prefix:prefix items:items];
+  }
 
   [items sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
     return [a[@"relativePath"] localizedCaseInsensitiveCompare:b[@"relativePath"]];
   }];
 
-  if (items.count > 0) {
-    [[NSUserDefaults standardUserDefaults] setObject:dirPath
-                                              forKey:@"LastFolderPath"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-
-    NSError *jsonError = nil;
-    NSDictionary *payload = @{
-      @"items" : items,
-      @"options" : @{
-        @"rootName" : dirPath.lastPathComponent ?: @"Music Library",
-        @"rootUrl" : dirPath
-      }
-    };
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:payload
-                                                       options:0
-                                                         error:&jsonError];
-    if (!jsonData) {
-      NSLog(@"loadMusicFromFolder: Failed to encode JSON: %@", jsonError.localizedDescription);
-      return;
+  NSError *jsonError = nil;
+  NSDictionary *payload = @{
+    @"items" : items,
+    @"options" : @{
+      @"rootName" : @"Music Libraries",
+      @"rootUrl" : @"native://libraries",
+      @"librarySettings" : settings
     }
-    NSString *json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-    NSString *js = [NSString stringWithFormat:
-        @"(function(payload){"
-         "var attempts=0;"
-         "function load(){"
-         "if(window.vgmPlayInstance&&window.vgmPlayInstance.loadNativeLibraryIndex){"
-         "window.vgmPlayInstance.loadNativeLibraryIndex(payload.items,payload.options||{});return;}"
-         "if(++attempts<200)setTimeout(load,50);"
-         "else console.error('[VGM Native] Timed out waiting for native library API');"
-         "}"
-         "load();"
-         "})(%@);",
-        json];
-    [self.webView evaluateJavaScript:js completionHandler:nil];
+  };
+  NSData *jsonData = [NSJSONSerialization dataWithJSONObject:payload
+                                                     options:0
+                                                       error:&jsonError];
+  if (!jsonData) {
+    NSLog(@"loadVisibleLibraries: Failed to encode JSON: %@", jsonError.localizedDescription);
+    return;
+  }
+  NSString *json = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+  NSString *js = [NSString stringWithFormat:
+      @"(function(payload){"
+       "var attempts=0;"
+       "function load(){"
+       "if(window.vgmPlayInstance&&window.vgmPlayInstance.loadNativeLibraryIndex){"
+       "window.vgmPlayInstance.loadNativeLibraryIndex(payload.items,payload.options||{});return;}"
+       "if(++attempts<200)setTimeout(load,50);"
+       "else console.error('[VGM Native] Timed out waiting for native library API');"
+       "}"
+       "load();"
+       "})(%@);",
+      json];
+  [self.webView evaluateJavaScript:js completionHandler:nil];
+}
+
+- (void)handleNativeLibraryCommand:(NSDictionary *)payload {
+  NSString *command = [payload[@"command"] isKindOfClass:[NSString class]] ? payload[@"command"] : @"";
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+
+  if ([command isEqualToString:@"setIncludedVisible"]) {
+    [defaults setBool:[payload[@"visible"] respondsToSelector:@selector(boolValue)] ? [payload[@"visible"] boolValue] : YES
+               forKey:@"ShowIncludedMusic"];
+    [defaults synchronize];
+    [self loadVisibleLibraries];
+    return;
+  }
+
+  if ([command isEqualToString:@"deleteIncludedMusic"]) {
+    [defaults setBool:YES forKey:@"IncludedMusicDeleted"];
+    [defaults setBool:NO forKey:@"ShowIncludedMusic"];
+    [defaults synchronize];
+    [self pruneMetadataForLibraryPrefix:@"Included Music/"];
+    [self pruneMetadataForKeyPrefix:@"Bundled Music|"];
+    [self loadVisibleLibraries];
+    return;
+  }
+
+  NSString *uri = [payload[@"uri"] isKindOfClass:[NSString class]] ? payload[@"uri"] : @"";
+  if (uri.length == 0) return;
+
+  NSMutableArray *dirs = [[self libraryDirectories] mutableCopy];
+  NSInteger index = NSNotFound;
+  NSString *oldName = nil;
+  for (NSUInteger i = 0; i < dirs.count; i++) {
+    NSDictionary *dir = [dirs[i] isKindOfClass:[NSDictionary class]] ? dirs[i] : nil;
+    NSString *path = [dir[@"path"] isKindOfClass:[NSString class]] ? dir[@"path"] : @"";
+    if ([path isEqualToString:uri]) {
+      index = (NSInteger)i;
+      oldName = [self displayNameForPath:path fallback:@"Music"];
+      break;
+    }
+  }
+  if (index == NSNotFound) return;
+
+  if ([command isEqualToString:@"setFolderVisible"]) {
+    NSMutableDictionary *dir = [dirs[index] mutableCopy];
+    dir[@"enabled"] = @([payload[@"visible"] respondsToSelector:@selector(boolValue)] ? [payload[@"visible"] boolValue] : YES);
+    dirs[index] = dir;
+    [self saveLibraryDirectories:dirs];
+    [self loadVisibleLibraries];
+    return;
+  }
+
+  if ([command isEqualToString:@"deleteFolder"]) {
+    NSString *prefix = [payload[@"prefix"] isKindOfClass:[NSString class]] ? payload[@"prefix"] : oldName;
+    [dirs removeObjectAtIndex:(NSUInteger)index];
+    [self saveLibraryDirectories:dirs];
+    if (prefix.length > 0) [self pruneMetadataForLibraryPrefix:[prefix stringByAppendingString:@"/"]];
+    if (oldName.length > 0) [self pruneMetadataForKeyPrefix:[NSString stringWithFormat:@"%@|", oldName]];
+    [self loadVisibleLibraries];
   }
 }
 

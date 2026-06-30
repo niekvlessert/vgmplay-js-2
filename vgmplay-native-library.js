@@ -6,7 +6,7 @@
   const TRACK_META_VERSION = 2;
   const ARCHIVE_EXTS = new Set(['zip', '7z', 'rar', 'rsn', 'vgmz', 'vgmdz', 'vgmpack', 'vigamup']);
   const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp']);
-  const DEFAULT_CONFIG = { showUnsupported: false, showFilenames: false, imageOverview: true, volume: 80, libraryWidth: 440, sortByTypeFirst: false, sortArchiveContents: false, noBadgeColors: false, lightTheme: false };
+  const DEFAULT_CONFIG = { showUnsupported: false, showFilenames: false, imageOverview: true, volume: 80, libraryWidth: 440, sortByTypeFirst: false, sortArchiveContents: false, mixNativeLibraries: false, noBadgeColors: false, lightTheme: false };
   const LIBRARY_MIN_WIDTH = 440;
   const BADGE_CLASS = {
     SPC: 'badge-spc',
@@ -183,6 +183,16 @@
     return 'entry:' + String(path || 'root').replace(/[^a-zA-Z0-9_-]+/g, ':');
   }
 
+  function loadInitialConfig() {
+    const fromNative = window.VGMPLAY_NATIVE_CONFIG;
+    if (fromNative && typeof fromNative === 'object' && Object.keys(fromNative).length) return fromNative;
+    try {
+      const local = JSON.parse(localStorage.getItem('vgmplayNativeConfig') || 'null');
+      if (local && typeof local === 'object') return local;
+    } catch (e) {}
+    return {};
+  }
+
   class NativeLibraryApp {
     constructor(player) {
       this.player = player;
@@ -199,7 +209,7 @@
       this.fakeProgress = 0;
       this.rootName = 'Music Library';
       this.rootUrl = '';
-      this.config = { ...DEFAULT_CONFIG, ...(window.VGMPLAY_NATIVE_CONFIG || {}) };
+      this.config = { ...DEFAULT_CONFIG, ...loadInitialConfig() };
       this.archiveMetaCache = this.loadArchiveMetaCache();
       this.trackMetaCache = this.loadTrackMetaCache();
       this.infoMode = 'help';
@@ -228,10 +238,18 @@
             <label><input type="checkbox" data-role="show-unsupported" /> Show unsupported files</label>
             <label><input type="checkbox" data-role="show-filenames" /> Show real filenames</label>
             <label><input type="checkbox" data-role="image-overview" /> Show image overview</label>
+            <label><input type="checkbox" data-role="mix-native-libraries" /> Mix library folders</label>
             <label><input type="checkbox" data-role="sort-by-type" /> Sort by type first</label>
             <label><input type="checkbox" data-role="sort-archive-contents" /> Sort archive contents alphabetically</label>
             <label><input type="checkbox" data-role="no-badge-colors" /> Disable type colors</label>
             <label><input type="checkbox" data-role="light-theme" /> Light theme</label>
+            <div class="native-settings-section" data-role="native-library-settings" hidden>
+              <div class="native-settings-section-title">Native Libraries</div>
+              <label><input type="checkbox" data-role="show-included-music" /> Show included music</label>
+              <button class="native-settings-danger" data-role="delete-included-music" type="button">Remove included music from library</button>
+              <div class="native-settings-note" data-role="included-music-note"></div>
+              <div class="native-settings-dir-list" data-role="native-dir-list"></div>
+            </div>
           </div>
           <input class="native-search" data-role="search" placeholder="Filter tracks, formats, chips..." />
         </div>
@@ -321,22 +339,31 @@
       this.mobileRandomBtn = this.root.querySelector('[data-role="mobile-random"]');
       this.mobileLoopBtn = this.root.querySelector('[data-role="mobile-loop"]');
       this.mobileVolumeEl = this.root.querySelector('[data-role="mobile-volume"]');
+      this.nativeLibrarySettingsEl = this.root.querySelector('[data-role="native-library-settings"]');
+      this.showIncludedMusicEl = this.root.querySelector('[data-role="show-included-music"]');
+      this.deleteIncludedMusicBtn = this.root.querySelector('[data-role="delete-included-music"]');
+      this.includedMusicNoteEl = this.root.querySelector('[data-role="included-music-note"]');
+      this.nativeDirListEl = this.root.querySelector('[data-role="native-dir-list"]');
       this.showUnsupportedEl = this.root.querySelector('[data-role="show-unsupported"]');
       this.showFilenamesEl = this.root.querySelector('[data-role="show-filenames"]');
       this.imageOverviewEl = this.root.querySelector('[data-role="image-overview"]');
+      this.mixNativeLibrariesEl = this.root.querySelector('[data-role="mix-native-libraries"]');
       this.sortByTypeEl = this.root.querySelector('[data-role="sort-by-type"]');
       this.sortArchiveContentsEl = this.root.querySelector('[data-role="sort-archive-contents"]');
       this.noBadgeColorsEl = this.root.querySelector('[data-role="no-badge-colors"]');
       this.lightThemeEl = this.root.querySelector('[data-role="light-theme"]');
-      this.config = { ...DEFAULT_CONFIG, ...(window.VGMPLAY_NATIVE_CONFIG || {}) };
+      this.config = { ...DEFAULT_CONFIG, ...loadInitialConfig() };
+      this.nativeLibrarySettings = window.VGMPLAY_NATIVE_LIBRARY_SETTINGS || null;
       this.showUnsupportedEl.checked = !!this.config.showUnsupported;
       this.showFilenamesEl.checked = !!this.config.showFilenames;
       this.imageOverviewEl.checked = this.config.imageOverview !== false;
+      this.mixNativeLibrariesEl.checked = !!this.config.mixNativeLibraries;
       this.sortByTypeEl.checked = !!this.config.sortByTypeFirst;
       this.sortArchiveContentsEl.checked = !!this.config.sortArchiveContents;
       this.noBadgeColorsEl.checked = !!this.config.noBadgeColors;
       this.lightThemeEl.checked = !!this.config.lightTheme;
       this.setMobileTab(this.activeMobileTab);
+      this.renderNativeLibrarySettings();
       if (this.config.noBadgeColors) {
         document.body.classList.add('no-badge-colors');
       }
@@ -377,6 +404,11 @@
         this.saveConfig();
         if (this.config.imageOverview) this.showImageOverview();
         else this.restorePlayingInfo();
+      });
+      this.mixNativeLibrariesEl.addEventListener('change', () => {
+        this.config.mixNativeLibraries = !!this.mixNativeLibrariesEl.checked;
+        this.saveConfig();
+        this.rebuildCurrentIndex();
       });
       this.sortByTypeEl.addEventListener('change', () => {
         this.config.sortByTypeFirst = !!this.sortByTypeEl.checked;
@@ -434,6 +466,20 @@
       if (this.mobileReverbBtn) this.mobileReverbBtn.addEventListener('click', () => this.toggleReverb());
       if (this.mobileRandomBtn) this.mobileRandomBtn.addEventListener('click', () => this.toggleRandom());
       if (this.mobileLoopBtn) this.mobileLoopBtn.addEventListener('click', () => this.toggleLoop());
+      if (this.showIncludedMusicEl) {
+        this.showIncludedMusicEl.addEventListener('change', () => {
+          this.sendNativeLibraryCommand({
+            command: 'setIncludedVisible',
+            visible: !!this.showIncludedMusicEl.checked
+          });
+        });
+      }
+      if (this.deleteIncludedMusicBtn) {
+        this.deleteIncludedMusicBtn.addEventListener('click', () => {
+          if (!window.confirm('Remove the included music from VGMPlay-JS and clear its cached metadata? The bundled files are not deleted from disk.')) return;
+          this.sendNativeLibraryCommand({ command: 'deleteIncludedMusic' });
+        });
+      }
       if (this.progressTrackEl) {
         this.progressTrackEl.addEventListener('click', (e) => {
           if (this.player && this.player.loopMode === 1) return;
@@ -492,16 +538,39 @@
 
     loadIndex(items, options = {}) {
       this.rootName = options.rootName || 'Music Library';
-      this.rootUrl = options.rootUrl || '';
+      this.rootUrl = options.rootUrl || options.rootPath || '';
+      this.rawNativeItems = Array.isArray(items) ? items : [];
+      this.rawNativeOptions = { ...options };
+      if (options.librarySettings) this.updateNativeLibrarySettings(options.librarySettings);
       this.pathEl.textContent = this.rootUrl || this.rootName;
       this.pageOffsets = {};
       this.selectedId = null;
       this.clearResidentArchiveCache();
-      this.buildEntries(Array.isArray(items) ? items : []);
+      this.buildEntries(this.rawNativeItems);
       this.pruneArchiveMetaCache();
       this.renderTree();
       if (this.config.imageOverview !== false) this.showImageOverview();
       else this.showHelp();
+    }
+
+    rebuildCurrentIndex() {
+      const items = Array.isArray(this.rawNativeItems) ? this.rawNativeItems : [];
+      this.pageOffsets = {};
+      this.selectedId = null;
+      this.clearResidentArchiveCache();
+      this.buildEntries(items);
+      this.pruneArchiveMetaCache();
+      this.renderTree();
+      if (this.config.imageOverview !== false) this.showImageOverview();
+      else this.showHelp();
+    }
+
+    treePathForItem(item) {
+      const rel = item && (item.relativePath || item.name || baseName(item.url));
+      const clean = String(rel || '').replace(/^[\\/]+|[\\/]+$/g, '');
+      if (!this.config.mixNativeLibraries || this.rootUrl !== 'native://libraries') return clean;
+      const slash = clean.search(/[\\/]/);
+      return slash >= 0 ? clean.substring(slash + 1) : clean;
     }
 
     pruneArchiveMetaCache() {
@@ -543,8 +612,8 @@
 
       for (const item of items) {
         if (!item || !item.url || !isImage(item)) continue;
-        const rel = item.relativePath || item.name || baseName(item.url);
-        const key = this.sidecarKey(rel);
+        const rel = this.treePathForItem(item);
+        const key = this.sidecarKey(rel || item.relativePath || item.name || baseName(item.url));
         if (!sidecarImages.has(key)) sidecarImages.set(key, item);
       }
 
@@ -571,7 +640,8 @@
 
       for (const item of items) {
         if (!item || !item.url || (isImage(item) && !isUnsupported(item))) continue;
-        const rel = item.relativePath || item.name || baseName(item.url);
+        const rel = this.treePathForItem(item);
+        const identityRel = item.relativePath || rel || item.name || baseName(item.url);
         const format = formatOf(item);
         const archive = isArchive(item);
         const unsupported = isUnsupported(item);
@@ -591,7 +661,7 @@
           estimatedMemory: sizeBytes ? this.formatSize(sizeBytes) : ''
         };
         entries.push({
-          id: makeId(rel),
+          id: makeId(`${identityRel}|${item.url || ''}`),
           parentId: parent,
           type,
           name: item.name || baseName(rel),
@@ -603,7 +673,8 @@
           metadata,
           warnings: this.warningsFor(item, format),
           item,
-          path: rel
+          path: identityRel,
+          treePath: rel
         });
       }
 
@@ -706,14 +777,89 @@
       if (this.mobileNowStatusEl && this.statusEl) this.mobileNowStatusEl.textContent = this.statusEl.textContent || 'Idle';
     }
 
+    updateNativeLibrarySettings(settings) {
+      this.nativeLibrarySettings = settings || null;
+      this.renderNativeLibrarySettings();
+    }
+
+    renderNativeLibrarySettings() {
+      const settings = this.nativeLibrarySettings;
+      if (!this.nativeLibrarySettingsEl) return;
+      const hasSettings = !!settings;
+      this.nativeLibrarySettingsEl.hidden = !hasSettings;
+      if (!hasSettings) return;
+
+      const controlsEnabled = !!settings.includedControlsEnabled && !settings.includedDeleted && !!settings.includedAvailable;
+      if (this.showIncludedMusicEl) {
+        this.showIncludedMusicEl.checked = !!settings.includedVisible && !settings.includedDeleted;
+        this.showIncludedMusicEl.disabled = !controlsEnabled;
+      }
+      if (this.deleteIncludedMusicBtn) this.deleteIncludedMusicBtn.disabled = !controlsEnabled;
+      if (this.includedMusicNoteEl) {
+        if (!settings.hasPersonalMusic) {
+          this.includedMusicNoteEl.textContent = 'Select a readable personal folder with music before changing included music.';
+        } else if (settings.includedDeleted) {
+          this.includedMusicNoteEl.textContent = 'Included music has been removed from the library.';
+        } else {
+          this.includedMusicNoteEl.textContent = '';
+        }
+      }
+      this.renderNativeDirectoryList(settings.dirs || []);
+    }
+
+    renderNativeDirectoryList(dirs) {
+      if (!this.nativeDirListEl) return;
+      if (!dirs.length) {
+        this.nativeDirListEl.innerHTML = '<div class="native-settings-note">No personal folders stored.</div>';
+        return;
+      }
+      this.nativeDirListEl.innerHTML = dirs.map((dir, index) => {
+        const disabled = dir.readable ? '' : ' disabled';
+        const note = dir.readable ? ((Number(dir.musicCount) || 0) > 0 ? 'music found' : 'no supported music found') : 'not readable';
+        return `
+          <div class="native-settings-dir-row" data-index="${index}">
+            <label><input type="checkbox" data-role="native-dir-visible" ${dir.enabled ? 'checked' : ''}${disabled} /> <span>${escapeHtml(dir.name || 'Music')}</span></label>
+            <button class="native-settings-danger" data-role="native-dir-delete" type="button">Remove from VGMPlay-JS</button>
+            <div class="native-settings-note">${escapeHtml(note)}</div>
+          </div>`;
+      }).join('');
+      this.nativeDirListEl.querySelectorAll('.native-settings-dir-row').forEach((row) => {
+        const dir = dirs[Number(row.dataset.index) || 0];
+        const visible = row.querySelector('[data-role="native-dir-visible"]');
+        const remove = row.querySelector('[data-role="native-dir-delete"]');
+        if (visible) {
+          visible.addEventListener('change', () => {
+            this.sendNativeLibraryCommand({
+              command: 'setFolderVisible',
+              uri: dir.uri || '',
+              visible: !!visible.checked
+            });
+          });
+        }
+        if (remove) {
+          remove.addEventListener('click', () => {
+            if (!window.confirm(`Remove "${dir.name || 'Music'}" from VGMPlay-JS and clear its cached metadata? Files in that folder will not be deleted.`)) return;
+            this.sendNativeLibraryCommand({
+              command: 'deleteFolder',
+              uri: dir.uri || '',
+              prefix: dir.prefix || dir.name || ''
+            });
+          });
+        }
+      });
+    }
+
+    sendNativeLibraryCommand(payload) {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeLibraryCommand) {
+        window.webkit.messageHandlers.nativeLibraryCommand.postMessage(payload || {});
+      } else if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ type: 'nativeLibraryCommand', payload: payload || {} });
+      }
+    }
+
     renderChildren(parentId, depth, container) {
       const list = this.visibleChildren(parentId);
-      const total = list.length;
-      const offset = this.pageOffsets[parentId] || 0;
-      const shouldPaginate = parentId !== 'root' && total > PAGE_SIZE;
-      const page = shouldPaginate ? list.slice(offset, offset + PAGE_SIZE) : list;
-      for (const entry of page) this.renderRow(entry, depth, container);
-      if (shouldPaginate) this.renderPager(parentId, depth, total, offset, container);
+      for (const entry of list) this.renderRow(entry, depth, container);
     }
 
     visibleChildren(parentId) {
@@ -3164,12 +3310,11 @@
     }
 
     saveConfig() {
+      try { localStorage.setItem('vgmplayNativeConfig', JSON.stringify(this.config)); } catch (e) {}
       if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeSaveConfig) {
         window.webkit.messageHandlers.nativeSaveConfig.postMessage(this.config);
       } else if (window.chrome && window.chrome.webview) {
         window.chrome.webview.postMessage({ type: 'nativeSaveConfig', config: this.config });
-      } else {
-        try { localStorage.setItem('vgmplayNativeConfig', JSON.stringify(this.config)); } catch (e) {}
       }
     }
 
@@ -3359,11 +3504,22 @@
       }
       if (this.bassBtn) this.bassBtn.classList.toggle('active', !!p.bassBoostEnabled);
       if (this.reverbBtn) this.reverbBtn.classList.toggle('active', !!p.reverbEnabled);
-      if (this.randomBtn) this.randomBtn.classList.toggle('active', !!p.isRandomEnabled);
+      const randomMode = Number(p.randomMode) || 0;
+      const randomTitle = randomMode === 2 ? 'Random all (R)' : (randomMode === 1 ? 'Random current game (R)' : 'Random off (R)');
+      if (this.randomBtn) {
+        this.randomBtn.classList.toggle('active', randomMode === 1);
+        this.randomBtn.classList.toggle('blue-active', randomMode === 2);
+        this.randomBtn.title = randomTitle;
+      }
       if (this.loopBtn) this.loopBtn.classList.toggle('active', p.loopMode === 1);
       if (this.mobileBassBtn) this.mobileBassBtn.classList.toggle('active', !!p.bassBoostEnabled);
       if (this.mobileReverbBtn) this.mobileReverbBtn.classList.toggle('active', !!p.reverbEnabled);
-      if (this.mobileRandomBtn) this.mobileRandomBtn.classList.toggle('active', !!p.isRandomEnabled);
+      if (this.mobileRandomBtn) {
+        this.mobileRandomBtn.classList.toggle('active', randomMode === 1);
+        this.mobileRandomBtn.classList.toggle('blue-active', randomMode === 2);
+        this.mobileRandomBtn.textContent = randomMode === 2 ? 'Random: All' : (randomMode === 1 ? 'Random: Game' : 'Random');
+        this.mobileRandomBtn.title = randomTitle;
+      }
       if (this.mobileLoopBtn) this.mobileLoopBtn.classList.toggle('active', p.loopMode === 1);
       if (this.progressTrackEl) this.progressTrackEl.classList.toggle('disabled', p.loopMode === 1);
       this.syncMobilePlayerPanel();
@@ -3422,6 +3578,10 @@
     }
 
     playAdjacentEntry(direction) {
+      if (direction >= 0 && this.player && this.player.isRandomEnabled) {
+        this.playRandomEntry();
+        return;
+      }
       const list = this.playableEntries();
       if (!list.length) return;
       const currentIndex = this.playingEntry ? list.findIndex((entry) => entry.id === this.playingEntry.id) : -1;
@@ -3432,6 +3592,43 @@
         nextIndex = (currentIndex + direction + list.length) % list.length;
       }
       const next = list[nextIndex];
+      if (!next) return;
+      this.selectedId = next.id;
+      this.expandAncestors(next);
+      this.renderTree();
+      this.scrollEntryIntoView(next);
+      this.playEntry(next);
+    }
+
+    randomScopeParentId(entry) {
+      if (!entry) return 'root';
+      if (entry.archiveParentId && this.byId.has(entry.archiveParentId)) return entry.archiveParentId;
+      let cur = entry.parentId ? this.byId.get(entry.parentId) : null;
+      let candidate = cur ? cur.id : 'root';
+      while (cur && cur.parentId && cur.parentId !== 'root') {
+        if (cur.type === 'archive' || cur.type === 'pack' || cur.type === 'archiveGame') return cur.id;
+        candidate = cur.id;
+        cur = cur.parentId ? this.byId.get(cur.parentId) : null;
+      }
+      return candidate || 'root';
+    }
+
+    randomPlayableEntries() {
+      const mode = this.player ? Number(this.player.randomMode) || 0 : 0;
+      if (mode === 1) {
+        const scopeId = this.randomScopeParentId(this.playingEntry || (this.selectedId && this.byId.get(this.selectedId)));
+        const scoped = this.flattenPlayableTree(scopeId);
+        if (scoped.length) return scoped;
+      }
+      return this.playableEntries();
+    }
+
+    playRandomEntry() {
+      const list = this.randomPlayableEntries();
+      if (!list.length) return;
+      const currentId = this.playingEntry && this.playingEntry.id;
+      const candidates = list.length > 1 ? list.filter((entry) => entry.id !== currentId) : list;
+      const next = candidates[Math.floor(Math.random() * candidates.length)];
       if (!next) return;
       this.selectedId = next.id;
       this.expandAncestors(next);
@@ -3522,6 +3719,7 @@
     player.nativeMode = true;
     const app = new NativeLibraryApp(player);
     window.nativeLibraryApp = app;
+    window.__vgmNativeLibraryApp = app;
     player._nativeLibraryApp = app;
     player.loadNativeLibraryIndex = (items, options) => app.loadIndex(items, options);
     window.loadNativeLibraryIndex = (items, options) => app.loadIndex(items, options);

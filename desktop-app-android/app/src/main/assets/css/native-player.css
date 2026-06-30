@@ -138,6 +138,9 @@ body.vgmplayNativeMode > .vgmplayContainer {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
   color: var(--native-text);
   font-size: 12px;
+  max-height: min(calc(100vh - 72px), 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .native-settings-popover label {
@@ -149,6 +152,59 @@ body.vgmplayNativeMode > .vgmplayContainer {
 
 .native-settings-popover label + label {
   margin-top: 8px;
+}
+
+.native-settings-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--native-border);
+}
+
+.native-settings-section-title {
+  margin-bottom: 8px;
+  color: var(--native-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.native-settings-danger {
+  width: 100%;
+  min-height: 28px;
+  margin-top: 8px;
+  border: 1px solid #6d3434;
+  border-radius: 4px;
+  background: #3a2020;
+  color: #ffb0b0;
+  font-size: 12px;
+}
+
+.native-settings-danger:disabled,
+.native-settings-popover input:disabled {
+  opacity: 0.45;
+}
+
+.native-settings-note {
+  margin-top: 5px;
+  color: var(--native-text-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.native-settings-dir-list {
+  margin-top: 10px;
+}
+
+.native-settings-dir-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--native-border);
+}
+
+.native-settings-dir-row label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .native-search {
@@ -592,6 +648,12 @@ body.native-resizing-library {
   border-color: var(--native-accent);
 }
 
+.native-player button.blue-active {
+  background: #2f5eff;
+  color: white;
+  border-color: #2fa7ff;
+}
+
 .native-player button:hover {
   border-color: var(--native-focus);
   color: var(--native-text);
@@ -878,10 +940,13 @@ body.vgmplayNativeMode.light-theme {
 
   .native-settings-popover {
     position: fixed;
-    top: 56px;
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
     left: 10px;
     right: 10px;
     z-index: 30;
+    max-height: none;
+    overflow-y: auto;
   }
 
   .native-settings-popover label {
@@ -1064,6 +1129,12 @@ body.vgmplayNativeMode.light-theme {
   .native-mobile-player-actions button.active {
     border-color: var(--native-accent);
     background: var(--native-accent);
+    color: white;
+  }
+
+  .native-mobile-player-actions button.blue-active {
+    border-color: #2fa7ff;
+    background: #2f5eff;
     color: white;
   }
 

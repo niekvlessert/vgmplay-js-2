@@ -392,10 +392,16 @@ public class MainActivity extends Activity {
     }
 
     private void updateNativeMediaState(JSONObject payload) {
-        mediaTitle = payload.optString("title", "VGMPlay-JS");
-        mediaSource = payload.optString("source", "");
-        mediaPlaying = payload.optBoolean("playing", false);
-        mediaPaused = payload.optBoolean("paused", false);
+        boolean nextPlaying = payload.optBoolean("playing", false);
+        boolean nextPaused = payload.optBoolean("paused", false);
+        boolean explicitStop = payload.optBoolean("stopped", false);
+        if (!nextPlaying && !nextPaused && !explicitStop && (mediaPlaying || mediaPaused)) {
+            return;
+        }
+        mediaTitle = payload.optString("title", mediaTitle == null || mediaTitle.isEmpty() ? "VGMPlay-JS" : mediaTitle);
+        mediaSource = payload.optString("source", mediaSource == null ? "" : mediaSource);
+        mediaPlaying = nextPlaying;
+        mediaPaused = nextPaused;
         long durationMs = payload.optLong("durationMs", 0);
         updatePlaybackState();
         updateMediaMetadata(durationMs);

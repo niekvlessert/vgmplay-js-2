@@ -787,26 +787,38 @@
       if (this.mobileNowStatusEl && this.statusEl) this.mobileNowStatusEl.textContent = this.statusEl.textContent || 'Idle';
     }
 
-    sendNativeMediaState({ force = false } = {}) {
+    sendNativeMediaState({ force = false, stopped = false } = {}) {
       if (!window.VGMPLAY_ANDROID_PLAYER || !window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.nativeMediaState) return;
       const p = this.player;
       const entry = this.playingEntry;
       const title = entry ? this.displayNameFor(entry) : 'VGMPlay-JS';
       const source = entry ? this.pathFor(entry) : '';
-      const playing = !!(p && p.isVGMPlaying && !p.isPlaybackPaused);
-      const paused = !!(p && p.isVGMPlaying && p.isPlaybackPaused);
+      const probablyAudible = this.isNativeAudioProbablyActive();
+      const playing = probablyAudible;
+      const paused = !!(entry && p && !this._manualStopRequested && p.isVGMPlaying && p.isPlaybackPaused);
+      const reallyStopped = !!stopped || !entry || this._manualStopRequested;
+      if (!playing && !paused && !reallyStopped && !force) return;
       const payload = {
         title,
         source,
         playing,
         paused,
-        stopped: !playing && !paused,
+        stopped: reallyStopped && !playing && !paused,
         durationMs: p && p.trackLengthSeconds ? Math.round(p.trackLengthSeconds * 1000) : 0
       };
       const key = JSON.stringify(payload);
       if (!force && key === this._lastNativeMediaStateKey) return;
       this._lastNativeMediaStateKey = key;
       window.webkit.messageHandlers.nativeMediaState.postMessage(payload);
+    }
+
+    isNativeAudioProbablyActive() {
+      const p = this.player;
+      if (!this.playingEntry || !p || this._manualStopRequested || this._loadingTrack || p.isPlaybackPaused) return false;
+      if (p.isVGMPlaying) return true;
+      const contextRunning = !!(p.context && p.context.state === 'running');
+      const workletActive = !!p.generatingAudio;
+      return contextRunning && workletActive;
     }
 
     updateNativeLibrarySettings(settings) {
@@ -3480,7 +3492,7 @@
       this.playBtn.classList.remove('active');
       this.fakeProgress = 0;
       this.updateProgress();
-      this.sendNativeMediaState({ force: true });
+      this.sendNativeMediaState({ force: true, stopped: true });
     }
 
     startFakeProgress() {
@@ -3489,7 +3501,7 @@
       this.timeTotalEl.textContent = '0:00';
       this.progressTimer = setInterval(() => {
         if (!this.player) return;
-        if (!this.player.isVGMPlaying) {
+        if (!this.player.isVGMPlaying && !this.isNativeAudioProbablyActive()) {
           this.handleStoppedPlayback();
           return;
         }
@@ -3557,7 +3569,7 @@
         this.playBtn.textContent = '▶';
         this.playBtn.classList.remove('active');
         this.statusEl.textContent = p.isVGMPlaying ? 'Paused' : 'Stopped';
-      } else if (p.isVGMPlaying) {
+      } else if (p.isVGMPlaying || this.isNativeAudioProbablyActive()) {
         this.playBtn.textContent = 'II';
         this.playBtn.classList.add('active');
         this.statusEl.textContent = 'Playing';

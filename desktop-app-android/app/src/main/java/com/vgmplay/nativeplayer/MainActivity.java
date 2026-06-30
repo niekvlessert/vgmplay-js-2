@@ -7,12 +7,16 @@ import android.content.SharedPreferences;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Color;
+import android.graphics.Insets;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
-import android.view.Gravity;
-import android.view.ViewGroup;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.JavascriptInterface;
 import android.webkit.MimeTypeMap;
 import android.webkit.ConsoleMessage;
@@ -22,8 +26,6 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
-import android.widget.LinearLayout;
 
 import androidx.annotation.Nullable;
 import androidx.documentfile.provider.DocumentFile;
@@ -69,6 +71,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        configureFullscreenWindow();
 
         WebView.setWebContentsDebuggingEnabled(true);
 
@@ -79,25 +82,8 @@ public class MainActivity extends Activity {
             .addPathHandler("/file/", new SafFileHandler())
             .build();
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(26, 27, 38));
-
-        LinearLayout toolbar = new LinearLayout(this);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(10), dp(6), dp(10), dp(6));
-        toolbar.setBackgroundColor(Color.rgb(31, 33, 48));
-
-        Button openFolder = new Button(this);
-        openFolder.setText("Open Folder");
-        openFolder.setAllCaps(false);
-        openFolder.setOnClickListener(view -> openMusicFolder());
-        toolbar.addView(openFolder, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-
         webView = new WebView(this);
+        webView.setBackgroundColor(Color.rgb(26, 27, 38));
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -146,23 +132,76 @@ public class MainActivity extends Activity {
         });
 
         webView.clearCache(true);
-
-        root.addView(toolbar, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        root.addView(webView, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            0,
-            1
-        ));
-        setContentView(root);
+        setContentView(webView);
+        applySystemBarInsets(webView);
+        hideSystemBars();
 
         webView.loadUrl(START_PAGE + "?v=" + System.currentTimeMillis());
     }
 
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        hideSystemBars();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemBars();
+    }
+
+    private void configureFullscreenWindow() {
+        Window window = getWindow();
+        window.setStatusBarColor(Color.rgb(26, 27, 38));
+        window.setNavigationBarColor(Color.rgb(26, 27, 38));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false);
+        }
+    }
+
+    private void hideSystemBars() {
+        Window window = getWindow();
+        View decor = window.getDecorView();
+        decor.setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+        );
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = decor.getWindowInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        }
+    }
+
+    private void applySystemBarInsets(View root) {
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            int top = 0;
+            int bottom = 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets bars = insets.getInsets(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                boolean barsVisible = insets.isVisible(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                if (barsVisible) {
+                    top = bars.top;
+                    bottom = bars.bottom;
+                }
+            } else {
+                int visibility = getWindow().getDecorView().getSystemUiVisibility();
+                boolean statusVisible = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
+                boolean navVisible = (visibility & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0;
+                if (statusVisible) top = insets.getSystemWindowInsetTop();
+                if (navVisible) bottom = insets.getSystemWindowInsetBottom();
+            }
+            view.setPadding(0, top, 0, bottom);
+            return insets;
+        });
+        root.requestApplyInsets();
     }
 
     private void openMusicFolder() {
@@ -725,6 +764,11 @@ public class MainActivity extends Activity {
                     saveArchiveImage(payload);
                 } else if ("nativeLibraryCommand".equals(name)) {
                     handleLibraryCommand(payload);
+                } else if ("nativeOpenFolder".equals(name)) {
+                    runOnUiThread(() -> {
+                        hideSystemBars();
+                        openMusicFolder();
+                    });
                 } else if ("nativeOpenFile".equals(name)) {
                     Log.i(TAG, "nativeOpenFile is not used on Android");
                 }

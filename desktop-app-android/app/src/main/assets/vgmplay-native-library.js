@@ -232,6 +232,7 @@
           <div class="native-brand">VGMPlay-JS</div>
           <div class="native-path" data-role="path">No folder selected</div>
           <div class="native-spacer"></div>
+          <button class="native-topbar-btn" data-role="open-folder" title="Open music folder" hidden>Open Folder</button>
           <button class="native-topbar-btn" data-role="scan-archives" title="Scan all archives">Scan Archives</button>
           <button class="native-settings-btn" data-role="settings" title="Settings">Settings</button>
           <div class="native-settings-popover" data-role="settings-popover" hidden>
@@ -326,6 +327,7 @@
       this.reverbBtn = this.root.querySelector('[data-role="reverb"]');
       this.randomBtn = this.root.querySelector('[data-role="random"]');
       this.loopBtn = this.root.querySelector('[data-role="loop"]');
+      this.openFolderBtn = this.root.querySelector('[data-role="open-folder"]');
       this.scanArchivesBtn = this.root.querySelector('[data-role="scan-archives"]');
       this.settingsBtn = this.root.querySelector('[data-role="settings"]');
       this.settingsPopover = this.root.querySelector('[data-role="settings-popover"]');
@@ -380,6 +382,14 @@
       this.settingsBtn.addEventListener('click', () => {
         this.settingsPopover.hidden = !this.settingsPopover.hidden;
       });
+      if (this.openFolderBtn) {
+        const canOpenFolder = !!(window.VGMPLAY_ANDROID_PLAYER && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeOpenFolder);
+        this.openFolderBtn.hidden = !canOpenFolder;
+        this.openFolderBtn.addEventListener('click', () => {
+          if (!canOpenFolder) return;
+          window.webkit.messageHandlers.nativeOpenFolder.postMessage({});
+        });
+      }
       if (this.scanArchivesBtn) {
         this.scanArchivesBtn.addEventListener('click', () => {
           if (this._scanningArchives) {

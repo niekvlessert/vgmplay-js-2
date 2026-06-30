@@ -13,6 +13,7 @@
   }
 
   const initialState = parseJson(bridge.getInitialState && bridge.getInitialState(), {});
+  window.VGMPLAY_ANDROID_PLAYER = true;
   window.VGMPLAY_NATIVE_CONFIG = initialState.config || {};
   window.VGMPLAY_NATIVE_ARCHIVE_META = initialState.archiveMeta || {};
   window.VGMPLAY_NATIVE_TRACK_META = initialState.trackMeta || {};
@@ -41,6 +42,7 @@
     "nativeSaveArchiveImage",
     "nativeSaveTrackMeta",
     "nativeLibraryCommand",
+    "nativeOpenFolder",
     "nativeOpenFile"
   ].forEach(installHandler);
 

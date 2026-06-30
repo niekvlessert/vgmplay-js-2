@@ -787,6 +787,28 @@
       if (this.mobileNowStatusEl && this.statusEl) this.mobileNowStatusEl.textContent = this.statusEl.textContent || 'Idle';
     }
 
+    sendNativeMediaState({ force = false } = {}) {
+      if (!window.VGMPLAY_ANDROID_PLAYER || !window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.nativeMediaState) return;
+      const p = this.player;
+      const entry = this.playingEntry;
+      const title = entry ? this.displayNameFor(entry) : 'VGMPlay-JS';
+      const source = entry ? this.pathFor(entry) : '';
+      const playing = !!(p && p.isVGMPlaying && !p.isPlaybackPaused);
+      const paused = !!(p && p.isVGMPlaying && p.isPlaybackPaused);
+      const payload = {
+        title,
+        source,
+        playing,
+        paused,
+        stopped: !playing && !paused,
+        durationMs: p && p.trackLengthSeconds ? Math.round(p.trackLengthSeconds * 1000) : 0
+      };
+      const key = JSON.stringify(payload);
+      if (!force && key === this._lastNativeMediaStateKey) return;
+      this._lastNativeMediaStateKey = key;
+      window.webkit.messageHandlers.nativeMediaState.postMessage(payload);
+    }
+
     updateNativeLibrarySettings(settings) {
       this.nativeLibrarySettings = settings || null;
       this.renderNativeLibrarySettings();
@@ -1309,6 +1331,30 @@
       else this.showInfo(entry);
     }
 
+    async playNativeCatalogItem(nativePath, title = '') {
+      const wantedPath = String(nativePath || '');
+      const wantedTitle = String(title || '').toLowerCase();
+      if (!wantedPath && !wantedTitle) return false;
+      let entry = null;
+      for (const candidate of this.entries || []) {
+        const item = candidate && candidate.item;
+        if (!item) continue;
+        if (wantedPath && item.nativePath === wantedPath) {
+          entry = candidate;
+          break;
+        }
+      }
+      if (!entry && wantedTitle) {
+        entry = (this.entries || []).find((candidate) => candidate && candidate.item && String(candidate.name || '').toLowerCase() === wantedTitle) || null;
+      }
+      if (!entry) {
+        this.statusEl.textContent = 'Auto item unavailable';
+        return false;
+      }
+      await this.openFromOverview(entry);
+      return true;
+    }
+
     resetPageOffsetsForSubtree(parentId) {
       delete this.pageOffsets[parentId];
       const children = this.children.get(parentId) || [];
@@ -1471,6 +1517,7 @@
         this.playBtn.textContent = 'II';
         this.playBtn.classList.add('active');
         this.startFakeProgress();
+        this.sendNativeMediaState({ force: true });
       } catch (e) {
         if (this._playSequence !== seq) return;
         console.error('[VGM Native] Failed to play local entry', e);
@@ -1483,6 +1530,7 @@
         entry.metadata = { ...(entry.metadata || {}), status: message };
         entry.warnings = Array.from(new Set([...(entry.warnings || []), message]));
         this.showInfo(entry);
+        this.sendNativeMediaState({ force: true });
       } finally {
         if (this._playSequence === seq) {
           this._loadingTrack = false;
@@ -3421,6 +3469,7 @@
         this.playBtn.textContent = '▶';
         this.playBtn.classList.remove('active');
       }
+      this.sendNativeMediaState({ force: true });
     }
 
     stop() {
@@ -3431,6 +3480,7 @@
       this.playBtn.classList.remove('active');
       this.fakeProgress = 0;
       this.updateProgress();
+      this.sendNativeMediaState({ force: true });
     }
 
     startFakeProgress() {
@@ -3533,6 +3583,7 @@
       if (this.mobileLoopBtn) this.mobileLoopBtn.classList.toggle('active', p.loopMode === 1);
       if (this.progressTrackEl) this.progressTrackEl.classList.toggle('disabled', p.loopMode === 1);
       this.syncMobilePlayerPanel();
+      this.sendNativeMediaState();
     }
 
     applyVolume() {

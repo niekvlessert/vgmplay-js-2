@@ -1,13 +1,22 @@
 package com.vgmplay.nativeplayer;
 
 import android.annotation.SuppressLint;
+import android.Manifest;
 import android.app.Activity;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.media.MediaMetadata;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -26,6 +35,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.documentfile.provider.DocumentFile;
@@ -49,6 +59,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MainActivity extends Activity {
     private static final String TAG = "VGMPlayAndroid";
     private static final int REQUEST_OPEN_TREE = 10;
+    private static final int REQUEST_POST_NOTIFICATIONS = 20;
+    private static final int MEDIA_NOTIFICATION_ID = 1001;
+    private static final String MEDIA_CHANNEL_ID = "vgmplay_media";
+    private static final String ACTION_MEDIA_PLAY_PAUSE = "com.vgmplay.nativeplayer.MEDIA_PLAY_PAUSE";
+    private static final String ACTION_MEDIA_PREVIOUS = "com.vgmplay.nativeplayer.MEDIA_PREVIOUS";
+    private static final String ACTION_MEDIA_NEXT = "com.vgmplay.nativeplayer.MEDIA_NEXT";
+    private static final String ACTION_MEDIA_STOP = "com.vgmplay.nativeplayer.MEDIA_STOP";
     private static final String ASSET_BASE = "https://vgmplay.local/assets/";
     private static final String START_PAGE = ASSET_BASE + "native-index.html";
     private static final String PREF_LIBRARY_TREE_URI = "libraryTreeUri";
@@ -58,6 +75,9 @@ public class MainActivity extends Activity {
     private static final String COMBINED_ROOT_NAME = "Music Libraries";
     private static final String COMBINED_ROOT_PATH = "android://libraries";
     private static final String INCLUDED_LABEL = "Included Music";
+    private static final String FOLDER_PICKER_HELP =
+        "Android blocks selecting storage root, Download, Android/data, and Android/obb. "
+            + "Choose or create a music subfolder instead.";
 
     private final Map<String, Uri> fileHandles = new HashMap<>();
     private final AtomicInteger nextFileId = new AtomicInteger(1);
@@ -65,7 +85,17 @@ public class MainActivity extends Activity {
     private WebView webView;
     private WebViewAssetLoader assetLoader;
     private SharedPreferences prefs;
+    private MediaSession mediaSession;
+    private NotificationManager notificationManager;
     private boolean initialLibraryLoaded;
+    private boolean pageReady;
+    private String pendingPlayNativePath = "";
+    private String pendingPlayTitle = "";
+    private boolean mediaNotificationAllowed;
+    private String mediaTitle = "VGMPlay-JS";
+    private String mediaSource = "";
+    private boolean mediaPlaying;
+    private boolean mediaPaused;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -76,6 +106,9 @@ public class MainActivity extends Activity {
         WebView.setWebContentsDebuggingEnabled(true);
 
         prefs = getSharedPreferences("vgmplay-native", MODE_PRIVATE);
+        notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        initMediaSession();
+        requestNotificationPermissionIfNeeded();
         assetLoader = new WebViewAssetLoader.Builder()
             .setDomain("vgmplay.local")
             .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
@@ -127,7 +160,9 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                pageReady = true;
                 loadInitialLibrary();
+                flushPendingAutoPlay();
             }
         });
 
@@ -137,12 +172,42 @@ public class MainActivity extends Activity {
         hideSystemBars();
 
         webView.loadUrl(START_PAGE + "?v=" + System.currentTimeMillis());
+        handleMediaIntent(getIntent());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         hideSystemBars();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleMediaIntent(intent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (notificationManager != null) {
+            notificationManager.cancel(MEDIA_NOTIFICATION_ID);
+        }
+        if (mediaSession != null) {
+            mediaSession.setActive(false);
+            mediaSession.release();
+            mediaSession = null;
+        }
+        super.onDestroy();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_POST_NOTIFICATIONS) {
+            mediaNotificationAllowed = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            updateMediaNotification();
+        }
     }
 
     @Override
@@ -204,6 +269,231 @@ public class MainActivity extends Activity {
         root.requestApplyInsets();
     }
 
+    private void requestNotificationPermissionIfNeeded() {
+        mediaNotificationAllowed = Build.VERSION.SDK_INT < 33
+            || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        if (!mediaNotificationAllowed && Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQUEST_POST_NOTIFICATIONS);
+        }
+    }
+
+    private void initMediaSession() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && notificationManager != null) {
+            NotificationChannel channel = new NotificationChannel(
+                MEDIA_CHANNEL_ID,
+                "VGMPlay playback",
+                NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("Playback controls for VGMPlay-JS");
+            notificationManager.createNotificationChannel(channel);
+        }
+        mediaSession = new MediaSession(this, "VGMPlay-JS");
+        mediaSession.setCallback(new MediaSession.Callback() {
+            @Override
+            public void onPlay() {
+                sendWebMediaAction("playPause");
+            }
+
+            @Override
+            public void onPause() {
+                sendWebMediaAction("playPause");
+            }
+
+            @Override
+            public void onSkipToPrevious() {
+                sendWebMediaAction("previous");
+            }
+
+            @Override
+            public void onSkipToNext() {
+                sendWebMediaAction("next");
+            }
+
+            @Override
+            public void onStop() {
+                sendWebMediaAction("stop");
+            }
+        });
+        mediaSession.setActive(true);
+        updatePlaybackState();
+    }
+
+    private void handleMediaIntent(Intent intent) {
+        if (intent == null || intent.getAction() == null) return;
+        switch (intent.getAction()) {
+            case AndroidMediaContract.ACTION_MEDIA_PLAY_PAUSE:
+                sendWebMediaAction("playPause");
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_PREVIOUS:
+                sendWebMediaAction("previous");
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_NEXT:
+                sendWebMediaAction("next");
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_STOP:
+                sendWebMediaAction("stop");
+                break;
+            case AndroidMediaContract.ACTION_PLAY_MEDIA_ID:
+                pendingPlayNativePath = intent.getStringExtra(AndroidMediaContract.EXTRA_NATIVE_PATH);
+                pendingPlayTitle = intent.getStringExtra(AndroidMediaContract.EXTRA_TITLE);
+                if (pendingPlayNativePath == null) pendingPlayNativePath = "";
+                if (pendingPlayTitle == null) pendingPlayTitle = "";
+                flushPendingAutoPlay();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void sendWebMediaAction(String action) {
+        if (webView == null) return;
+        hideSystemBars();
+        String jsAction = JSONObject.quote(action);
+        webView.post(() -> webView.evaluateJavascript(
+            "(function(action){"
+                + "var app=window.__vgmNativeLibraryApp;"
+                + "if(!app)return;"
+                + "if(action==='playPause')app.togglePlay();"
+                + "else if(action==='previous')app.prevTrack();"
+                + "else if(action==='next')app.nextTrack();"
+                + "else if(action==='stop')app.stop();"
+            + "})(" + jsAction + ");",
+            null
+        ));
+    }
+
+    private PendingIntent mediaPendingIntent(String action, int requestCode) {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setAction(action);
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        return PendingIntent.getActivity(this, requestCode, intent, flags);
+    }
+
+    private void flushPendingAutoPlay() {
+        if (webView == null || !pageReady || pendingPlayNativePath == null || pendingPlayNativePath.isEmpty()) return;
+        String nativePath = JSONObject.quote(pendingPlayNativePath);
+        String title = JSONObject.quote(pendingPlayTitle == null ? "" : pendingPlayTitle);
+        pendingPlayNativePath = "";
+        pendingPlayTitle = "";
+        webView.post(() -> webView.evaluateJavascript(
+            "(function(nativePath,title){"
+                + "var attempts=0;"
+                + "function play(){"
+                + "var app=window.__vgmNativeLibraryApp;"
+                + "if(app&&app.playNativeCatalogItem){app.playNativeCatalogItem(nativePath,title);return;}"
+                + "if(++attempts<100)setTimeout(play,100);"
+                + "}"
+                + "play();"
+            + "})(" + nativePath + "," + title + ");",
+            null
+        ));
+    }
+
+    private void updateNativeMediaState(JSONObject payload) {
+        mediaTitle = payload.optString("title", "VGMPlay-JS");
+        mediaSource = payload.optString("source", "");
+        mediaPlaying = payload.optBoolean("playing", false);
+        mediaPaused = payload.optBoolean("paused", false);
+        long durationMs = payload.optLong("durationMs", 0);
+        updatePlaybackState();
+        updateMediaMetadata(durationMs);
+        updateMediaNotification();
+        broadcastMediaState(durationMs);
+    }
+
+    private void updatePlaybackState() {
+        if (mediaSession == null) return;
+        long actions = PlaybackState.ACTION_PLAY_PAUSE
+            | PlaybackState.ACTION_PLAY
+            | PlaybackState.ACTION_PAUSE
+            | PlaybackState.ACTION_SKIP_TO_PREVIOUS
+            | PlaybackState.ACTION_SKIP_TO_NEXT
+            | PlaybackState.ACTION_STOP;
+        int state;
+        if (mediaPlaying) state = PlaybackState.STATE_PLAYING;
+        else if (mediaPaused) state = PlaybackState.STATE_PAUSED;
+        else state = PlaybackState.STATE_STOPPED;
+        mediaSession.setPlaybackState(new PlaybackState.Builder()
+            .setActions(actions)
+            .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, mediaPlaying ? 1f : 0f)
+            .build());
+    }
+
+    private void updateMediaMetadata(long durationMs) {
+        if (mediaSession == null) return;
+        MediaMetadata.Builder builder = new MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, mediaTitle)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, mediaSource)
+            .putString(MediaMetadata.METADATA_KEY_ALBUM, "VGMPlay-JS");
+        if (durationMs > 0) builder.putLong(MediaMetadata.METADATA_KEY_DURATION, durationMs);
+        mediaSession.setMetadata(builder.build());
+    }
+
+    private void broadcastMediaState(long durationMs) {
+        Intent intent = new Intent(AndroidMediaContract.ACTION_MEDIA_STATE);
+        intent.setPackage(getPackageName());
+        intent.putExtra(AndroidMediaContract.EXTRA_TITLE, mediaTitle);
+        intent.putExtra(AndroidMediaContract.EXTRA_SOURCE, mediaSource);
+        intent.putExtra(AndroidMediaContract.EXTRA_PLAYING, mediaPlaying);
+        intent.putExtra(AndroidMediaContract.EXTRA_PAUSED, mediaPaused);
+        intent.putExtra(AndroidMediaContract.EXTRA_DURATION_MS, durationMs);
+        sendBroadcast(intent);
+    }
+
+    private void updateMediaNotification() {
+        if (notificationManager == null || mediaSession == null) return;
+        if (!mediaPlaying && !mediaPaused) {
+            notificationManager.cancel(MEDIA_NOTIFICATION_ID);
+            return;
+        }
+        if (!mediaNotificationAllowed) return;
+
+        Notification.Action previous = new Notification.Action.Builder(
+            android.R.drawable.ic_media_previous,
+            "Previous",
+            mediaPendingIntent(ACTION_MEDIA_PREVIOUS, 1)
+        ).build();
+        Notification.Action playPause = new Notification.Action.Builder(
+            mediaPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+            mediaPlaying ? "Pause" : "Play",
+            mediaPendingIntent(ACTION_MEDIA_PLAY_PAUSE, 2)
+        ).build();
+        Notification.Action next = new Notification.Action.Builder(
+            android.R.drawable.ic_media_next,
+            "Next",
+            mediaPendingIntent(ACTION_MEDIA_NEXT, 3)
+        ).build();
+        Notification.Action stop = new Notification.Action.Builder(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            "Stop",
+            mediaPendingIntent(ACTION_MEDIA_STOP, 4)
+        ).build();
+
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? new Notification.Builder(this, MEDIA_CHANNEL_ID)
+            : new Notification.Builder(this);
+        Notification notification = builder
+            .setSmallIcon(R.drawable.ic_stat_vgmplay)
+            .setContentTitle(mediaTitle)
+            .setContentText(mediaSource)
+            .setSubText("VGMPlay-JS")
+            .setContentIntent(mediaPendingIntent(Intent.ACTION_MAIN, 5))
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setOngoing(mediaPlaying)
+            .setShowWhen(false)
+            .addAction(previous)
+            .addAction(playPause)
+            .addAction(next)
+            .addAction(stop)
+            .setStyle(new Notification.MediaStyle()
+                .setMediaSession(mediaSession.getSessionToken())
+                .setShowActionsInCompactView(0, 1, 2))
+            .build();
+        notificationManager.notify(MEDIA_NOTIFICATION_ID, notification);
+    }
+
     private void openMusicFolder() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -216,6 +506,9 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQUEST_OPEN_TREE || resultCode != RESULT_OK || data == null || data.getData() == null) {
+            if (requestCode == REQUEST_OPEN_TREE) {
+                Toast.makeText(this, FOLDER_PICKER_HELP, Toast.LENGTH_LONG).show();
+            }
             return;
         }
 
@@ -764,6 +1057,8 @@ public class MainActivity extends Activity {
                     saveArchiveImage(payload);
                 } else if ("nativeLibraryCommand".equals(name)) {
                     handleLibraryCommand(payload);
+                } else if ("nativeMediaState".equals(name)) {
+                    updateNativeMediaState(payload);
                 } else if ("nativeOpenFolder".equals(name)) {
                     runOnUiThread(() -> {
                         hideSystemBars();

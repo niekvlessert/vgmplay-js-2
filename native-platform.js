@@ -42,6 +42,7 @@
     "nativeSaveArchiveImage",
     "nativeSaveTrackMeta",
     "nativeLibraryCommand",
+    "nativeMediaState",
     "nativeOpenFolder",
     "nativeOpenFile"
   ].forEach(installHandler);

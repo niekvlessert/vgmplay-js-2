@@ -1039,6 +1039,7 @@ public class MainActivity extends Activity {
             JSONObject state = new JSONObject();
             try {
                 state.put("config", parseObjectPref("config"));
+                state.put("firstRun", !prefs.contains("config"));
                 state.put("archiveMeta", parseObjectPref("archiveMeta"));
                 state.put("trackMeta", parseObjectPref("trackMeta"));
                 state.put("librarySettings", buildLibrarySettings(loadLibraryDirs()));

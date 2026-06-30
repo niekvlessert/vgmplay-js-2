@@ -236,6 +236,7 @@ static void VGMLog(NSString *format, ...) {
     NSLog(@"URL scheme handler registered for 'vgmplay'");
 
     NSDictionary *nativeConfig = [self loadNativeConfig];
+    BOOL nativeFirstRun = ![[NSFileManager defaultManager] fileExistsAtPath:[self nativeConfigPath]];
     NSDictionary *nativeArchiveMeta = [self loadNativeArchiveMeta];
     NSDictionary *nativeTrackMeta = [self loadNativeTrackMeta];
     NSDictionary *nativeLibrarySettings = [self nativeLibrarySettings];
@@ -251,8 +252,9 @@ static void VGMLog(NSString *format, ...) {
     NSString *nativeLibrarySettingsJson = nativeLibrarySettingsData ? [[NSString alloc] initWithData:nativeLibrarySettingsData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeHomeRomsJson = nativeHomeRomsData ? [[NSString alloc] initWithData:nativeHomeRomsData encoding:NSUTF8StringEncoding] : @"[]";
     NSString *nativeConfigScript = [NSString stringWithFormat:
-      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@; window.VGMPLAY_NATIVE_TRACK_META = %@; window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = %@; window.VGMPLAY_NATIVE_HOME_ROMS = %@;",
+      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_FIRST_RUN = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@; window.VGMPLAY_NATIVE_TRACK_META = %@; window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = %@; window.VGMPLAY_NATIVE_HOME_ROMS = %@;",
       nativeConfigJson ?: @"{}",
+      nativeFirstRun ? @"true" : @"false",
       nativeArchiveMetaJson ?: @"{}",
       nativeTrackMetaJson ?: @"{}",
       nativeLibrarySettingsJson ?: @"{}",

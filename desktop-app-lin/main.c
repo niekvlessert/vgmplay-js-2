@@ -71,6 +71,13 @@ static char *library_config_path(void) {
   return path;
 }
 
+static gboolean native_first_run(void) {
+  char *path = library_config_path();
+  gboolean first_run = !g_file_test(path, G_FILE_TEST_EXISTS);
+  g_free(path);
+  return first_run;
+}
+
 static GKeyFile *load_library_config(void) {
   GKeyFile *key = g_key_file_new();
   char *path = library_config_path();
@@ -499,7 +506,9 @@ int main(int argc, char *argv[]) {
   g_signal_connect(content_manager, "script-message-received::nativeLibraryCommand",
                    G_CALLBACK(native_library_command_received), NULL);
   char *settings_json = native_library_settings_json();
-  char *startup_js = g_strdup_printf("window.VGMPLAY_NATIVE_LIBRARY_SETTINGS=%s;", settings_json);
+  char *startup_js = g_strdup_printf("window.VGMPLAY_NATIVE_FIRST_RUN=%s;window.VGMPLAY_NATIVE_LIBRARY_SETTINGS=%s;",
+      native_first_run() ? "true" : "false",
+      settings_json);
   WebKitUserScript *startup_script = webkit_user_script_new(startup_js,
       WEBKIT_USER_CONTENT_INJECT_TOP_FRAME,
       WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,

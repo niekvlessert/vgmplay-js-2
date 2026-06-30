@@ -212,6 +212,7 @@
       this.config = { ...DEFAULT_CONFIG, ...loadInitialConfig() };
       this.archiveMetaCache = this.loadArchiveMetaCache();
       this.trackMetaCache = this.loadTrackMetaCache();
+      this.firstRunAutoScanPending = !!window.VGMPLAY_NATIVE_FIRST_RUN && !this.config.firstRunIncludedArchiveScanDone;
       this.infoMode = 'help';
       this.activeMobileTab = 'library';
       this.homeRomsLoaded = false;
@@ -561,6 +562,7 @@
       this.renderTree();
       if (this.config.imageOverview !== false) this.showImageOverview();
       else this.showHelp();
+      this.maybeRunFirstStartupIncludedArchiveScan();
     }
 
     rebuildCurrentIndex() {
@@ -573,6 +575,29 @@
       this.renderTree();
       if (this.config.imageOverview !== false) this.showImageOverview();
       else this.showHelp();
+      this.maybeRunFirstStartupIncludedArchiveScan();
+    }
+
+    maybeRunFirstStartupIncludedArchiveScan() {
+      if (!this.firstRunAutoScanPending || this._firstRunAutoScanStarted) return;
+      const includedArchives = this.entries.filter((entry) => isArchiveEntry(entry) && this.isIncludedMusicEntry(entry));
+      if (!includedArchives.length) return;
+      this._firstRunAutoScanStarted = true;
+      this.firstRunAutoScanPending = false;
+      this.config.firstRunIncludedArchiveScanDone = true;
+      this.saveConfig();
+      setTimeout(() => {
+        this.scanAllArchives({
+          force: true,
+          archives: includedArchives,
+          reason: 'firstRunIncluded'
+        });
+      }, 250);
+    }
+
+    isIncludedMusicEntry(entry) {
+      const path = String((entry && (entry.treePath || entry.path)) || '');
+      return path === 'Included Music' || path.startsWith('Included Music/');
     }
 
     treePathForItem(item) {
@@ -1806,7 +1831,9 @@
 
     async scanAllArchives(options = {}) {
       if (this._scanningArchives && !options.force) return;
-      const archives = this.entries.filter((entry) => isArchiveEntry(entry) && !entry.hidden);
+      const archives = Array.isArray(options.archives)
+        ? options.archives.filter((entry) => isArchiveEntry(entry) && !entry.hidden)
+        : this.entries.filter((entry) => isArchiveEntry(entry) && !entry.hidden);
       if (!archives.length) {
         this.statusEl.textContent = 'No archives';
         return;

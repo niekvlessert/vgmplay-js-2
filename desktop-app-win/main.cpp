@@ -4,6 +4,7 @@
 #include <cwctype>
 #include <cstdint>
 #include <fstream>
+#include <io.h>
 #include <shlobj.h>
 #include <stdlib.h>
 #include <sstream>
@@ -42,6 +43,7 @@ std::wstring JsonEscape(const std::wstring &value);
 std::wstring FileUrlFromPath(const std::wstring &path);
 std::wstring KindForExtension(const std::wstring &ext);
 std::wstring NativeLibrarySettingsJson();
+std::wstring LibraryConfigPath();
 void AddMusicFolder(const std::wstring &path);
 void LoadVisibleLibraries();
 void HandleNativeLibraryCommand(const std::wstring &messageJson);
@@ -95,8 +97,11 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
                       webviewController->put_Bounds(bounds);
 
                       std::wstring exeDir = GetExecutableDir();
+                      bool nativeFirstRun = (_waccess(LibraryConfigPath().c_str(), 0) != 0);
                       std::wstring startupScript =
-                          L"window.VGMPLAY_NATIVE_LIBRARY_SETTINGS=" +
+                          L"window.VGMPLAY_NATIVE_FIRST_RUN=" +
+                          std::wstring(nativeFirstRun ? L"true" : L"false") +
+                          L";window.VGMPLAY_NATIVE_LIBRARY_SETTINGS=" +
                           NativeLibrarySettingsJson() + L";";
                       webviewWindow->AddScriptToExecuteOnDocumentCreated(
                           startupScript.c_str(), nullptr);

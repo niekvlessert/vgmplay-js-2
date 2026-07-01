@@ -107,6 +107,9 @@ export function installMetadata(VGMPlay_js) {
 				if (lower.endsWith('.ssf') || lower.endsWith('.minissf')) {
 					titleTarget.innerHTML += "System: Sega Saturn<br/>";
 				}
+				if (lower.endsWith('.dsf') || lower.endsWith('.minidsf')) {
+					titleTarget.innerHTML += "System: Sega Dreamcast<br/>";
+				}
 				if (lower.endsWith('.usf') || lower.endsWith('.miniusf')) {
 					titleTarget.innerHTML += "System: Nintendo 64<br/>";
 				}
@@ -255,7 +258,7 @@ VGMPlay_js.prototype._setInfoLoading = function (isLoading, message = null) {
 		let name = fallbackName || "Archive";
 		if (this._normalizeGameTitle) name = this._normalizeGameTitle(name) || name;
 		if (!files || !this.GetVGMTagDirect) return name;
-		const invalidGameNames = new Set(['xm', 'mod', 's3m', 'it', 'mptm', 'stm', 'mtm', '669', 'amf', 'dmf', 'far', 'imf', 'med', 'okt', 'ptm', 'ult', 'umx', 'lmp', 'mus', 'vgm', 'vgz', 'psf', 'ssf', 'usf', 'nsf', 'nsfe', 'gbs', 'hes', 'kss', 'kssx', 'kscc', 'spc']);
+		const invalidGameNames = new Set(['xm', 'mod', 's3m', 'it', 'mptm', 'stm', 'mtm', '669', 'amf', 'dmf', 'far', 'imf', 'med', 'okt', 'ptm', 'ult', 'umx', 'lmp', 'mus', 'vgm', 'vgz', 'psf', 'ssf', 'dsf', 'minidsf', 'usf', 'sid', 'psid', 'rsid', 'nsf', 'nsfe', 'gbs', 'hes', 'kss', 'kssx', 'kscc', 'spc']);
 		const isMapIdentifier = (s) => /^[A-Z]_?[A-Z0-9]+[A-Z]$/i.test(s) && s.length <= 10;
 		for (const f of files) {
 			if (!f || !f.filepath) continue;

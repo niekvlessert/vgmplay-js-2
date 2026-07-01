@@ -107,6 +107,109 @@ if(USE_ATRAC9 AND NOT TARGET atrac9)
   message(FATAL_ERROR "USE_ATRAC9 is ON but LibAtrac9 target was not created. Set ATRAC9_PATH to a valid LibAtrac9 checkout or disable USE_ATRAC9.")
 endif()
 
+# Highly Theoretical is used only for Dreamcast DSF playback. Keep SSF disabled
+# here so Saturn playback stays on ssfplay_tools.
+add_library(highly_theoretical STATIC
+  modules/highly_theoretical/Core/arm.c
+  modules/highly_theoretical/Core/dcsound.c
+  modules/highly_theoretical/Core/sega.c
+  modules/highly_theoretical/Core/yam.c
+)
+target_include_directories(highly_theoretical PRIVATE
+  modules/highly_theoretical/Core
+)
+target_compile_definitions(highly_theoretical PRIVATE
+  EMU_COMPILE
+  EMU_LITTLE_ENDIAN
+  HAVE_STDINT_H
+  DISABLE_SSF
+)
+
+# libsidplayfp does not ship a CMake build. Build the small SIDLITE-backed
+# engine directly for wasm SID playback.
+set(LIB_MAJOR 3)
+set(LIB_MINOR 0)
+set(LIB_LEVEL 2)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/modules/libsidplayfp/src/sidplayfp/sidversion.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated/sidplayfp/sidversion.h
+  @ONLY
+)
+set(HAVE_BUILTIN_EXPECT 1)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/modules/libsidplayfp/src/builders/sidlite-builder/sidlite/sl_defs.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated/builders/sidlite-builder/sidlite/sl_defs.h
+  @ONLY
+)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/libsidplayfp-generated/psiddrv.bin
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated/psiddrv.bin
+  COPYONLY
+)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/libsidplayfp-generated/sidtune/sidplayer1.bin
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated/sidtune/sidplayer1.bin
+  COPYONLY
+)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/libsidplayfp-generated/sidtune/sidplayer2.bin
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated/sidtune/sidplayer2.bin
+  COPYONLY
+)
+add_library(sidplayfp STATIC
+  modules/libsidplayfp/src/EventScheduler.cpp
+  modules/libsidplayfp/src/player.cpp
+  modules/libsidplayfp/src/psiddrv.cpp
+  modules/libsidplayfp/src/reloc65.cpp
+  modules/libsidplayfp/src/sidemu.cpp
+  modules/libsidplayfp/src/simpleMixer.cpp
+  modules/libsidplayfp/src/c64/c64.cpp
+  modules/libsidplayfp/src/c64/mmu.cpp
+  modules/libsidplayfp/src/c64/CIA/SerialPort.cpp
+  modules/libsidplayfp/src/c64/CIA/interrupt.cpp
+  modules/libsidplayfp/src/c64/CIA/mos652x.cpp
+  modules/libsidplayfp/src/c64/CIA/timer.cpp
+  modules/libsidplayfp/src/c64/CIA/tod.cpp
+  modules/libsidplayfp/src/c64/CPU/mos6510.cpp
+  modules/libsidplayfp/src/c64/CPU/mos6510debug.cpp
+  modules/libsidplayfp/src/c64/VIC_II/mos656x.cpp
+  modules/libsidplayfp/src/sidplayfp/SidConfig.cpp
+  modules/libsidplayfp/src/sidplayfp/SidInfo.cpp
+  modules/libsidplayfp/src/sidplayfp/SidTune.cpp
+  modules/libsidplayfp/src/sidplayfp/SidTuneInfo.cpp
+  modules/libsidplayfp/src/sidplayfp/sidbuilder.cpp
+  modules/libsidplayfp/src/sidplayfp/sidplayfp.cpp
+  modules/libsidplayfp/src/sidtune/MUS.cpp
+  modules/libsidplayfp/src/sidtune/PSID.cpp
+  modules/libsidplayfp/src/sidtune/SidTuneBase.cpp
+  modules/libsidplayfp/src/sidtune/SidTuneTools.cpp
+  modules/libsidplayfp/src/sidtune/p00.cpp
+  modules/libsidplayfp/src/sidtune/prg.cpp
+  modules/libsidplayfp/src/builders/sidlite-builder/sidlite-builder.cpp
+  modules/libsidplayfp/src/builders/sidlite-builder/sidlite-emu.cpp
+  modules/libsidplayfp/src/builders/sidlite-builder/sidlite/ADSR.cpp
+  modules/libsidplayfp/src/builders/sidlite-builder/sidlite/Filter.cpp
+  modules/libsidplayfp/src/builders/sidlite-builder/sidlite/SID.cpp
+  modules/libsidplayfp/src/builders/sidlite-builder/sidlite/WavGen.cpp
+)
+target_include_directories(sidplayfp PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated/sidtune
+  ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated/builders/sidlite-builder/sidlite
+  modules/libsidplayfp/src
+  modules/libsidplayfp/src/builders/sidlite-builder
+  modules/libsidplayfp/src/builders/sidlite-builder/sidlite
+)
+target_compile_features(sidplayfp PRIVATE cxx_std_11)
+target_compile_definitions(sidplayfp PRIVATE
+  PACKAGE="libsidplayfp"
+  PACKAGE_NAME="libsidplayfp"
+  PACKAGE_VERSION="3.0.2"
+  PACKAGE_URL="https://github.com/libsidplayfp/libsidplayfp"
+  VERSION="3.0.2"
+  HAVE_CXX11=1
+)
+
 # Build libopenmpt with its own Makefile (Emscripten)
 set(OPENMPT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/modules/openmpt)
 set(OPENMPT_LIB ${OPENMPT_DIR}/bin/libopenmpt.a)
@@ -211,6 +314,8 @@ target_link_libraries(vgmplay-js openmpt)
 target_link_libraries(vgmplay-js ADLMIDI_static)
 target_link_libraries(vgmplay-js mt32emu)
 target_link_libraries(vgmplay-js libmac)
+target_link_libraries(vgmplay-js sidplayfp)
+target_link_libraries(vgmplay-js highly_theoretical)
 add_dependencies(vgmplay-js openmpt_build)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
@@ -248,6 +353,11 @@ target_include_directories(vgmplay-js PRIVATE
     modules/openmpt
     modules/munt/mt32emu/src
     modules/adlmidi/src
+    modules/libsidplayfp/src
+    modules/libsidplayfp/src/builders/sidlite-builder
+    modules/libsidplayfp/src/builders/sidlite-builder/sidlite
+    ${CMAKE_CURRENT_BINARY_DIR}/modules/libsidplayfp/generated
+    modules/highly_theoretical/Core
 )
 
 # Exported functions
@@ -284,6 +394,8 @@ set(VGMPLAY_EXPORTS
 list(APPEND VGMPLAY_EXPORTS
     "'_GetGMETrackCountDirect'"
     "'_GetGMETrackNameDirect'"
+    "'_GetSIDTrackCountDirect'"
+    "'_GetSIDTrackNameDirect'"
     "'_GetKSSTrackCountDirect'"
     "'_GetKSSTrackMinDirect'"
     "'_GetKSSTrackMaxDirect'"

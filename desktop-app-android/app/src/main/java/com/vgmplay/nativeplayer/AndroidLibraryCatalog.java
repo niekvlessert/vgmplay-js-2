@@ -192,7 +192,8 @@ final class AndroidLibraryCatalog {
 
     private static boolean isPlayable(String ext) {
         return ext.equals("vgm") || ext.equals("vgz") || ext.equals("nsf") || ext.equals("nsfe")
-            || ext.equals("spc") || ext.equals("gym") || ext.equals("kss") || ext.equals("hes")
+            || ext.equals("spc") || ext.equals("gym") || ext.equals("sid") || ext.equals("psid")
+            || ext.equals("rsid") || ext.equals("kss") || ext.equals("hes")
             || ext.equals("ssf") || ext.equals("minissf") || ext.equals("psf") || ext.equals("psf2")
             || ext.equals("usf") || ext.equals("miniusf") || ext.equals("gsf") || ext.equals("minigsf")
             || ext.equals("2sf") || ext.equals("mini2sf") || ext.equals("dsf") || ext.equals("minidsf")

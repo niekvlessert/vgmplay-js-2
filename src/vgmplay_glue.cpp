@@ -31,6 +31,20 @@
 #include "../modules/libvgm/utils/FileLoader.h"
 #include "../modules/libmoonsound/src/libmoonsound.h"
 #include "../modules/ssfplay_tools/include/ssfplay/ssfplay.h"
+#include "../modules/highly_theoretical/Core/sega.h"
+#undef uint8
+#undef uint16
+#undef uint32
+#undef uint64
+#undef sint8
+#undef sint16
+#undef sint32
+#undef sint64
+#include "sidplayfp/SidConfig.h"
+#include "sidplayfp/SidTune.h"
+#include "sidplayfp/SidTuneInfo.h"
+#include "sidplayfp/sidplayfp.h"
+#include "builders/sidlite-builder/sidlite.h"
 
 extern "C" {
 #ifdef INLINE
@@ -101,6 +115,25 @@ static ssfplay_decoder *ssfDecoder = nullptr;
 static int64_t ssfLengthMs = 0;
 static uint64_t ssfRenderedSamples = 0;
 static bool ssfEnded = false;
+static bool isDSF = false;
+static std::vector<uint8_t> dsfState;
+static std::string currentDsfPath;
+static int dsfLengthMs = 0;
+static uint64_t dsfRenderedSamples = 0;
+static bool dsfEnded = false;
+static ma_data_converter dsfConverter;
+static bool dsfConverterInitialized = false;
+static std::vector<int16_t> dsfInputBuffer;
+static std::vector<float> dsfOutputBuffer;
+static bool isSID = false;
+static sidplayfp *sidEngine = nullptr;
+static SIDLiteBuilder *sidBuilder = nullptr;
+static SidTune *sidTune = nullptr;
+static int sidLengthMs = 0;
+static uint64_t sidRenderedSamples = 0;
+static std::string currentSidPath;
+static int sidTrackIndex = 0;
+static std::vector<int16_t> sidBuffer;
 static openmpt_module *gOpenMpt = nullptr;
 static bool isOpenMPT = false;
 static bool openmptEnded = false;
@@ -148,6 +181,8 @@ static std::vector<int16_t> apeInputBuffer;
 static std::vector<float> apeOutputBuffer;
 
 extern "C" int OpenVGMFile(const char *path);
+extern "C" void FillBuffer2(float *left, float *right, int n);
+static std::string getDirPathOrDot(const std::string &path);
 
 static bool equalsIgnoreCase(const char *a, const char *b) {
   if (!a || !b)
@@ -657,6 +692,225 @@ static bool isSsfFormatPath(const std::string &lowerPath) {
           lowerPath.substr(lowerPath.size() - 8) == ".minissf");
 }
 
+static bool isDsfFormatPath(const std::string &lowerPath) {
+  return (lowerPath.size() > 4 &&
+          lowerPath.substr(lowerPath.size() - 4) == ".dsf") ||
+         (lowerPath.size() > 8 &&
+          lowerPath.substr(lowerPath.size() - 8) == ".minidsf");
+}
+
+static bool isSidFormatPath(const std::string &lowerPath) {
+  return (lowerPath.size() > 4 &&
+          lowerPath.substr(lowerPath.size() - 4) == ".sid") ||
+         (lowerPath.size() > 5 &&
+          lowerPath.substr(lowerPath.size() - 5) == ".psid") ||
+         (lowerPath.size() > 5 &&
+          lowerPath.substr(lowerPath.size() - 5) == ".rsid");
+}
+
+static std::string trimString(const std::string &s) {
+  size_t start = s.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos)
+    return "";
+  size_t end = s.find_last_not_of(" \t\r\n");
+  return s.substr(start, end - start + 1);
+}
+
+static std::map<std::string, std::string> parsePsfTags(const uint8_t *tagStart,
+                                                       size_t tagSize) {
+  std::map<std::string, std::string> tags;
+  if (!tagStart || tagSize < 5 || memcmp(tagStart, "[TAG]", 5) != 0)
+    return tags;
+  std::string text((const char *)tagStart + 5, tagSize - 5);
+  size_t pos = 0;
+  while (pos < text.size()) {
+    size_t eol = text.find_first_of("\r\n", pos);
+    std::string line = text.substr(pos, eol == std::string::npos ? std::string::npos : eol - pos);
+    size_t eq = line.find('=');
+    if (eq != std::string::npos) {
+      std::string key = trimString(line.substr(0, eq));
+      std::string value = trimString(line.substr(eq + 1));
+      std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return std::tolower(c); });
+      if (!key.empty())
+        tags[key] = value;
+    }
+    if (eol == std::string::npos)
+      break;
+    pos = eol + 1;
+    while (pos < text.size() && (text[pos] == '\r' || text[pos] == '\n'))
+      pos++;
+  }
+  return tags;
+}
+
+static int parsePsfTimeMs(const std::string &value) {
+  std::string s = trimString(value);
+  if (s.empty())
+    return 0;
+  double total = 0.0;
+  size_t colon = s.find(':');
+  try {
+    if (colon != std::string::npos) {
+      double minutes = std::stod(s.substr(0, colon));
+      double seconds = std::stod(s.substr(colon + 1));
+      total = minutes * 60.0 + seconds;
+    } else {
+      total = std::stod(s);
+    }
+  } catch (...) {
+    return 0;
+  }
+  return total > 0.0 ? (int)(total * 1000.0 + 0.5) : 0;
+}
+
+static bool readFileBytes(const std::string &path, std::vector<uint8_t> &data) {
+  data.clear();
+  FILE *f = fopen(path.c_str(), "rb");
+  if (!f)
+    return false;
+  fseek(f, 0, SEEK_END);
+  long size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  if (size <= 0) {
+    fclose(f);
+    return false;
+  }
+  data.resize((size_t)size);
+  size_t read = fread(data.data(), 1, data.size(), f);
+  fclose(f);
+  return read == data.size();
+}
+
+static bool inflatePsfExecutable(const uint8_t *data, size_t size,
+                                 std::vector<uint8_t> &out) {
+  out.clear();
+  if (!data || size == 0)
+    return false;
+  uLongf outSize = 1024 * 1024;
+  while (outSize <= 16 * 1024 * 1024) {
+    out.assign(outSize, 0);
+    uLongf actual = outSize;
+    int ret = uncompress(out.data(), &actual, data, (uLong)size);
+    if (ret == Z_OK) {
+      out.resize(actual);
+      return true;
+    }
+    if (ret != Z_BUF_ERROR)
+      break;
+    outSize *= 2;
+  }
+  out.assign(data, data + size);
+  return true;
+}
+
+static bool loadDsfProgramRecursive(const std::string &path,
+                                    std::vector<uint8_t> &state,
+                                    int level,
+                                    std::map<std::string, std::string> *outTags) {
+  if (level > 10 || state.empty())
+    return false;
+  std::vector<uint8_t> file;
+  if (!readFileBytes(path, file))
+    return false;
+  if (file.size() < 16 || memcmp(file.data(), "PSF\x12", 4) != 0)
+    return false;
+  uint32_t reservedSize = *(uint32_t *)(file.data() + 4);
+  uint32_t exeSize = *(uint32_t *)(file.data() + 8);
+  size_t exeOffset = 16 + (size_t)reservedSize;
+  size_t tagOffset = exeOffset + (size_t)exeSize;
+  if (exeOffset > file.size() || tagOffset > file.size())
+    return false;
+
+  std::map<std::string, std::string> tags;
+  if (tagOffset + 5 <= file.size())
+    tags = parsePsfTags(file.data() + tagOffset, file.size() - tagOffset);
+  if (outTags && level == 0)
+    *outTags = tags;
+
+  std::string dir = getDirPathOrDot(path);
+  for (const auto &kv : tags) {
+    if (kv.first.rfind("_lib", 0) != 0 || kv.second.empty())
+      continue;
+    std::string libPath = dir;
+    if (!libPath.empty() && libPath != "/" && libPath.back() != '/')
+      libPath += "/";
+    libPath += kv.second;
+    loadDsfProgramRecursive(libPath, state, level + 1, nullptr);
+  }
+
+  if (exeSize == 0)
+    return true;
+  std::vector<uint8_t> program;
+  if (!inflatePsfExecutable(file.data() + exeOffset, exeSize, program) || program.size() < 5)
+    return false;
+  return sega_upload_program(state.data(), program.data(), (uint32_t)program.size()) == 0;
+}
+
+static std::map<std::string, std::string> readDsfTags(const std::string &path) {
+  std::vector<uint8_t> file;
+  if (!readFileBytes(path, file))
+    return {};
+  if (file.size() < 16 || memcmp(file.data(), "PSF\x12", 4) != 0)
+    return {};
+  uint32_t reservedSize = *(uint32_t *)(file.data() + 4);
+  uint32_t exeSize = *(uint32_t *)(file.data() + 8);
+  size_t tagOffset = 16 + (size_t)reservedSize + (size_t)exeSize;
+  if (tagOffset + 5 > file.size())
+    return {};
+  return parsePsfTags(file.data() + tagOffset, file.size() - tagOffset);
+}
+
+static const char *dsfTagByIndex(const std::map<std::string, std::string> &tags,
+                                 int tagIndex) {
+  auto get = [&](const char *key) -> const char * {
+    auto it = tags.find(key);
+    return it == tags.end() ? "" : it->second.c_str();
+  };
+  switch (tagIndex) {
+  case 0:
+    return get("title");
+  case 2:
+    return get("game");
+  case 4:
+    return "Sega Dreamcast";
+  case 6:
+    return get("artist");
+  case 8:
+    return get("year");
+  case 9:
+    return get("psfby");
+  case 10:
+    return get("comment");
+  default:
+    return "";
+  }
+}
+
+static const char *sidTagByIndex(const SidTuneInfo *info, int tagIndex) {
+  if (!info)
+    return "";
+  switch (tagIndex) {
+  case 0:
+    return info->numberOfInfoStrings() > 0 ? info->infoString(0) : "";
+  case 2:
+    return info->numberOfInfoStrings() > 0 ? info->infoString(0) : "";
+  case 4:
+    return "Commodore 64";
+  case 6:
+    return info->numberOfInfoStrings() > 1 ? info->infoString(1) : "";
+  case 8:
+    return info->numberOfInfoStrings() > 2 ? info->infoString(2) : "";
+  case 9:
+    return "libsidplayfp";
+  case 10:
+    if (info->numberOfCommentStrings() > 0)
+      return info->commentString(0);
+    return info->formatString() ? info->formatString() : "";
+  default:
+    return "";
+  }
+}
+
 static void configureSsfDefaults(ssfplay_config &config) {
   config.sample_rate = gSampleRate;
   config.resampler_quality = 10;
@@ -780,6 +1034,41 @@ static void cleanup(bool keepVGMPlayer) {
     ssfLengthMs = 0;
     ssfRenderedSamples = 0;
     ssfEnded = false;
+  }
+  if (isDSF) {
+    if (dsfConverterInitialized) {
+      ma_data_converter_uninit(&dsfConverter, NULL);
+      dsfConverterInitialized = false;
+    }
+    isDSF = false;
+    dsfState.clear();
+    currentDsfPath.clear();
+    dsfLengthMs = 0;
+    dsfRenderedSamples = 0;
+    dsfEnded = false;
+    dsfInputBuffer.clear();
+    dsfOutputBuffer.clear();
+  }
+  if (isSID) {
+    if (sidEngine) {
+      sidEngine->load(nullptr);
+      delete sidEngine;
+      sidEngine = nullptr;
+    }
+    if (sidTune) {
+      delete sidTune;
+      sidTune = nullptr;
+    }
+    if (sidBuilder) {
+      delete sidBuilder;
+      sidBuilder = nullptr;
+    }
+    isSID = false;
+    sidLengthMs = 0;
+    sidRenderedSamples = 0;
+    sidTrackIndex = 0;
+    currentSidPath.clear();
+    sidBuffer.clear();
   }
   if (isOpenMPT) {
     if (gOpenMpt) {
@@ -1147,6 +1436,39 @@ void Seek(unsigned int sec, unsigned int ms) {
     }
     return;
   }
+  if (isDSF) {
+    std::string reopenPath = currentDsfPath;
+    if (reopenPath.empty() || !OpenVGMFile(reopenPath.c_str()))
+      return;
+    uint64_t remaining = (uint64_t)sample;
+    std::vector<float> dummyL(2048);
+    std::vector<float> dummyR(2048);
+    while (remaining > 0 && !dsfEnded) {
+      int request = remaining > 2048 ? 2048 : (int)remaining;
+      FillBuffer2(dummyL.data(), dummyR.data(), request);
+      remaining -= (uint64_t)request;
+    }
+    return;
+  }
+  if (isSID) {
+    if (!sidEngine)
+      return;
+    if (!sidEngine->reset())
+      return;
+    sidRenderedSamples = 0;
+    sidBuffer.clear();
+    uint64_t remaining = (uint64_t)sample;
+    std::vector<float> dummyL(2048);
+    std::vector<float> dummyR(2048);
+    while (remaining > 0) {
+      int request = remaining > 2048 ? 2048 : (int)remaining;
+      FillBuffer2(dummyL.data(), dummyR.data(), request);
+      if (request <= 0)
+        break;
+      remaining -= (uint64_t)request;
+    }
+    return;
+  }
   if (isPSF) {
     psfBufferL.clear();
     psfBufferR.clear();
@@ -1279,6 +1601,122 @@ int OpenVGMFile(const char *path) {
     ssfLengthMs = ssfplay_length_ms(ssfDecoder);
     ssfRenderedSamples = 0;
     ssfEnded = false;
+    return 1;
+  }
+
+  if (isDsfFormatPath(lowerPath)) {
+    if (sega_init() != 0) {
+      printf("DSF: Highly Theoretical init failed\n");
+      return 0;
+    }
+    uint32_t stateSize = sega_get_state_size(2);
+    if (stateSize == 0)
+      return 0;
+    dsfState.assign(stateSize, 0);
+    sega_clear_state(dsfState.data(), 2);
+    sega_enable_dry(dsfState.data(), 1);
+    sega_enable_dsp(dsfState.data(), 1);
+    sega_enable_dsp_dynarec(dsfState.data(), 0);
+
+    std::map<std::string, std::string> tags;
+    if (!loadDsfProgramRecursive(basePath, dsfState, 0, &tags)) {
+      printf("DSF: Failed to load %s\n", basePath.c_str());
+      dsfState.clear();
+      return 0;
+    }
+
+    int lengthMs = 0;
+    auto it = tags.find("length");
+    if (it != tags.end())
+      lengthMs = parsePsfTimeMs(it->second);
+    int fadeMs = 0;
+    it = tags.find("fade");
+    if (it != tags.end())
+      fadeMs = parsePsfTimeMs(it->second);
+    if (lengthMs <= 0)
+      lengthMs = 180000;
+    dsfLengthMs = lengthMs + fadeMs;
+
+    ma_data_converter_config convConfig = ma_data_converter_config_init(
+        ma_format_s16, ma_format_f32,
+        2, 2,
+        44100, gSampleRate);
+    if (ma_data_converter_init(&convConfig, NULL, &dsfConverter) != MA_SUCCESS) {
+      dsfState.clear();
+      return 0;
+    }
+    dsfConverterInitialized = true;
+    dsfInputBuffer.clear();
+    dsfOutputBuffer.clear();
+    currentDsfPath = basePath;
+    dsfRenderedSamples = 0;
+    dsfEnded = false;
+    isDSF = true;
+    return 1;
+  }
+
+  if (isSidFormatPath(lowerPath)) {
+    sidTune = new SidTune(basePath.c_str());
+    if (!sidTune || !sidTune->getStatus()) {
+      printf("SID: Failed to load %s: %s\n", basePath.c_str(),
+             sidTune ? sidTune->statusString() : "out of memory");
+      delete sidTune;
+      sidTune = nullptr;
+      return 0;
+    }
+
+    const SidTuneInfo *preInfo = sidTune->getInfo();
+    unsigned int songCount = preInfo ? preInfo->songs() : 0;
+    unsigned int songNumber = trackIndex > 0 ? (unsigned int)trackIndex + 1 : 0;
+    if (songCount > 0 && songNumber > songCount)
+      songNumber = 0;
+    sidTune->selectSong(songNumber);
+
+    sidBuilder = new SIDLiteBuilder("VGMPlay-JS SIDLite");
+    sidEngine = new sidplayfp();
+    if (!sidBuilder || !sidEngine) {
+      delete sidEngine;
+      delete sidBuilder;
+      delete sidTune;
+      sidEngine = nullptr;
+      sidBuilder = nullptr;
+      sidTune = nullptr;
+      return 0;
+    }
+
+    SidConfig config;
+    config.frequency = gSampleRate;
+    config.samplingMethod = SidConfig::INTERPOLATE;
+    config.sidEmulation = sidBuilder;
+    if (!sidEngine->config(config)) {
+      printf("SID: config failed for %s: %s\n", basePath.c_str(), sidEngine->error());
+      delete sidEngine;
+      delete sidBuilder;
+      delete sidTune;
+      sidEngine = nullptr;
+      sidBuilder = nullptr;
+      sidTune = nullptr;
+      return 0;
+    }
+    sidEngine->setRoms(nullptr, nullptr, nullptr);
+    if (!sidEngine->load(sidTune)) {
+      printf("SID: engine load failed for %s: %s\n", basePath.c_str(), sidEngine->error());
+      delete sidEngine;
+      delete sidBuilder;
+      delete sidTune;
+      sidEngine = nullptr;
+      sidBuilder = nullptr;
+      sidTune = nullptr;
+      return 0;
+    }
+    sidEngine->initMixer(true);
+
+    isSID = true;
+    currentSidPath = basePath;
+    sidTrackIndex = trackIndex;
+    sidLengthMs = 180000;
+    sidRenderedSamples = 0;
+    sidBuffer.clear();
     return 1;
   }
 
@@ -1829,6 +2267,22 @@ int VGMEnded(void) {
     }
     return 0;
   }
+  if (isDSF) {
+    if (dsfEnded) return 1;
+    if (dsfLengthMs > 0) {
+      uint64_t totalSamples = (uint64_t)((double)dsfLengthMs * (double)gSampleRate / 1000.0);
+      return dsfRenderedSamples >= totalSamples ? 1 : 0;
+    }
+    return 0;
+  }
+  if (isSID) {
+    if (!sidEngine) return 1;
+    if (sidLengthMs > 0) {
+      uint64_t totalSamples = (uint64_t)((double)sidLengthMs * (double)gSampleRate / 1000.0);
+      return sidRenderedSamples >= totalSamples ? 1 : 0;
+    }
+    return 0;
+  }
   if (isAPE) {
     if (!apeDecompress) return 1;
     const int currentBlock = (int)apeDecompress->GetInfo(APE_DECOMPRESS_CURRENT_BLOCK);
@@ -1906,6 +2360,12 @@ int GetTrackLength(void) {
   if (isSSF) {
     return ssfLengthMs > 0 ? (int)((double)ssfLengthMs * 44.1) : 0;
   }
+  if (isDSF) {
+    return dsfLengthMs > 0 ? (int)((double)dsfLengthMs * 44.1) : 0;
+  }
+  if (isSID) {
+    return sidLengthMs > 0 ? (int)((double)sidLengthMs * 44.1) : 0;
+  }
   if (isMoonsound) {
     return msTotalSamples > 0 ? (int)msTotalSamples : 0;
   }
@@ -1982,6 +2442,34 @@ int GetTrackLengthDirect(const char *path) {
     int64_t lengthMs = ssfplay_length_ms(decoder);
     ssfplay_close(decoder);
     return lengthMs > 0 ? (int)((double)lengthMs * 44.1) : 0;
+  }
+
+  if (isDsfFormatPath(lowerPath)) {
+    std::map<std::string, std::string> tags = readDsfTags(basePath);
+    int lengthMs = 0;
+    auto it = tags.find("length");
+    if (it != tags.end())
+      lengthMs = parsePsfTimeMs(it->second);
+    int fadeMs = 0;
+    it = tags.find("fade");
+    if (it != tags.end())
+      fadeMs = parsePsfTimeMs(it->second);
+    if (lengthMs <= 0)
+      lengthMs = 180000;
+    return (int)((double)(lengthMs + fadeMs) * 44.1);
+  }
+
+  if (isSidFormatPath(lowerPath)) {
+    SidTune tune(basePath.c_str());
+    if (!tune.getStatus())
+      return 0;
+    const SidTuneInfo *preInfo = tune.getInfo();
+    unsigned int songCount = preInfo ? preInfo->songs() : 0;
+    unsigned int songNumber = trackIndex > 0 ? (unsigned int)trackIndex + 1 : 0;
+    if (songCount > 0 && songNumber > songCount)
+      songNumber = 0;
+    tune.selectSong(songNumber);
+    return (int)(180000.0 * 44.1);
   }
 
   if (lowerPath.size() > 4 &&
@@ -2298,6 +2786,34 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
     strncpy(tagResult, value ? value : "", 255);
     tagResult[255] = '\0';
     ssfplay_close(decoder);
+    return tagResult;
+  }
+
+  if (isDsfFormatPath(lowerPath)) {
+    std::map<std::string, std::string> tags = readDsfTags(basePath);
+    static char tagResult[256];
+    const char *value = dsfTagByIndex(tags, tagIndex);
+    strncpy(tagResult, value ? value : "", 255);
+    tagResult[255] = '\0';
+    return tagResult;
+  }
+
+  if (isSidFormatPath(lowerPath)) {
+    SidTune tune(basePath.c_str());
+    if (!tune.getStatus())
+      return "";
+    const SidTuneInfo *preInfo = tune.getInfo();
+    unsigned int songCount = preInfo ? preInfo->songs() : 0;
+    unsigned int songNumber = trackIndex > 0 ? (unsigned int)trackIndex + 1 : 0;
+    if (songCount > 0 && songNumber > songCount)
+      songNumber = 0;
+    const SidTuneInfo *info = tune.getInfo(songNumber);
+    if (!info)
+      return "";
+    static char tagResult[256];
+    const char *value = sidTagByIndex(info, tagIndex);
+    strncpy(tagResult, value ? value : "", 255);
+    tagResult[255] = '\0';
     return tagResult;
   }
 
@@ -2681,6 +3197,43 @@ void FillBuffer2(float *left, float *right, int n) {
     return;
   }
 
+  if (isSID) {
+    if (!sidEngine) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+    const unsigned int cyclesPerChunk = 20000;
+    while ((int)sidBuffer.size() < n * 2) {
+      int produced = sidEngine->play(cyclesPerChunk);
+      if (produced <= 0) {
+        printf("SID Error: %s\n", sidEngine->error() ? sidEngine->error() : "render failed");
+        break;
+      }
+      std::vector<int16_t> tmp((size_t)produced * 2 + 64);
+      unsigned int mixed = sidEngine->mix(tmp.data(), (unsigned int)produced);
+      if (mixed == 0)
+        break;
+      sidBuffer.insert(sidBuffer.end(), tmp.begin(), tmp.begin() + mixed);
+    }
+
+    int availableFrames = (int)sidBuffer.size() / 2;
+    int framesToCopy = availableFrames < n ? availableFrames : n;
+    for (int i = 0; i < framesToCopy; i++) {
+      left[i] = (float)(sidBuffer[i * 2] / 32768.0f);
+      right[i] = (float)(sidBuffer[i * 2 + 1] / 32768.0f);
+    }
+    for (int i = framesToCopy; i < n; i++) {
+      left[i] = 0.0f;
+      right[i] = 0.0f;
+    }
+    if (framesToCopy > 0) {
+      sidBuffer.erase(sidBuffer.begin(), sidBuffer.begin() + framesToCopy * 2);
+      sidRenderedSamples += (uint64_t)framesToCopy;
+    }
+    return;
+  }
+
   if (isKSS) {
     if (!gKssPlay) {
       memset(left, 0, n * sizeof(float));
@@ -2924,6 +3477,74 @@ void FillBuffer2(float *left, float *right, int n) {
     return;
   }
 
+  if (isDSF) {
+    if (dsfState.empty() || !dsfConverterInitialized) {
+      memset(left, 0, n * sizeof(float));
+      memset(right, 0, n * sizeof(float));
+      return;
+    }
+
+    int emptyRenderAttempts = 0;
+    while ((int)dsfOutputBuffer.size() < n * 2 && !dsfEnded) {
+      if (dsfInputBuffer.empty()) {
+        const uint32_t requestFrames = 2048;
+        std::vector<int16_t> renderBuf(requestFrames * 2);
+        uint32_t samples = requestFrames;
+        int32_t result = sega_execute(dsfState.data(), (int32_t)(requestFrames * 128), renderBuf.data(), &samples);
+        if (result < 0) {
+          dsfEnded = true;
+          break;
+        }
+        if (samples == 0) {
+          if (++emptyRenderAttempts > 8) {
+            dsfEnded = true;
+            break;
+          }
+          continue;
+        }
+        dsfInputBuffer.insert(dsfInputBuffer.end(), renderBuf.begin(), renderBuf.begin() + samples * 2);
+      }
+
+      if (!dsfInputBuffer.empty()) {
+        ma_uint64 inputFrames = dsfInputBuffer.size() / 2;
+        size_t outCapacity = (size_t)(inputFrames * (double)gSampleRate / 44100.0) + 256;
+        if (outCapacity < 1) outCapacity = 1;
+        std::vector<float> outBuffer(outCapacity * 2);
+        ma_uint64 inCount = inputFrames;
+        ma_uint64 outCount = outCapacity;
+        ma_result res = ma_data_converter_process_pcm_frames(
+            &dsfConverter, dsfInputBuffer.data(), &inCount, outBuffer.data(), &outCount);
+        if (res != MA_SUCCESS) {
+          dsfEnded = true;
+          break;
+        }
+        size_t consumed = (size_t)inCount * 2;
+        if (consumed > 0 && consumed <= dsfInputBuffer.size())
+          dsfInputBuffer.erase(dsfInputBuffer.begin(), dsfInputBuffer.begin() + consumed);
+        if (outCount > 0)
+          dsfOutputBuffer.insert(dsfOutputBuffer.end(), outBuffer.begin(), outBuffer.begin() + outCount * 2);
+        if (inCount == 0 && outCount == 0)
+          break;
+      }
+    }
+
+    int availableFrames = (int)dsfOutputBuffer.size() / 2;
+    int framesToCopy = availableFrames < n ? availableFrames : n;
+    for (int i = 0; i < framesToCopy; i++) {
+      left[i] = dsfOutputBuffer[i * 2];
+      right[i] = dsfOutputBuffer[i * 2 + 1];
+    }
+    for (int i = framesToCopy; i < n; i++) {
+      left[i] = 0.0f;
+      right[i] = 0.0f;
+    }
+    if (framesToCopy > 0) {
+      dsfOutputBuffer.erase(dsfOutputBuffer.begin(), dsfOutputBuffer.begin() + framesToCopy * 2);
+      dsfRenderedSamples += (uint64_t)framesToCopy;
+    }
+    return;
+  }
+
   if (isVGMStream) {
     if (!vgmstreamContext || !vgmstreamConverterInitialized) {
       memset(left, 0, n * sizeof(float));
@@ -3088,6 +3709,20 @@ char *ShowTitle(void) {
     return titleBuf;
   }
 
+  if (isDSF) {
+    std::map<std::string, std::string> tags = readDsfTags(currentDsfPath);
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      s += dsfTagByIndex(tags, i);
+      s += "|||";
+    }
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
+
   if (isPSF || isUSF) {
     PSFINFO *info = isPSF ? psfInfo : usfInfo;
     if (!info)
@@ -3150,6 +3785,23 @@ char *ShowTitle(void) {
       s += "|||";
     }
 
+    free(titleBuf);
+    titleBuf = strdup(s.c_str());
+    return titleBuf;
+  }
+  if (isSID) {
+    if (!sidTune)
+      return nullptr;
+    const SidTuneInfo *info = sidTune->getInfo();
+    if (!info)
+      return nullptr;
+    std::string s;
+    for (int i = 0; i < 11; i++) {
+      s += "Key";
+      s += "|||";
+      s += sidTagByIndex(info, i);
+      s += "|||";
+    }
     free(titleBuf);
     titleBuf = strdup(s.c_str());
     return titleBuf;
@@ -3512,6 +4164,23 @@ int GetGMETrackCountDirect(const char *path) {
   return count;
 }
 
+int GetSIDTrackCountDirect(const char *path) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return 0;
+  std::string lowerPath = basePath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+  if (!isSidFormatPath(lowerPath))
+    return 0;
+  SidTune tune(basePath.c_str());
+  if (!tune.getStatus())
+    return 0;
+  const SidTuneInfo *info = tune.getInfo();
+  return info ? (int)info->songs() : 0;
+}
+
 int GetKSSTrackCountDirect(const char *path) {
   std::string basePath;
   parseTrackSuffix(path, basePath);
@@ -3672,6 +4341,40 @@ const char *GetKSSTrackNameDirect(const char *path, int trackIndex) {
   }
   KSS_delete(kss);
   DataLoader_Deinit(kssLoader);
+  return nameBuf;
+}
+
+const char *GetSIDTrackNameDirect(const char *path, int trackIndex) {
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  if (basePath.empty())
+    return "";
+  std::string lowerPath = basePath;
+  for (auto &c : lowerPath)
+    c = tolower(c);
+  if (!isSidFormatPath(lowerPath))
+    return "";
+  SidTune tune(basePath.c_str());
+  if (!tune.getStatus())
+    return "";
+  const SidTuneInfo *preInfo = tune.getInfo();
+  unsigned int songCount = preInfo ? preInfo->songs() : 0;
+  unsigned int songNumber = trackIndex >= 0 ? (unsigned int)trackIndex + 1 : 0;
+  if (songCount > 0 && songNumber > songCount)
+    songNumber = 0;
+  const SidTuneInfo *info = tune.getInfo(songNumber);
+  if (!info)
+    return "";
+  static char nameBuf[256];
+  const char *title = info->numberOfInfoStrings() > 0 ? info->infoString(0) : "";
+  if (!title || !title[0]) {
+    snprintf(nameBuf, sizeof(nameBuf), "Track %d", trackIndex + 1);
+  } else if (songCount > 1) {
+    snprintf(nameBuf, sizeof(nameBuf), "%s #%d", title, trackIndex + 1);
+  } else {
+    strncpy(nameBuf, title, sizeof(nameBuf) - 1);
+    nameBuf[sizeof(nameBuf) - 1] = '\0';
+  }
   return nameBuf;
 }
 

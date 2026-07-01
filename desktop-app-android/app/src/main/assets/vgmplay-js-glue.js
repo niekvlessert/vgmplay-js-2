@@ -1799,7 +1799,9 @@ class VGMPlay_js {
 		return p.endsWith('.vgm') || p.endsWith('.vgz') ||
 			p.endsWith('.psf') || p.endsWith('.minipsf') ||
 			p.endsWith('.ssf') || p.endsWith('.minissf') ||
+			p.endsWith('.dsf') || p.endsWith('.minidsf') ||
 			p.endsWith('.usf') || p.endsWith('.miniusf') ||
+			p.endsWith('.sid') || p.endsWith('.psid') || p.endsWith('.rsid') ||
 			p.endsWith('.spc') || p.endsWith('.nsf') || p.endsWith('.nsfe') ||
 			p.endsWith('.gbs') || p.endsWith('.gym') || p.endsWith('.hes') ||
 			p.endsWith('.kss') || p.endsWith('.kssx') || p.endsWith('.kscc') ||

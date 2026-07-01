@@ -14,8 +14,8 @@
     VGZ: 'badge-vgz',
     SSF: 'badge-ssf',
     MINISSF: 'badge-ssf',
-    DSF: 'badge-ssf',
-    MINIDSF: 'badge-ssf',
+    DSF: 'badge-psf',
+    MINIDSF: 'badge-psf',
     USF: 'badge-ssf',
     MINIUSF: 'badge-ssf',
     PSF: 'badge-psf',
@@ -27,6 +27,9 @@
     KSS: 'badge-kss',
     KSSX: 'badge-kss',
     KSCC: 'badge-kss',
+    SID: 'badge-kss',
+    PSID: 'badge-kss',
+    RSID: 'badge-kss',
     MIDI: 'badge-midi',
     MID: 'badge-midi',
     MOD: 'badge-mod',
@@ -80,11 +83,16 @@
     KSS: { content: 'MSX/SMS music container', backend: 'KSS', multiTrack: true },
     KSSX: { content: 'MSX/SMS music container', backend: 'KSS', multiTrack: true },
     KSCC: { content: 'MSX/SMS music container', backend: 'KSS', multiTrack: true },
+    SID: { content: 'Commodore 64 SID music', backend: 'libsidplayfp', multiTrack: true },
+    PSID: { content: 'Commodore 64 SID music', backend: 'libsidplayfp', multiTrack: true },
+    RSID: { content: 'Commodore 64 SID music', backend: 'libsidplayfp', multiTrack: true },
     VGM: { content: 'VGM command stream', backend: 'libvgm' },
     VGZ: { content: 'Compressed VGM command stream', backend: 'libvgm' },
     PSF: { content: 'PlayStation sequenced music', backend: 'Highly Experimental' },
     SSF: { content: 'Saturn sequenced music', backend: 'ssfplay' },
     MINISSF: { content: 'Saturn sequenced music', backend: 'ssfplay' },
+    DSF: { content: 'Dreamcast sequenced music', backend: 'Highly Theoretical' },
+    MINIDSF: { content: 'Dreamcast sequenced music', backend: 'Highly Theoretical' },
     MIDI: { content: 'MIDI sequence', backend: 'MIDI synthesizer' },
     MBM: { content: 'MSX MoonBlaster module', backend: 'KSS' },
     MGS: { content: 'MSX music sequence', backend: 'KSS' },
@@ -2784,6 +2792,9 @@
             }
             if (!hasNamedTrack) return [];
           }
+        } else if ((entry.format === 'SID' || entry.format === 'PSID' || entry.format === 'RSID') && this.player.GetSIDTrackCountDirect) {
+          count = Number(this.player.GetSIDTrackCountDirect(path)) || 0;
+          getName = this.player.GetSIDTrackNameDirect ? (i) => this.player.GetSIDTrackNameDirect(path, i) : null;
         } else if (this.player.GetGMETrackCountDirect) {
           count = Number(this.player.GetGMETrackCountDirect(path)) || 0;
           getName = this.player.GetGMETrackNameDirect ? (i) => this.player.GetGMETrackNameDirect(path, i) : null;

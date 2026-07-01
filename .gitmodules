@@ -41,3 +41,6 @@
 [submodule "modules/ssfplay_tools"]
 	path = modules/ssfplay_tools
 	url = https://github.com/niekvlessert/ssfplay_tools
+[submodule "modules/libsidplayfp"]
+	path = modules/libsidplayfp
+	url = https://github.com/libsidplayfp/libsidplayfp

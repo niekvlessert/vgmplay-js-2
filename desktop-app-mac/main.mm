@@ -817,7 +817,7 @@ includingPropertiesForKeys:@[NSURLIsRegularFileKey]
   ]];
   NSSet *playableExtensions = [NSSet setWithArray:@[
     @"vgm", @"vgz", @"spc", @"nsf", @"nsfe", @"gbs", @"hes", @"sap",
-    @"ay", @"kss", @"kssx", @"kscc", @"psf", @"minipsf", @"ssf",
+    @"ay", @"sid", @"psid", @"rsid", @"kss", @"kssx", @"kscc", @"psf", @"minipsf", @"ssf",
     @"minissf", @"dsf", @"minidsf", @"usf", @"miniusf", @"mus", @"lmp",
     @"mid", @"midi", @"rmi", @"s3m", @"it", @"mod", @"xm", @"mptm",
     @"stm", @"mtm", @"669", @"amf", @"dmf", @"far", @"imf", @"med",

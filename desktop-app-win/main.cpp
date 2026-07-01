@@ -212,7 +212,7 @@ std::wstring KindForExtension(const std::wstring &ext) {
       L".mwk", L".psflib", L".ssflib", L".usflib", L".m3u", L".txt", L".trackinfo", L".gameinfo"};
   static const std::vector<std::wstring> playable = {
       L".vgm", L".vgz", L".spc", L".nsf", L".nsfe", L".gbs", L".hes", L".sap",
-      L".ay", L".kss", L".kssx", L".kscc", L".psf", L".minipsf", L".ssf",
+      L".ay", L".sid", L".psid", L".rsid", L".kss", L".kssx", L".kscc", L".psf", L".minipsf", L".ssf",
       L".minissf", L".dsf", L".minidsf", L".usf", L".miniusf", L".mus", L".lmp",
       L".mid", L".midi", L".rmi", L".s3m", L".it", L".mod", L".xm", L".mptm",
       L".stm", L".mtm", L".669", L".amf", L".dmf", L".far", L".imf", L".med",

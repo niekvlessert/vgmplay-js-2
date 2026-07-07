@@ -1,4 +1,14 @@
 export function installAudio(VGMPlay_js) {
+	VGMPlay_js.prototype._masterGainTarget = function () {
+		try {
+			if (this.nativeMode && this._nativeLibraryApp && this._nativeLibraryApp.config) {
+				const value = this._nativeLibraryApp.config.volume != null ? Number(this._nativeLibraryApp.config.volume) : 80;
+				return Math.max(0, Math.min(1, value / 100));
+			}
+		} catch { }
+		return 1.0;
+	};
+
 	VGMPlay_js.prototype._doInit = async function () {
 		// Wait for Emscripten to be fully loaded and FS to be ready
 		await new Promise(resolve => {
@@ -393,9 +403,10 @@ if (this._initCache && !this._cacheReady) {
 			// Reset fade state carefully with a short fade-in to avoid clicks
 			const now = this.context.currentTime;
 			this.isFadingOut = false;
+			const targetGain = this._masterGainTarget ? this._masterGainTarget() : 1.0;
 			this.masterGain.gain.cancelScheduledValues(now);
 			this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-			this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
+			this.masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.02);
 		} catch { }
 
 		// Resume audio context if suspended (autoplay policy)
@@ -549,9 +560,10 @@ if (this._initCache && !this._cacheReady) {
 			const now = this.context.currentTime;
 			const remaining = (this.totalSampleCount - currentSample) / this.sampleRate;
 			const duration = remaining > 0 ? remaining : 0.1;
+			const targetGain = this._masterGainTarget ? this._masterGainTarget() : 1.0;
 
 			this.masterGain.gain.cancelScheduledValues(now);
-			this.masterGain.gain.setValueAtTime(1.0, now);
+			this.masterGain.gain.setValueAtTime(targetGain, now);
 			this.masterGain.gain.linearRampToValueAtTime(0, now + duration);
 		}
 
@@ -650,9 +662,10 @@ if (this._initCache && !this._cacheReady) {
 			this.emulatorFinished = false;
 			if (this.masterGain && this.context) {
 				const now = this.context.currentTime;
+				const targetGain = this._masterGainTarget ? this._masterGainTarget() : 1.0;
 				this.masterGain.gain.cancelScheduledValues(now);
 				this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-				this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
+				this.masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.02);
 			}
 		} else {
 			this._loopCount = 1;

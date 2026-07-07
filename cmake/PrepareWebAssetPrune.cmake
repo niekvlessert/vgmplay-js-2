@@ -1,0 +1,11 @@
+if(DEFINED DESTINATION_PARENT AND NOT "${DESTINATION_PARENT}" STREQUAL "")
+    string(REGEX REPLACE "/+$" "" clean_destination_parent "${DESTINATION_PARENT}")
+    if(IS_SYMLINK "${clean_destination_parent}")
+        execute_process(COMMAND "${CMAKE_COMMAND}" -E rm -f "${clean_destination_parent}" OUTPUT_QUIET ERROR_QUIET)
+    endif()
+endif()
+
+if(DEFINED DESTINATION AND NOT "${DESTINATION}" STREQUAL "")
+    string(REGEX REPLACE "/+$" "" clean_destination "${DESTINATION}")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E rm -f "${clean_destination}" OUTPUT_QUIET ERROR_QUIET)
+endif()

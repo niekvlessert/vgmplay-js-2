@@ -14,6 +14,13 @@ import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.media.AudioAttributes;
+import android.media.AudioDeviceCallback;
+import android.media.AudioDeviceInfo;
+import android.media.AudioFocusRequest;
+import android.media.AudioFormat;
+import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.media.MediaMetadata;
 import android.media.session.MediaSession;
 import android.media.session.PlaybackState;
@@ -45,6 +52,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -63,6 +71,8 @@ public class MainActivity extends Activity {
     private static final int MEDIA_NOTIFICATION_ID = 1001;
     private static final String MEDIA_CHANNEL_ID = "vgmplay_media";
     private static final String ACTION_MEDIA_PLAY_PAUSE = "com.vgmplay.nativeplayer.MEDIA_PLAY_PAUSE";
+    private static final String ACTION_MEDIA_PLAY = "com.vgmplay.nativeplayer.MEDIA_PLAY";
+    private static final String ACTION_MEDIA_PAUSE = "com.vgmplay.nativeplayer.MEDIA_PAUSE";
     private static final String ACTION_MEDIA_PREVIOUS = "com.vgmplay.nativeplayer.MEDIA_PREVIOUS";
     private static final String ACTION_MEDIA_NEXT = "com.vgmplay.nativeplayer.MEDIA_NEXT";
     private static final String ACTION_MEDIA_STOP = "com.vgmplay.nativeplayer.MEDIA_STOP";
@@ -75,6 +85,7 @@ public class MainActivity extends Activity {
     private static final String COMBINED_ROOT_NAME = "Music Libraries";
     private static final String COMBINED_ROOT_PATH = "android://libraries";
     private static final String INCLUDED_LABEL = "Included Music";
+    private static final String LAST_TRACK_FILE = "last-track.json";
     private static final String FOLDER_PICKER_HELP =
         "Android blocks selecting storage root, Download, Android/data, and Android/obb. "
             + "Choose or create a music subfolder instead.";
@@ -87,15 +98,34 @@ public class MainActivity extends Activity {
     private SharedPreferences prefs;
     private MediaSession mediaSession;
     private NotificationManager notificationManager;
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
+    private AudioDeviceCallback audioDeviceCallback;
+    private long lastAudioPrimerAt;
+    private boolean pendingAudioRouteRefresh;
     private boolean initialLibraryLoaded;
     private boolean pageReady;
     private String pendingPlayNativePath = "";
     private String pendingPlayTitle = "";
+    private String pendingPlayArchivePath = "";
+    private String pendingPlayArchiveTrackPathSuffix = "";
+    private long pendingPlayPositionMs;
+    private boolean pendingSeekAbsolute;
+    private long pendingSeekPositionMs = -1;
+    private long pendingSeekDeltaMs;
     private boolean mediaNotificationAllowed;
     private String mediaTitle = "VGMPlay-JS";
     private String mediaSource = "";
     private boolean mediaPlaying;
     private boolean mediaPaused;
+    private long mediaDurationMs;
+    private long mediaPositionMs;
+    private int mediaLoopMode;
+    private int mediaRandomMode;
+    private String mediaLoopLabel = "Loop: Off";
+    private String mediaRandomLabel = "Random: Off";
+    private String mediaErrorMessage = "";
+    private String lastMediaMetadataKey = "";
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -107,7 +137,9 @@ public class MainActivity extends Activity {
 
         prefs = getSharedPreferences("vgmplay-native", MODE_PRIVATE);
         notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         initMediaSession();
+        registerAudioDeviceRefreshCallback();
         requestNotificationPermissionIfNeeded();
         assetLoader = new WebViewAssetLoader.Builder()
             .setDomain("vgmplay.local")
@@ -163,6 +195,8 @@ public class MainActivity extends Activity {
                 pageReady = true;
                 loadInitialLibrary();
                 flushPendingAutoPlay();
+                flushPendingAudioRouteRefresh();
+                flushPendingSeek();
             }
         });
 
@@ -179,6 +213,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         hideSystemBars();
+        if (mediaPlaying) refreshAudioRoute();
     }
 
     @Override
@@ -197,6 +232,10 @@ public class MainActivity extends Activity {
             mediaSession.setActive(false);
             mediaSession.release();
             mediaSession = null;
+        }
+        if (audioManager != null && audioDeviceCallback != null) {
+            audioManager.unregisterAudioDeviceCallback(audioDeviceCallback);
+            audioDeviceCallback = null;
         }
         super.onDestroy();
     }
@@ -288,15 +327,19 @@ public class MainActivity extends Activity {
             notificationManager.createNotificationChannel(channel);
         }
         mediaSession = new MediaSession(this, "VGMPlay-JS");
+        mediaSession.setPlaybackToLocal(new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build());
         mediaSession.setCallback(new MediaSession.Callback() {
             @Override
             public void onPlay() {
-                sendWebMediaAction("playPause");
+                sendWebMediaAction("play");
             }
 
             @Override
             public void onPause() {
-                sendWebMediaAction("playPause");
+                sendWebMediaAction("pause");
             }
 
             @Override
@@ -313,6 +356,30 @@ public class MainActivity extends Activity {
             public void onStop() {
                 sendWebMediaAction("stop");
             }
+
+            @Override
+            public void onSeekTo(long pos) {
+                sendWebSeekTo(pos);
+            }
+
+            @Override
+            public void onRewind() {
+                sendWebSeekRelative(-10000);
+            }
+
+            @Override
+            public void onFastForward() {
+                sendWebSeekRelative(10000);
+            }
+
+            @Override
+            public void onCustomAction(String action, Bundle extras) {
+                if (AndroidMediaContract.ACTION_MEDIA_TOGGLE_LOOP.equals(action)) {
+                    sendWebMediaAction("loop");
+                } else if (AndroidMediaContract.ACTION_MEDIA_TOGGLE_RANDOM.equals(action)) {
+                    sendWebMediaAction("random");
+                }
+            }
         });
         mediaSession.setActive(true);
         updatePlaybackState();
@@ -321,7 +388,15 @@ public class MainActivity extends Activity {
     private void handleMediaIntent(Intent intent) {
         if (intent == null || intent.getAction() == null) return;
         switch (intent.getAction()) {
+            case AndroidMediaContract.ACTION_MEDIA_PLAY:
+                requestPlaybackAudioFocus();
+                sendWebMediaAction("play");
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_PAUSE:
+                sendWebMediaAction("pause");
+                break;
             case AndroidMediaContract.ACTION_MEDIA_PLAY_PAUSE:
+                requestPlaybackAudioFocus();
                 sendWebMediaAction("playPause");
                 break;
             case AndroidMediaContract.ACTION_MEDIA_PREVIOUS:
@@ -330,14 +405,42 @@ public class MainActivity extends Activity {
             case AndroidMediaContract.ACTION_MEDIA_NEXT:
                 sendWebMediaAction("next");
                 break;
+            case AndroidMediaContract.ACTION_MEDIA_SEEK_TO:
+                sendWebSeekTo(intent.getLongExtra(AndroidMediaContract.EXTRA_SEEK_POSITION_MS, 0));
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_SEEK_RELATIVE:
+                sendWebSeekRelative(intent.getLongExtra(AndroidMediaContract.EXTRA_SEEK_DELTA_MS, 0));
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_REWIND_10:
+                sendWebSeekRelative(-10000);
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_FORWARD_10:
+                sendWebSeekRelative(10000);
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_TOGGLE_LOOP:
+                sendWebMediaAction("loop");
+                break;
+            case AndroidMediaContract.ACTION_MEDIA_TOGGLE_RANDOM:
+                sendWebMediaAction("random");
+                break;
             case AndroidMediaContract.ACTION_MEDIA_STOP:
                 sendWebMediaAction("stop");
+                abandonPlaybackAudioFocus();
+                break;
+            case AndroidMediaContract.ACTION_REFRESH_AUDIO_ROUTE:
+                refreshAudioRoute();
                 break;
             case AndroidMediaContract.ACTION_PLAY_MEDIA_ID:
+                requestPlaybackAudioFocus();
                 pendingPlayNativePath = intent.getStringExtra(AndroidMediaContract.EXTRA_NATIVE_PATH);
                 pendingPlayTitle = intent.getStringExtra(AndroidMediaContract.EXTRA_TITLE);
+                pendingPlayArchivePath = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_PATH);
+                pendingPlayArchiveTrackPathSuffix = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_TRACK_PATH_SUFFIX);
+                pendingPlayPositionMs = Math.max(0, intent.getLongExtra(AndroidMediaContract.EXTRA_POSITION_MS, 0));
                 if (pendingPlayNativePath == null) pendingPlayNativePath = "";
                 if (pendingPlayTitle == null) pendingPlayTitle = "";
+                if (pendingPlayArchivePath == null) pendingPlayArchivePath = "";
+                if (pendingPlayArchiveTrackPathSuffix == null) pendingPlayArchiveTrackPathSuffix = "";
                 flushPendingAutoPlay();
                 break;
             default:
@@ -347,6 +450,10 @@ public class MainActivity extends Activity {
 
     private void sendWebMediaAction(String action) {
         if (webView == null) return;
+        if ("play".equals(action) || "playPause".equals(action)) {
+            requestPlaybackAudioFocus();
+            primeAndroidAudioOutput(true);
+        }
         hideSystemBars();
         String jsAction = JSONObject.quote(action);
         webView.post(() -> webView.evaluateJavascript(
@@ -354,12 +461,81 @@ public class MainActivity extends Activity {
                 + "var app=window.__vgmNativeLibraryApp;"
                 + "if(!app)return;"
                 + "if(action==='playPause')app.togglePlay();"
+                + "else if(action==='play')app.playCurrentOrSelected();"
+                + "else if(action==='pause')app.pauseCurrent();"
+                + "else if(action==='ensureAudio')app.ensureAndroidAudioOutput();"
                 + "else if(action==='previous')app.prevTrack();"
                 + "else if(action==='next')app.nextTrack();"
+                + "else if(action==='loop')app.toggleLoop();"
+                + "else if(action==='random')app.toggleRandom();"
                 + "else if(action==='stop')app.stop();"
             + "})(" + jsAction + ");",
             null
         ));
+    }
+
+    private void sendWebSeekTo(long positionMs) {
+        long safePosition = Math.max(0, positionMs);
+        if (webView == null || !pageReady) {
+            pendingSeekAbsolute = true;
+            pendingSeekPositionMs = safePosition;
+            pendingSeekDeltaMs = 0;
+            return;
+        }
+        hideSystemBars();
+        webView.post(() -> webView.evaluateJavascript(
+            "(function(positionMs){"
+                + "var attempts=0;"
+                + "function seek(){"
+                + "var app=window.__vgmNativeLibraryApp;"
+                + "if(app&&app.seekTo){app.seekTo(Math.max(0,positionMs)/1000);return;}"
+                + "if(++attempts<50)setTimeout(seek,100);"
+                + "}"
+                + "seek();"
+            + "})(" + safePosition + ");",
+            null
+        ));
+    }
+
+    private void sendWebSeekRelative(long deltaMs) {
+        if (webView == null || !pageReady) {
+            pendingSeekAbsolute = false;
+            pendingSeekPositionMs = -1;
+            pendingSeekDeltaMs += deltaMs;
+            return;
+        }
+        hideSystemBars();
+        webView.post(() -> webView.evaluateJavascript(
+            "(function(deltaMs){"
+                + "var attempts=0;"
+                + "function seek(){"
+                + "var app=window.__vgmNativeLibraryApp;"
+                + "if(app&&app.seekTo){"
+                + "var current=app.currentPlaybackSeconds?app.currentPlaybackSeconds():0;"
+                + "app.seekTo(current+(Number(deltaMs)||0)/1000);"
+                + "return;"
+                + "}"
+                + "if(++attempts<50)setTimeout(seek,100);"
+                + "}"
+                + "seek();"
+            + "})(" + deltaMs + ");",
+            null
+        ));
+    }
+
+    private void flushPendingSeek() {
+        if (webView == null || !pageReady) return;
+        if (pendingSeekPositionMs >= 0 && pendingSeekAbsolute) {
+            long position = pendingSeekPositionMs;
+            pendingSeekPositionMs = -1;
+            sendWebSeekTo(position);
+            return;
+        }
+        if (pendingSeekDeltaMs != 0) {
+            long delta = pendingSeekDeltaMs;
+            pendingSeekDeltaMs = 0;
+            sendWebSeekRelative(delta);
+        }
     }
 
     private PendingIntent mediaPendingIntent(String action, int requestCode) {
@@ -373,22 +549,64 @@ public class MainActivity extends Activity {
 
     private void flushPendingAutoPlay() {
         if (webView == null || !pageReady || pendingPlayNativePath == null || pendingPlayNativePath.isEmpty()) return;
+        requestPlaybackAudioFocus();
         String nativePath = JSONObject.quote(pendingPlayNativePath);
         String title = JSONObject.quote(pendingPlayTitle == null ? "" : pendingPlayTitle);
+        String archivePath = JSONObject.quote(pendingPlayArchivePath == null ? "" : pendingPlayArchivePath);
+        String archiveTrackPathSuffix = JSONObject.quote(pendingPlayArchiveTrackPathSuffix == null ? "" : pendingPlayArchiveTrackPathSuffix);
+        long positionMs = Math.max(0, pendingPlayPositionMs);
         pendingPlayNativePath = "";
         pendingPlayTitle = "";
+        pendingPlayArchivePath = "";
+        pendingPlayArchiveTrackPathSuffix = "";
+        pendingPlayPositionMs = 0;
         webView.post(() -> webView.evaluateJavascript(
-            "(function(nativePath,title){"
+            "(function(nativePath,title,positionMs,archivePath,archiveTrackPathSuffix){"
                 + "var attempts=0;"
                 + "function play(){"
                 + "var app=window.__vgmNativeLibraryApp;"
-                + "if(app&&app.playNativeCatalogItem){app.playNativeCatalogItem(nativePath,title);return;}"
+                + "if(app&&app.playNativeCatalogItem){app.playNativeCatalogItem(nativePath,title,{positionMs:positionMs,archivePath:archivePath,archiveTrackPathSuffix:archiveTrackPathSuffix});return;}"
                 + "if(++attempts<100)setTimeout(play,100);"
                 + "}"
                 + "play();"
-            + "})(" + nativePath + "," + title + ");",
+            + "})(" + nativePath + "," + title + "," + positionMs + "," + archivePath + "," + archiveTrackPathSuffix + ");",
             null
         ));
+    }
+
+    private void flushPendingAudioRouteRefresh() {
+        if (!pendingAudioRouteRefresh || webView == null || !pageReady) return;
+        pendingAudioRouteRefresh = false;
+        refreshAudioRoute();
+    }
+
+    private void refreshAudioRoute() {
+        if (webView == null || !pageReady) {
+            pendingAudioRouteRefresh = true;
+            return;
+        }
+        Log.i(TAG, "Refreshing Android audio route");
+        requestPlaybackAudioFocus();
+        primeAndroidAudioOutput(true);
+        sendWebMediaAction("ensureAudio");
+    }
+
+    private void registerAudioDeviceRefreshCallback() {
+        if (audioManager == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+        audioDeviceCallback = new AudioDeviceCallback() {
+            @Override
+            public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+                Log.i(TAG, "Audio devices added: " + (addedDevices == null ? 0 : addedDevices.length));
+                if (mediaPlaying) runOnUiThread(() -> refreshAudioRoute());
+            }
+
+            @Override
+            public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+                Log.i(TAG, "Audio devices removed: " + (removedDevices == null ? 0 : removedDevices.length));
+                if (mediaPlaying) runOnUiThread(() -> refreshAudioRoute());
+            }
+        };
+        audioManager.registerAudioDeviceCallback(audioDeviceCallback, null);
     }
 
     private void updateNativeMediaState(JSONObject payload) {
@@ -400,35 +618,169 @@ public class MainActivity extends Activity {
         }
         mediaTitle = payload.optString("title", mediaTitle == null || mediaTitle.isEmpty() ? "VGMPlay-JS" : mediaTitle);
         mediaSource = payload.optString("source", mediaSource == null ? "" : mediaSource);
+        String nativePath = payload.optString("nativePath", "");
+        String artUri = payload.optString("artUri", "");
+        String archivePath = payload.optString("archivePath", "");
+        String archiveTrackPathSuffix = payload.optString("archiveTrackPathSuffix", "");
+        String errorMessage = payload.optString("errorMessage", "");
         mediaPlaying = nextPlaying;
         mediaPaused = nextPaused;
-        long durationMs = payload.optLong("durationMs", 0);
+        mediaDurationMs = Math.max(0, payload.optLong("durationMs", 0));
+        mediaPositionMs = Math.max(0, payload.optLong("positionMs", 0));
+        mediaLoopMode = Math.max(0, payload.optInt("loopMode", 0));
+        mediaRandomMode = Math.max(0, payload.optInt("randomMode", 0));
+        mediaLoopLabel = payload.optString("loopLabel", mediaLoopMode == 1 ? "Loop ON: Track" : (mediaLoopMode == 2 ? "Loop ON: All" : "Loop: Off"));
+        mediaRandomLabel = payload.optString("randomLabel", mediaRandomMode == 2 ? "Random ON: All" : (mediaRandomMode == 1 ? "Random ON: Game" : "Random: Off"));
+        mediaErrorMessage = errorMessage == null ? "" : errorMessage;
+        prefs.edit()
+            .putString("mediaTitle", mediaTitle == null ? "VGMPlay-JS" : mediaTitle)
+            .putString("mediaSource", mediaSource == null ? "" : mediaSource)
+            .putString("mediaNativePath", nativePath)
+            .putString("mediaArtUri", artUri)
+            .putString("mediaArchivePath", archivePath)
+            .putString("mediaArchiveTrackPathSuffix", archiveTrackPathSuffix)
+            .putLong("mediaDurationMs", mediaDurationMs)
+            .putLong("mediaPositionMs", mediaPositionMs)
+            .putInt("mediaLoopMode", mediaLoopMode)
+            .putInt("mediaRandomMode", mediaRandomMode)
+            .putString("mediaLoopLabel", mediaLoopLabel)
+            .putString("mediaRandomLabel", mediaRandomLabel)
+            .putString("mediaErrorMessage", mediaErrorMessage)
+            .putBoolean("mediaPlaying", mediaPlaying)
+            .putBoolean("mediaPaused", mediaPaused)
+            .apply();
         updatePlaybackState();
-        updateMediaMetadata(durationMs);
+        updateMediaMetadata(mediaDurationMs);
         updateMediaNotification();
-        broadcastMediaState(durationMs);
+        broadcastMediaState(mediaDurationMs);
+        if (explicitStop || (!mediaPlaying && !mediaPaused)) abandonPlaybackAudioFocus();
+    }
+
+    private boolean requestPlaybackAudioFocus() {
+        if (audioManager == null) return false;
+        int result;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (audioFocusRequest == null) {
+                AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+                audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener(this::handleAudioFocusChange)
+                    .build();
+            }
+            result = audioManager.requestAudioFocus(audioFocusRequest);
+        } else {
+            result = audioManager.requestAudioFocus(
+                this::handleAudioFocusChange,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            );
+        }
+        if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) primeAndroidAudioOutput(false);
+        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+    }
+
+    private void abandonPlaybackAudioFocus() {
+        if (audioManager == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) {
+            audioManager.abandonAudioFocusRequest(audioFocusRequest);
+        } else {
+            audioManager.abandonAudioFocus(this::handleAudioFocusChange);
+        }
+    }
+
+    private void handleAudioFocusChange(int focusChange) {
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
+            sendWebMediaAction("pause");
+        }
+    }
+
+    private void primeAndroidAudioOutput(boolean force) {
+        long now = System.currentTimeMillis();
+        if (!force && now - lastAudioPrimerAt < 1500) return;
+        lastAudioPrimerAt = now;
+        new Thread(() -> {
+            AudioTrack track = null;
+            try {
+                int sampleRate = 44100;
+                int channels = AudioFormat.CHANNEL_OUT_STEREO;
+                int encoding = AudioFormat.ENCODING_PCM_16BIT;
+                int bytes = Math.max(4096, AudioTrack.getMinBufferSize(sampleRate, channels, encoding));
+                byte[] silence = new byte[bytes];
+                track = new AudioTrack(AudioManager.STREAM_MUSIC, sampleRate, channels, encoding, bytes, AudioTrack.MODE_STREAM);
+                track.play();
+                Log.i(TAG, "Primed Android AudioTrack output");
+                track.write(silence, 0, silence.length);
+                Thread.sleep(80);
+            } catch (Throwable err) {
+                Log.w(TAG, "Audio output primer failed", err);
+            } finally {
+                if (track != null) {
+                    try { track.stop(); } catch (Throwable ignored) {}
+                    try { track.release(); } catch (Throwable ignored) {}
+                }
+            }
+        }, "VGMPlayAudioPrimer").start();
     }
 
     private void updatePlaybackState() {
         if (mediaSession == null) return;
+        boolean hasError = mediaErrorMessage != null && !mediaErrorMessage.isEmpty();
+        boolean seekable = !hasError && mediaDurationMs > 0 && mediaLoopMode != 1;
         long actions = PlaybackState.ACTION_PLAY_PAUSE
             | PlaybackState.ACTION_PLAY
             | PlaybackState.ACTION_PAUSE
             | PlaybackState.ACTION_SKIP_TO_PREVIOUS
             | PlaybackState.ACTION_SKIP_TO_NEXT
             | PlaybackState.ACTION_STOP;
+        if (seekable) {
+            actions |= PlaybackState.ACTION_SEEK_TO
+                | PlaybackState.ACTION_REWIND
+                | PlaybackState.ACTION_FAST_FORWARD;
+        }
         int state;
-        if (mediaPlaying) state = PlaybackState.STATE_PLAYING;
+        if (hasError) state = PlaybackState.STATE_ERROR;
+        else if (mediaPlaying) state = PlaybackState.STATE_PLAYING;
         else if (mediaPaused) state = PlaybackState.STATE_PAUSED;
         else state = PlaybackState.STATE_STOPPED;
-        mediaSession.setPlaybackState(new PlaybackState.Builder()
+        PlaybackState.Builder builder = new PlaybackState.Builder()
             .setActions(actions)
-            .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, mediaPlaying ? 1f : 0f)
-            .build());
+            .setState(state, seekable ? Math.max(0, mediaPositionMs) : PlaybackState.PLAYBACK_POSITION_UNKNOWN, mediaPlaying ? 1f : 0f)
+            .addCustomAction(customAction(
+                AndroidMediaContract.ACTION_MEDIA_TOGGLE_LOOP,
+                mediaLoopLabel == null || mediaLoopLabel.isEmpty() ? "Loop" : mediaLoopLabel,
+                mediaLoopMode != 0,
+                android.R.drawable.ic_menu_revert
+            ))
+            .addCustomAction(customAction(
+                AndroidMediaContract.ACTION_MEDIA_TOGGLE_RANDOM,
+                mediaRandomLabel == null || mediaRandomLabel.isEmpty() ? "Random" : mediaRandomLabel,
+                mediaRandomMode != 0,
+                android.R.drawable.ic_menu_rotate
+            ));
+        if (hasError) builder.setErrorMessage(mediaErrorMessage);
+        mediaSession.setPlaybackState(builder.build());
+    }
+
+    private PlaybackState.CustomAction customAction(String action, String label, boolean active, int icon) {
+        Bundle extras = new Bundle();
+        extras.putBoolean("active", active);
+        extras.putInt("state", active ? 1 : 0);
+        return new PlaybackState.CustomAction.Builder(
+            action,
+            label,
+            icon
+        ).setExtras(extras).build();
     }
 
     private void updateMediaMetadata(long durationMs) {
         if (mediaSession == null) return;
+        String key = String.valueOf(mediaTitle) + "|" + String.valueOf(mediaSource) + "|" + durationMs;
+        if (key.equals(lastMediaMetadataKey)) return;
+        lastMediaMetadataKey = key;
         MediaMetadata.Builder builder = new MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, mediaTitle)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, mediaSource)
@@ -442,9 +794,19 @@ public class MainActivity extends Activity {
         intent.setPackage(getPackageName());
         intent.putExtra(AndroidMediaContract.EXTRA_TITLE, mediaTitle);
         intent.putExtra(AndroidMediaContract.EXTRA_SOURCE, mediaSource);
+        intent.putExtra(AndroidMediaContract.EXTRA_NATIVE_PATH, prefs.getString("mediaNativePath", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_ART_URI, prefs.getString("mediaArtUri", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_ARCHIVE_PATH, prefs.getString("mediaArchivePath", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_ARCHIVE_TRACK_PATH_SUFFIX, prefs.getString("mediaArchiveTrackPathSuffix", ""));
         intent.putExtra(AndroidMediaContract.EXTRA_PLAYING, mediaPlaying);
         intent.putExtra(AndroidMediaContract.EXTRA_PAUSED, mediaPaused);
         intent.putExtra(AndroidMediaContract.EXTRA_DURATION_MS, durationMs);
+        intent.putExtra(AndroidMediaContract.EXTRA_POSITION_MS, prefs.getLong("mediaPositionMs", 0));
+        intent.putExtra(AndroidMediaContract.EXTRA_LOOP_MODE, mediaLoopMode);
+        intent.putExtra(AndroidMediaContract.EXTRA_RANDOM_MODE, mediaRandomMode);
+        intent.putExtra(AndroidMediaContract.EXTRA_LOOP_LABEL, mediaLoopLabel);
+        intent.putExtra(AndroidMediaContract.EXTRA_RANDOM_LABEL, mediaRandomLabel);
+        intent.putExtra(AndroidMediaContract.EXTRA_ERROR_MESSAGE, mediaErrorMessage);
         sendBroadcast(intent);
     }
 
@@ -965,8 +1327,7 @@ public class MainActivity extends Activity {
 
     private WebResourceResponse handleNativeImageRequest(Uri uri) {
         if (!"vgmplay".equals(uri.getScheme())) return null;
-        String imagePath = uri.getHost() == null ? uri.getSchemeSpecificPart() : Uri.decode(uri.getHost());
-        if (imagePath != null && imagePath.startsWith("//")) imagePath = imagePath.substring(2);
+        String imagePath = decodeVgmplayImagePath(uri);
         File file = new File(getFilesDir(), "archive-images/" + sanitizeImageKey(imagePath));
         if (!file.isFile()) return null;
         try {
@@ -975,6 +1336,17 @@ public class MainActivity extends Activity {
             Log.w(TAG, "Failed to serve native image", err);
             return null;
         }
+    }
+
+    private String decodeVgmplayImagePath(Uri uri) {
+        String imagePath = uri == null ? "" : uri.getSchemeSpecificPart();
+        if (imagePath == null) imagePath = "";
+        if (imagePath.startsWith("//")) imagePath = imagePath.substring(2);
+        int query = imagePath.indexOf('?');
+        if (query >= 0) imagePath = imagePath.substring(0, query);
+        int fragment = imagePath.indexOf('#');
+        if (fragment >= 0) imagePath = imagePath.substring(0, fragment);
+        return Uri.decode(imagePath);
     }
 
     private File imageFileForPath(String imagePath) {
@@ -1007,6 +1379,35 @@ public class MainActivity extends Activity {
         } catch (JSONException err) {
             Log.w(TAG, "Ignoring invalid saved JSON for " + key, err);
             return new JSONObject();
+        }
+    }
+
+    private File lastTrackFile() {
+        return new File(getFilesDir(), LAST_TRACK_FILE);
+    }
+
+    private JSONObject readLastTrackState() {
+        File file = lastTrackFile();
+        if (!file.isFile()) return new JSONObject();
+        try (FileInputStream input = new FileInputStream(file);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                output.write(buffer, 0, read);
+            }
+            return new JSONObject(output.toString("UTF-8"));
+        } catch (IOException | JSONException err) {
+            Log.w(TAG, "Ignoring invalid last track JSON", err);
+            return new JSONObject();
+        }
+    }
+
+    private void writeLastTrackState(JSONObject payload) {
+        try (FileOutputStream output = new FileOutputStream(lastTrackFile())) {
+            output.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IOException err) {
+            Log.w(TAG, "Could not save last track JSON", err);
         }
     }
 
@@ -1043,6 +1444,7 @@ public class MainActivity extends Activity {
                 state.put("firstRun", !prefs.contains("config"));
                 state.put("archiveMeta", parseObjectPref("archiveMeta"));
                 state.put("trackMeta", parseObjectPref("trackMeta"));
+                state.put("lastTrack", readLastTrackState());
                 state.put("librarySettings", buildLibrarySettings(loadLibraryDirs()));
                 state.put("homeRoms", new JSONArray());
             } catch (JSONException err) {
@@ -1061,12 +1463,19 @@ public class MainActivity extends Activity {
                     prefs.edit().putString("archiveMeta", decodeArchiveMetaPayload(payload)).apply();
                 } else if ("nativeSaveTrackMeta".equals(name)) {
                     prefs.edit().putString("trackMeta", payload.toString()).apply();
+                } else if ("nativeSaveLastTrack".equals(name)) {
+                    writeLastTrackState(payload);
                 } else if ("nativeSaveArchiveImage".equals(name)) {
                     saveArchiveImage(payload);
                 } else if ("nativeLibraryCommand".equals(name)) {
                     handleLibraryCommand(payload);
                 } else if ("nativeMediaState".equals(name)) {
                     updateNativeMediaState(payload);
+                } else if ("nativeForceAudioFocus".equals(name)) {
+                    runOnUiThread(() -> {
+                        hideSystemBars();
+                        refreshAudioRoute();
+                    });
                 } else if ("nativeOpenFolder".equals(name)) {
                     runOnUiThread(() -> {
                         hideSystemBars();

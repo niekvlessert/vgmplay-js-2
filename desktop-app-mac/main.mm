@@ -177,9 +177,11 @@ static void VGMLog(NSString *format, ...) {
 - (NSString *)nativeConfigPath;
 - (NSString *)nativeArchiveMetaPath;
 - (NSString *)nativeTrackMetaPath;
+- (NSString *)nativeLastTrackPath;
 - (NSDictionary *)loadNativeConfig;
 - (NSDictionary *)loadNativeArchiveMeta;
 - (NSDictionary *)loadNativeTrackMeta;
+- (NSDictionary *)loadNativeLastTrack;
 - (NSDictionary *)nativeLibrarySettings;
 - (NSArray *)loadNativeHomeRoms;
 - (void)saveNativeConfig:(NSDictionary *)config;
@@ -187,6 +189,7 @@ static void VGMLog(NSString *format, ...) {
 - (void)saveNativeArchiveMetaJson:(NSString *)json;
 - (void)saveNativeArchiveMetaBase64Json:(NSString *)base64Json;
 - (void)saveNativeTrackMeta:(NSDictionary *)metadata;
+- (void)saveNativeLastTrack:(NSDictionary *)metadata;
 - (void)saveNativeArchiveImage:(NSDictionary *)payload;
 - (void)handleNativeLibraryCommand:(NSDictionary *)payload;
 @end
@@ -239,24 +242,28 @@ static void VGMLog(NSString *format, ...) {
     BOOL nativeFirstRun = ![[NSFileManager defaultManager] fileExistsAtPath:[self nativeConfigPath]];
     NSDictionary *nativeArchiveMeta = [self loadNativeArchiveMeta];
     NSDictionary *nativeTrackMeta = [self loadNativeTrackMeta];
+    NSDictionary *nativeLastTrack = [self loadNativeLastTrack];
     NSDictionary *nativeLibrarySettings = [self nativeLibrarySettings];
     NSArray *nativeHomeRoms = [self loadNativeHomeRoms];
     NSData *nativeConfigData = [NSJSONSerialization dataWithJSONObject:nativeConfig options:0 error:nil];
     NSData *nativeArchiveMetaData = [NSJSONSerialization dataWithJSONObject:nativeArchiveMeta options:0 error:nil];
     NSData *nativeTrackMetaData = [NSJSONSerialization dataWithJSONObject:nativeTrackMeta options:0 error:nil];
+    NSData *nativeLastTrackData = [NSJSONSerialization dataWithJSONObject:nativeLastTrack options:0 error:nil];
     NSData *nativeLibrarySettingsData = [NSJSONSerialization dataWithJSONObject:nativeLibrarySettings options:0 error:nil];
     NSData *nativeHomeRomsData = [NSJSONSerialization dataWithJSONObject:nativeHomeRoms options:0 error:nil];
     NSString *nativeConfigJson = nativeConfigData ? [[NSString alloc] initWithData:nativeConfigData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeArchiveMetaJson = nativeArchiveMetaData ? [[NSString alloc] initWithData:nativeArchiveMetaData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeTrackMetaJson = nativeTrackMetaData ? [[NSString alloc] initWithData:nativeTrackMetaData encoding:NSUTF8StringEncoding] : @"{}";
+    NSString *nativeLastTrackJson = nativeLastTrackData ? [[NSString alloc] initWithData:nativeLastTrackData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeLibrarySettingsJson = nativeLibrarySettingsData ? [[NSString alloc] initWithData:nativeLibrarySettingsData encoding:NSUTF8StringEncoding] : @"{}";
     NSString *nativeHomeRomsJson = nativeHomeRomsData ? [[NSString alloc] initWithData:nativeHomeRomsData encoding:NSUTF8StringEncoding] : @"[]";
     NSString *nativeConfigScript = [NSString stringWithFormat:
-      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_FIRST_RUN = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@; window.VGMPLAY_NATIVE_TRACK_META = %@; window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = %@; window.VGMPLAY_NATIVE_HOME_ROMS = %@;",
+      @"window.VGMPLAY_NATIVE_CONFIG = %@; window.VGMPLAY_NATIVE_FIRST_RUN = %@; window.VGMPLAY_NATIVE_ARCHIVE_META = %@; window.VGMPLAY_NATIVE_TRACK_META = %@; window.VGMPLAY_NATIVE_LAST_TRACK = %@; window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = %@; window.VGMPLAY_NATIVE_HOME_ROMS = %@;",
       nativeConfigJson ?: @"{}",
       nativeFirstRun ? @"true" : @"false",
       nativeArchiveMetaJson ?: @"{}",
       nativeTrackMetaJson ?: @"{}",
+      nativeLastTrackJson ?: @"{}",
       nativeLibrarySettingsJson ?: @"{}",
       nativeHomeRomsJson ?: @"[]"];
     WKUserScript *nativeConfigUserScript = [[WKUserScript alloc] initWithSource:nativeConfigScript
@@ -298,6 +305,7 @@ static void VGMLog(NSString *format, ...) {
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveArchiveMeta"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveArchiveImage"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeSaveTrackMeta"];
+    [config.userContentController addScriptMessageHandler:self name:@"nativeSaveLastTrack"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeLibraryCommand"];
     [config.userContentController addScriptMessageHandler:self name:@"nativeOpenFile"];
     NSLog(@"Console logging bridge injected");
@@ -403,6 +411,10 @@ static void VGMLog(NSString *format, ...) {
     if ([message.body isKindOfClass:[NSDictionary class]]) {
       [self saveNativeTrackMeta:(NSDictionary *)message.body];
     }
+  } else if ([message.name isEqualToString:@"nativeSaveLastTrack"]) {
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+      [self saveNativeLastTrack:(NSDictionary *)message.body];
+    }
   } else if ([message.name isEqualToString:@"nativeLibraryCommand"]) {
     if ([message.body isKindOfClass:[NSDictionary class]]) {
       [self handleNativeLibraryCommand:(NSDictionary *)message.body];
@@ -431,6 +443,10 @@ static void VGMLog(NSString *format, ...) {
 
 - (NSString *)nativeTrackMetaPath {
   return [VGMStateDirectory() stringByAppendingPathComponent:@"track-meta.json"];
+}
+
+- (NSString *)nativeLastTrackPath {
+  return [VGMStateDirectory() stringByAppendingPathComponent:@"last-track.json"];
 }
 
 - (NSDictionary *)loadNativeConfig {
@@ -500,6 +516,15 @@ static void VGMLog(NSString *format, ...) {
   if (!data) return @{ @"version" : @2, @"tracks" : @{} };
   id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
   if (![json isKindOfClass:[NSDictionary class]]) return @{ @"version" : @2, @"tracks" : @{} };
+  return (NSDictionary *)json;
+}
+
+- (NSDictionary *)loadNativeLastTrack {
+  NSString *path = [self nativeLastTrackPath];
+  NSData *data = [NSData dataWithContentsOfFile:path];
+  if (!data) return @{};
+  id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+  if (![json isKindOfClass:[NSDictionary class]]) return @{};
   return (NSDictionary *)json;
 }
 
@@ -686,6 +711,15 @@ includingPropertiesForKeys:@[NSURLIsRegularFileKey]
 
 - (void)saveNativeTrackMeta:(NSDictionary *)metadata {
   NSString *path = [self nativeTrackMetaPath];
+  NSString *dir = [path stringByDeletingLastPathComponent];
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+  if (![NSJSONSerialization isValidJSONObject:metadata]) return;
+  NSData *data = [NSJSONSerialization dataWithJSONObject:metadata options:NSJSONWritingPrettyPrinted error:nil];
+  if (data) [data writeToFile:path atomically:YES];
+}
+
+- (void)saveNativeLastTrack:(NSDictionary *)metadata {
+  NSString *path = [self nativeLastTrackPath];
   NSString *dir = [path stringByDeletingLastPathComponent];
   [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
   if (![NSJSONSerialization isValidJSONObject:metadata]) return;

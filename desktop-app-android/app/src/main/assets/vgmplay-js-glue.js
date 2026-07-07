@@ -3386,9 +3386,10 @@ VGMPlay_js.prototype._onProgressClick = function (e) {
 		this.isFadingOut = false;
 		if (this.masterGain && this.context) {
 			const now = this.context.currentTime;
+			const targetGain = this._masterGainTarget ? this._masterGainTarget() : 1.0;
 			this.masterGain.gain.cancelScheduledValues(now);
 			this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-			this.masterGain.gain.linearRampToValueAtTime(1.0, now + 0.02);
+			this.masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.02);
 		}
 
 		if (this.context && !this.isPlaybackPaused) {

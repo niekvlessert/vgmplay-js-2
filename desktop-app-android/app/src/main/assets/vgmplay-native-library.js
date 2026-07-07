@@ -201,6 +201,16 @@
     return {};
   }
 
+  function loadInitialLastTrack() {
+    const fromNative = window.VGMPLAY_NATIVE_LAST_TRACK;
+    if (fromNative && typeof fromNative === 'object' && Object.keys(fromNative).length) return fromNative;
+    try {
+      const local = JSON.parse(localStorage.getItem('vgmplayNativeLastTrack') || 'null');
+      if (local && typeof local === 'object') return local;
+    } catch (e) {}
+    return {};
+  }
+
   class NativeLibraryApp {
     constructor(player) {
       this.player = player;
@@ -218,6 +228,8 @@
       this.rootName = 'Music Library';
       this.rootUrl = '';
       this.config = { ...DEFAULT_CONFIG, ...loadInitialConfig() };
+      this.lastTrackState = loadInitialLastTrack();
+      this.lastTrackRestored = false;
       this.archiveMetaCache = this.loadArchiveMetaCache();
       this.trackMetaCache = this.loadTrackMetaCache();
       this.firstRunAutoScanPending = !!window.VGMPLAY_NATIVE_FIRST_RUN && !this.config.firstRunIncludedArchiveScanDone;
@@ -245,6 +257,7 @@
           <button class="native-topbar-btn" data-role="scan-archives" title="Scan all archives">Scan Archives</button>
           <button class="native-settings-btn" data-role="settings" title="Settings">Settings</button>
           <div class="native-settings-popover" data-role="settings-popover" hidden>
+            <button class="native-settings-close" data-role="settings-close" type="button" title="Close settings">x</button>
             <label><input type="checkbox" data-role="show-unsupported" /> Show unsupported files</label>
             <label><input type="checkbox" data-role="show-filenames" /> Show real filenames</label>
             <label><input type="checkbox" data-role="image-overview" /> Show image overview</label>
@@ -253,6 +266,7 @@
             <label><input type="checkbox" data-role="sort-archive-contents" /> Sort archive contents alphabetically</label>
             <label><input type="checkbox" data-role="no-badge-colors" /> Disable type colors</label>
             <label><input type="checkbox" data-role="light-theme" /> Light theme</label>
+            <button class="native-settings-action" data-role="force-audio-focus" type="button" hidden>Force Android audio focus</button>
             <div class="native-settings-section" data-role="native-library-settings" hidden>
               <div class="native-settings-section-title">Native Libraries</div>
               <label><input type="checkbox" data-role="show-included-music" /> Show included music</label>
@@ -340,6 +354,8 @@
       this.scanArchivesBtn = this.root.querySelector('[data-role="scan-archives"]');
       this.settingsBtn = this.root.querySelector('[data-role="settings"]');
       this.settingsPopover = this.root.querySelector('[data-role="settings-popover"]');
+      this.settingsCloseBtn = this.root.querySelector('[data-role="settings-close"]');
+      this.forceAudioFocusBtn = this.root.querySelector('[data-role="force-audio-focus"]');
       this.mobileTabsEl = this.root.querySelector('[data-role="mobile-tabs"]');
       this.mobileTabButtons = Array.from(this.root.querySelectorAll('[data-mobile-tab]'));
       this.mobileNowTitleEl = this.root.querySelector('[data-role="mobile-now-title"]');
@@ -391,12 +407,27 @@
       this.settingsBtn.addEventListener('click', () => {
         this.settingsPopover.hidden = !this.settingsPopover.hidden;
       });
+      if (this.settingsCloseBtn) {
+        this.settingsCloseBtn.addEventListener('click', () => {
+          this.settingsPopover.hidden = true;
+        });
+      }
       if (this.openFolderBtn) {
         const canOpenFolder = !!(window.VGMPLAY_ANDROID_PLAYER && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeOpenFolder);
         this.openFolderBtn.hidden = !canOpenFolder;
         this.openFolderBtn.addEventListener('click', () => {
           if (!canOpenFolder) return;
           window.webkit.messageHandlers.nativeOpenFolder.postMessage({});
+        });
+      }
+      if (this.forceAudioFocusBtn) {
+        const canForceAudioFocus = !!(window.VGMPLAY_ANDROID_PLAYER && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeForceAudioFocus);
+        this.forceAudioFocusBtn.hidden = !canForceAudioFocus;
+        this.forceAudioFocusBtn.addEventListener('click', () => {
+          if (!canForceAudioFocus) return;
+          this.statusEl.textContent = 'Refreshing audio route';
+          window.webkit.messageHandlers.nativeForceAudioFocus.postMessage({});
+          this.ensureAndroidAudioOutput();
         });
       }
       if (this.scanArchivesBtn) {
@@ -551,6 +582,12 @@
         }
       }, true);
       this._syncPlayStateInterval = setInterval(() => this.syncPlayState(), 500);
+      this._persistCurrentTrackOnUnload = () => {
+        const entry = this.playingEntry || (this.selectedId && this.byId.get(this.selectedId));
+        if (entry && entry.playable) this.saveLastTrackState(entry);
+      };
+      window.addEventListener('pagehide', this._persistCurrentTrackOnUnload);
+      window.addEventListener('beforeunload', this._persistCurrentTrackOnUnload);
       if (this.config.imageOverview !== false) this.showImageOverview();
       else this.showHelp();
     }
@@ -568,8 +605,10 @@
       this.buildEntries(this.rawNativeItems);
       this.pruneArchiveMetaCache();
       this.renderTree();
-      if (this.config.imageOverview !== false) this.showImageOverview();
-      else this.showHelp();
+      if (!this.restoreLastTrackSelection()) {
+        if (this.config.imageOverview !== false) this.showImageOverview();
+        else this.showHelp();
+      }
       this.maybeRunFirstStartupIncludedArchiveScan();
     }
 
@@ -581,8 +620,10 @@
       this.buildEntries(items);
       this.pruneArchiveMetaCache();
       this.renderTree();
-      if (this.config.imageOverview !== false) this.showImageOverview();
-      else this.showHelp();
+      if (!this.restoreLastTrackSelection()) {
+        if (this.config.imageOverview !== false) this.showImageOverview();
+        else this.showHelp();
+      }
       this.maybeRunFirstStartupIncludedArchiveScan();
     }
 
@@ -825,19 +866,30 @@
       const p = this.player;
       const entry = this.playingEntry;
       const title = entry ? this.displayNameFor(entry) : 'VGMPlay-JS';
-      const source = entry ? this.pathFor(entry) : '';
+      const source = entry ? this.mediaSourceFor(entry) : '';
       const probablyAudible = this.isNativeAudioProbablyActive();
       const playing = probablyAudible;
       const paused = !!(entry && p && !this._manualStopRequested && p.isVGMPlaying && p.isPlaybackPaused);
       const reallyStopped = !!stopped || !entry || this._manualStopRequested;
       if (!playing && !paused && !reallyStopped && !force) return;
+      const positionSeconds = entry ? this.currentPlaybackSeconds() : 0;
       const payload = {
         title,
         source,
+        nativePath: entry && entry.item ? (entry.item.nativePath || '') : '',
+        archivePath: entry ? (entry.archivePath || '') : '',
+        archiveTrackPathSuffix: entry ? (entry.archiveTrackPathSuffix || this.trackPathSuffixFor(entry) || '') : '',
+        artUri: entry && entry.metadata ? (entry.metadata.coverUrl || '') : '',
         playing,
         paused,
         stopped: reallyStopped && !playing && !paused,
-        durationMs: p && p.trackLengthSeconds ? Math.round(p.trackLengthSeconds * 1000) : 0
+        durationMs: p && p.trackLengthSeconds ? Math.round(p.trackLengthSeconds * 1000) : 0,
+        positionMs: Math.round(positionSeconds * 1000),
+        loopMode: p ? (Number(p.loopMode) || 0) : 0,
+        randomMode: p ? (Number(p.randomMode) || 0) : 0,
+        loopLabel: p && Number(p.loopMode) === 1 ? 'Loop ON: Track' : (p && Number(p.loopMode) === 2 ? 'Loop ON: All' : 'Loop: Off'),
+        randomLabel: p && Number(p.randomMode) === 2 ? 'Random ON: All' : (p && Number(p.randomMode) === 1 ? 'Random ON: Game' : 'Random: Off'),
+        errorMessage: this._nativeMediaErrorMessage || ''
       };
       const key = JSON.stringify(payload);
       if (!force && key === this._lastNativeMediaStateKey) return;
@@ -852,6 +904,29 @@
       const contextRunning = !!(p.context && p.context.state === 'running');
       const workletActive = !!p.generatingAudio;
       return contextRunning && workletActive;
+    }
+
+    currentPlaybackSeconds() {
+      const p = this.player;
+      if (!p) return 0;
+      if (p.visualSamplePosition && p.sampleRate) return Math.max(0, p.visualSamplePosition / p.sampleRate);
+      if (p.context && !p.isPlaybackPaused && p.playbackStartTime) {
+        const elapsed = p.context.currentTime - p.playbackStartTime;
+        return Math.max(0, (p.startSample && p.sampleRate ? p.startSample / p.sampleRate : 0) + elapsed);
+      }
+      return Math.max(0, this.fakeProgress || 0);
+    }
+
+    mediaSourceFor(entry) {
+      if (!entry) return '';
+      const m = entry.metadata || {};
+      if (m.game && !this.isFormatLabel(m.game)) return m.game;
+      if (entry.archiveParentId && this.byId.has(entry.archiveParentId)) {
+        return this.displayNameFor(this.byId.get(entry.archiveParentId));
+      }
+      const parent = entry.parentId ? this.byId.get(entry.parentId) : null;
+      if (parent && parent.parentId !== 'root') return this.displayNameFor(parent);
+      return '';
     }
 
     updateNativeLibrarySettings(settings) {
@@ -1376,9 +1451,11 @@
       else this.showInfo(entry);
     }
 
-    async playNativeCatalogItem(nativePath, title = '') {
+    async playNativeCatalogItem(nativePath, title = '', options = {}) {
       const wantedPath = String(nativePath || '');
       const wantedTitle = String(title || '').toLowerCase();
+      const wantedArchivePath = String((options && options.archivePath) || '');
+      const wantedArchiveTrackSuffix = String((options && options.archiveTrackPathSuffix) || '');
       if (!wantedPath && !wantedTitle) return false;
       let entry = null;
       for (const candidate of this.entries || []) {
@@ -1396,8 +1473,209 @@
         this.statusEl.textContent = 'Auto item unavailable';
         return false;
       }
-      await this.openFromOverview(entry);
+      if (wantedArchivePath && isArchiveEntry(entry)) {
+        this.selectedId = entry.id;
+        this.expandAncestors(entry);
+        await this.inspectArchive(entry, { expand: true });
+        const target = (this.entries || []).find((candidate) => (
+          candidate
+          && candidate.archiveParentId === entry.id
+          && candidate.archivePath === wantedArchivePath
+          && (!wantedArchiveTrackSuffix || candidate.archiveTrackPathSuffix === wantedArchiveTrackSuffix)
+        )) || null;
+        if (!target) {
+          this.statusEl.textContent = 'Auto track unavailable';
+          this.renderTree();
+          return false;
+        }
+        this.expandAncestors(target);
+        this.selectedId = target.id;
+        this.renderTree();
+        this.scrollEntryIntoView(target);
+        this.playEntry(target);
+        entry = target;
+      } else if (wantedArchiveTrackSuffix && !wantedArchivePath && entry.inspectable) {
+        this.selectedId = entry.id;
+        this.expandAncestors(entry);
+        await this.inspectEntry(entry, { expand: true, force: true });
+        const target = (this.entries || []).find((candidate) => (
+          candidate
+          && candidate.parentId === entry.id
+          && candidate.trackPath
+          && candidate.trackPath.endsWith(wantedArchiveTrackSuffix)
+        )) || null;
+        if (!target) {
+          this.statusEl.textContent = 'Auto track unavailable';
+          this.renderTree();
+          return false;
+        }
+        this.expandAncestors(target);
+        this.selectedId = target.id;
+        this.renderTree();
+        this.scrollEntryIntoView(target);
+        this.playEntry(target);
+        entry = target;
+      } else {
+        await this.openFromOverview(entry);
+      }
+      const positionMs = Math.max(0, Number(options && options.positionMs) || 0);
+      if (positionMs > 0) {
+        setTimeout(() => {
+          if (this.playingEntry && this.playingEntry.id === entry.id) this.seekTo(positionMs / 1000);
+          if (this.player && this.player.context && this.player.context.state === 'suspended') {
+            this.player.context.resume().catch(() => {});
+          }
+        }, 250);
+      } else if (this.player && this.player.context && this.player.context.state === 'suspended') {
+        this.player.context.resume().catch(() => {});
+      }
       return true;
+    }
+
+    async playLastTrackState() {
+      const state = this.lastTrackState || {};
+      const wantedNativePath = String(state.nativePath || '');
+      const wantedPath = String(state.path || '');
+      const wantedArchivePath = String(state.archivePath || '');
+      const wantedArchiveTrackSuffix = String(state.archiveTrackPathSuffix || '');
+      if (!wantedNativePath && !wantedPath) return false;
+
+      let entry = (this.entries || []).find((candidate) => this.entryMatchesLastTrack(candidate, state)) || null;
+      if (entry && entry.playable) {
+        this.selectedId = entry.id;
+        this.expandAncestors(entry);
+        this.renderTree();
+        this.scrollEntryIntoView(entry);
+        this.playEntry(entry);
+        return true;
+      }
+
+      const archive = (this.entries || []).find((candidate) => {
+        if (!candidate || !candidate.item || !isArchiveEntry(candidate)) return false;
+        return (wantedNativePath && candidate.item.nativePath === wantedNativePath)
+          || (wantedPath && candidate.path === wantedPath);
+      }) || null;
+      if (!archive) return false;
+
+      if (!wantedArchivePath) {
+        await this.openFromOverview(archive);
+        return true;
+      }
+
+      this.statusEl.textContent = 'Opening saved track';
+      this.selectedId = archive.id;
+      this.expandAncestors(archive);
+      await this.inspectArchive(archive, { expand: true, force: true, fullIndex: true, keepArchiveFiles: true });
+      const target = (this.entries || []).find((candidate) => (
+        candidate
+        && candidate.archiveParentId === archive.id
+        && candidate.archivePath === wantedArchivePath
+        && (!wantedArchiveTrackSuffix || candidate.archiveTrackPathSuffix === wantedArchiveTrackSuffix)
+      )) || null;
+      if (!target) {
+        this.statusEl.textContent = 'Saved track unavailable';
+        this.renderTree();
+        return false;
+      }
+      this.expandAncestors(target);
+      this.selectedId = target.id;
+      this.renderTree();
+      this.scrollEntryIntoView(target);
+      this.playEntry(target);
+      return true;
+    }
+
+    restoreLastTrackSelection() {
+      if (this.lastTrackRestored) return false;
+      const state = this.lastTrackState || {};
+      const wantedNativePath = String(state.nativePath || '');
+      const wantedPath = String(state.path || '');
+      const wantedArchivePath = String(state.archivePath || '');
+      if (!wantedNativePath && !wantedPath && !wantedArchivePath) return false;
+      let entry = (this.entries || []).find((candidate) => this.entryMatchesLastTrack(candidate, state)) || null;
+      if (!entry && wantedArchivePath && wantedNativePath) {
+        const archive = (this.entries || []).find((candidate) => {
+          const item = candidate && candidate.item;
+          return item && item.nativePath === wantedNativePath && isArchiveEntry(candidate);
+        });
+        if (archive) {
+          this.applyCachedArchivePreview(archive);
+          entry = (this.entries || []).find((candidate) => this.entryMatchesLastTrack(candidate, state)) || archive;
+        }
+      }
+      if (!entry) return false;
+      this.lastTrackRestored = true;
+      this.selectedId = entry.id;
+      this.expandAncestors(entry);
+      this.renderTree();
+      this.scrollEntryIntoView(entry);
+      this.showInfo(entry);
+      this.showRestoredTrackInPlayer(entry);
+      return true;
+    }
+
+    showRestoredTrackInPlayer(entry) {
+      if (!entry) return;
+      this.nowTitleEl.textContent = this.displayNameFor(entry) || entry.name || 'No track selected';
+      this.nowSourceEl.textContent = this.pathFor(entry);
+      this.statusEl.textContent = 'Ready';
+      this.playBtn.textContent = '▶';
+      this.playBtn.classList.remove('active');
+      this.syncMobilePlayerPanel();
+    }
+
+    entryMatchesLastTrack(entry, state) {
+      if (!entry) return false;
+      const item = entry.item || {};
+      const wantedNativePath = String(state.nativePath || '');
+      const wantedPath = String(state.path || '');
+      const wantedArchivePath = String(state.archivePath || '');
+      const wantedArchiveTrackSuffix = String(state.archiveTrackPathSuffix || '');
+      if (wantedArchivePath) {
+        return item.nativePath === wantedNativePath
+          && entry.archivePath === wantedArchivePath
+          && (!wantedArchiveTrackSuffix || entry.archiveTrackPathSuffix === wantedArchiveTrackSuffix);
+      }
+      if (wantedNativePath && item.nativePath === wantedNativePath) {
+        if (wantedArchiveTrackSuffix) {
+          return entry.archiveTrackPathSuffix === wantedArchiveTrackSuffix
+            || this.trackPathSuffixFor(entry) === wantedArchiveTrackSuffix;
+        }
+        return true;
+      }
+      return !!wantedPath && entry.path === wantedPath;
+    }
+
+    saveLastTrackState(entry) {
+      if (!entry) return;
+      const item = entry.item || {};
+      const state = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        rootUrl: this.rootUrl || '',
+        rootName: this.rootName || '',
+        nativePath: item.nativePath || '',
+        path: entry.path || '',
+        archivePath: entry.archivePath || '',
+        archiveTrackPathSuffix: entry.archiveTrackPathSuffix || this.trackPathSuffixFor(entry) || '',
+        title: this.displayNameFor(entry),
+        source: this.mediaSourceFor(entry)
+      };
+      this.lastTrackState = state;
+      try { localStorage.setItem('vgmplayNativeLastTrack', JSON.stringify(state)); } catch (e) {}
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeSaveLastTrack) {
+        window.webkit.messageHandlers.nativeSaveLastTrack.postMessage(state);
+      } else if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage({ type: 'nativeSaveLastTrack', state });
+      } else {
+        /* localStorage already handled above. */
+      }
+    }
+
+    trackPathSuffixFor(entry) {
+      const trackPath = entry && entry.trackPath ? String(entry.trackPath) : '';
+      const marker = trackPath.indexOf('|track=');
+      return marker >= 0 ? trackPath.substring(marker) : '';
     }
 
     resetPageOffsetsForSubtree(parentId) {
@@ -1480,6 +1758,7 @@
       }
       
       this._manualStopRequested = false;
+      this._nativeMediaErrorMessage = '';
       this.selectedId = entry.id;
       this.playingEntry = entry;
       this.expandAncestors(entry);
@@ -1541,27 +1820,29 @@
         };
         this.player.games = [game];
         this.player.activeGame = game;
+        this.applyVolume();
         console.log('[VGM Native] playFileFromFS start', playPath);
         await this.withTimeout(this.player.playFileFromFS(false, playPath, 1, 0), this.nativeStepTimeoutMs, 'Timed out starting playback');
         console.log('[VGM Native] playFileFromFS done', 'isVGMPlaying=' + !!this.player.isVGMPlaying, 'paused=' + !!this.player.isPlaybackPaused, 'length=' + (this.player.trackLengthSeconds || 0));
+        if (this._playSequence !== seq) return;
+        await this.ensureAndroidAudioOutput();
         if (this._playSequence !== seq) return;
         const notice = this.latestPlaybackNotice(noticeStart);
         if (notice) throw new Error(notice);
         if (!this.player.isVGMPlaying) {
           throw new Error(this.playbackFailureHint() || 'Playback did not start');
         }
+        this._nativeMediaErrorMessage = '';
         this._lastPlaybackResourceError = '';
         this._nativeEndedKey = '';
-        this.applyVolume();
-        setTimeout(() => {
-          if (this._playSequence === seq) this.applyVolume();
-        }, 80);
+        this.stabilizeNativeVolume(900);
         entry.metadata = { ...(entry.metadata || {}), loop: this.loopStatusLabel() };
         this.showInfo(entry);
         this.statusEl.textContent = 'Playing';
         this.playBtn.textContent = 'II';
         this.playBtn.classList.add('active');
         this.startFakeProgress();
+        this.saveLastTrackState(entry);
         this.sendNativeMediaState({ force: true });
       } catch (e) {
         if (this._playSequence !== seq) return;
@@ -1569,6 +1850,7 @@
         this._manualStopRequested = true;
         if (this.player && this.player.stop) this.player.stop();
         const message = this.nativePlaybackErrorMessage(e && e.message ? e.message : 'Playback failed');
+        this._nativeMediaErrorMessage = message;
         this.statusEl.textContent = 'Failed';
         this.playBtn.textContent = '▶';
         this.playBtn.classList.remove('active');
@@ -1609,6 +1891,36 @@
         });
       }
       return this._primeAudioPromise;
+    }
+
+    async ensureAndroidAudioOutput() {
+      if (!window.VGMPLAY_ANDROID_PLAYER || !this.player) return;
+      const p = this.player;
+      try {
+        if (p.context && p.context.state === 'suspended') await p.context.resume();
+      } catch (e) {
+        console.warn('[VGM Native] Android AudioContext resume failed', e);
+      }
+      try {
+        if (p.workletNode && p.workletNode.port) p.workletNode.port.postMessage({ type: 'start' });
+      } catch (e) {}
+      try {
+        if (!p.generatingAudio && p._pumpBuffers) {
+          p._pumpBuffers();
+          p.generatingAudio = true;
+        }
+      } catch (e) {
+        console.warn('[VGM Native] Android audio pump failed', e);
+      }
+      for (let i = 0; i < 6; i++) {
+        setTimeout(() => {
+          try {
+            if (p.context && p.context.state === 'suspended') p.context.resume().catch(() => {});
+            if (p.workletNode && p.workletNode.port) p.workletNode.port.postMessage({ type: 'start' });
+            if (p._pumpBuffers) p._pumpBuffers();
+          } catch (e) {}
+        }, 150 + i * 250);
+      }
     }
 
     nativePlaybackErrorMessage(message) {
@@ -2588,7 +2900,11 @@
         archiveMeta.games.forEach((game, gameIndex) => {
           const parentId = `${entry.id}:game:${gameIndex}`;
           const sourceTracks = this.tracksForArchiveGame(game);
-          const tracks = sourceTracks.map((track, trackIndex) => this.archiveTrackFromMeta(entry, track, `${gameIndex}:${trackIndex}`, parentId));
+          const tracks = sourceTracks.map((track, trackIndex) => this.archiveTrackFromMeta(entry, track, `${gameIndex}:${trackIndex}`, parentId, {
+            coverDataUrl: game.coverDataUrl || '',
+            coverUrl: game.coverUrl || '',
+            gameTitle: game.name || ''
+          }));
           this.replaceChildren(parentId, tracks);
         });
       }
@@ -2662,10 +2978,12 @@
       };
     }
 
-    archiveTrackFromMeta(parent, track, index, parentId = parent.id) {
+    archiveTrackFromMeta(parent, track, index, parentId = parent.id, inherited = {}) {
       const format = track.format || formatOf({ name: track.path });
       const name = track.name || baseName(track.path);
       const metadata = this.cleanTrackMetadata(track.metadata, { format, name, path: track.path });
+      const inheritedCoverDataUrl = inherited.coverDataUrl || '';
+      const inheritedCoverUrl = inherited.coverUrl || '';
       return {
         id: `${parent.id}:archive:${index}`,
         parentId,
@@ -2683,10 +3001,11 @@
         metadata: {
           ...metadata,
           title: name || metadata.title || baseName(track.path),
+          game: metadata.game || inherited.gameTitle || '',
           status: 'Playable',
           container: `${parent.name} / ${dirname(track.path)}`,
-          coverDataUrl: metadata.coverDataUrl || (parent.metadata && parent.metadata.coverDataUrl) || '',
-          coverUrl: metadata.coverUrl || (parent.metadata && parent.metadata.coverUrl) || ''
+          coverDataUrl: metadata.coverDataUrl || inheritedCoverDataUrl || (parent.metadata && parent.metadata.coverDataUrl) || '',
+          coverUrl: metadata.coverUrl || inheritedCoverUrl || (parent.metadata && parent.metadata.coverUrl) || ''
         },
         warnings: parent.warnings || []
       };
@@ -2828,6 +3147,7 @@
         path: parent.path,
         fsPath: path,
         trackPath,
+        archiveTrackPathSuffix: `|track=${index}`,
         pendingTrackIndex: index,
         metadata: {
           ...(parent.metadata || {}),
@@ -3506,10 +3826,14 @@
     }
 
     togglePlay() {
-      if (!this.playingEntry) return;
+      if (!this.playingEntry) {
+        this.playCurrentOrSelected();
+        return;
+      }
       if (this.player.isPlaybackPaused) {
         this._manualStopRequested = false;
         this.player.play();
+        this.ensureAndroidAudioOutput();
         this.statusEl.textContent = 'Playing';
         this.playBtn.textContent = 'II';
         this.playBtn.classList.add('active');
@@ -3522,8 +3846,42 @@
       this.sendNativeMediaState({ force: true });
     }
 
+    async playCurrentOrSelected() {
+      const entry = this.playingEntry || (this.selectedId && this.byId.get(this.selectedId));
+      if (!entry) {
+        await this.playLastTrackState();
+        return;
+      }
+      if (this.playingEntry && this.player && this.player.isPlaybackPaused) {
+        this._manualStopRequested = false;
+        this._nativeMediaErrorMessage = '';
+        this.player.play();
+        this.ensureAndroidAudioOutput();
+        this.statusEl.textContent = 'Playing';
+        this.playBtn.textContent = 'II';
+        this.playBtn.classList.add('active');
+        this.sendNativeMediaState({ force: true });
+        return;
+      }
+      if (entry.playable) {
+        this.playEntry(entry);
+        return;
+      }
+      await this.playLastTrackState();
+    }
+
+    pauseCurrent() {
+      if (!this.playingEntry || !this.player || this.player.isPlaybackPaused) return;
+      this.player.pause();
+      this.statusEl.textContent = 'Paused';
+      this.playBtn.textContent = '▶';
+      this.playBtn.classList.remove('active');
+      this.sendNativeMediaState({ force: true });
+    }
+
     stop() {
       this._manualStopRequested = true;
+      this._nativeMediaErrorMessage = '';
       if (this.player && this.player.stop) this.player.stop();
       this.statusEl.textContent = 'Stopped';
       this.playBtn.textContent = '▶';
@@ -3598,6 +3956,13 @@
       if (this.progressTrackEl) {
         this.progressTrackEl.classList.toggle('disabled', !!(p && p.loopMode === 1));
       }
+      if (window.VGMPLAY_ANDROID_PLAYER && this.playingEntry) {
+        const now = Date.now();
+        if (!this._lastAndroidProgressStateAt || now - this._lastAndroidProgressStateAt > 5000) {
+          this._lastAndroidProgressStateAt = now;
+          this.sendNativeMediaState({ force: true });
+        }
+      }
     }
 
     syncPlayState() {
@@ -3641,6 +4006,19 @@
       if (this.player && this.player.masterGain && this.player.masterGain.gain) {
         this.player.masterGain.gain.value = Math.max(0, Math.min(1, value / 100));
       }
+    }
+
+    stabilizeNativeVolume(durationMs = 500) {
+      this.applyVolume();
+      const started = Date.now();
+      clearInterval(this._volumeStabilizeTimer);
+      this._volumeStabilizeTimer = setInterval(() => {
+        this.applyVolume();
+        if (Date.now() - started >= durationMs) {
+          clearInterval(this._volumeStabilizeTimer);
+          this._volumeStabilizeTimer = null;
+        }
+      }, 40);
     }
 
     isAncestorInspecting(entry) {
@@ -3774,6 +4152,8 @@
       if (this.player && this.player.toggleRandomScope) {
         this.player.toggleRandomScope();
         this.syncPlayState();
+        this.stabilizeNativeVolume(300);
+        this.sendNativeMediaState({ force: true });
       }
     }
 
@@ -3781,6 +4161,8 @@
       if (this.player && this.player.toggleLoopMode) {
         this.player.toggleLoopMode();
         this.syncPlayState();
+        this.stabilizeNativeVolume(500);
+        this.sendNativeMediaState({ force: true });
       }
     }
 
@@ -3801,9 +4183,21 @@
         p.isFadingOut = false;
         if (p.masterGain && p.context) {
           const now = p.context.currentTime;
+          const gain = Math.max(0, Math.min(1, ((this.config && this.config.volume != null ? Number(this.config.volume) : 80) || 0) / 100));
           p.masterGain.gain.cancelScheduledValues(now);
-          p.masterGain.gain.setValueAtTime(1.0, now);
+          p.masterGain.gain.setValueAtTime(gain, now);
         }
+        this.stabilizeNativeVolume(500);
+        this.ensureAndroidAudioOutput();
+        setTimeout(() => {
+          if (this.player === p) {
+            this.stabilizeNativeVolume(300);
+            this.updateProgress();
+            this.sendNativeMediaState({ force: true });
+          }
+        }, 120);
+        this.updateProgress();
+        this.sendNativeMediaState({ force: true });
       } catch (e) {}
     }
 

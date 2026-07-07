@@ -131,7 +131,7 @@ body.vgmplayNativeMode > .vgmplayContainer {
   top: 36px;
   right: 292px;
   z-index: 10;
-  padding: 10px 12px;
+  padding: 34px 12px 10px;
   border: 1px solid var(--native-border);
   border-radius: 4px;
   background: var(--native-surface-alt);
@@ -141,6 +141,25 @@ body.vgmplayNativeMode > .vgmplayContainer {
   max-height: min(calc(100vh - 72px), 560px);
   overflow: auto;
   overscroll-behavior: contain;
+}
+
+.native-settings-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  background: var(--native-bg);
+  color: var(--native-text-dim);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.native-settings-close:hover {
+  border-color: var(--native-focus);
+  color: var(--native-text);
 }
 
 .native-settings-popover label {
@@ -177,6 +196,17 @@ body.vgmplayNativeMode > .vgmplayContainer {
   border-radius: 4px;
   background: #3a2020;
   color: #ffb0b0;
+  font-size: 12px;
+}
+
+.native-settings-action {
+  width: 100%;
+  min-height: 28px;
+  margin-top: 8px;
+  border: 1px solid var(--native-border);
+  border-radius: 4px;
+  background: var(--native-surface);
+  color: var(--native-text);
   font-size: 12px;
 }
 

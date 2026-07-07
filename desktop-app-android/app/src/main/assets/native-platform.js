@@ -17,6 +17,7 @@
   window.VGMPLAY_NATIVE_CONFIG = initialState.config || {};
   window.VGMPLAY_NATIVE_ARCHIVE_META = initialState.archiveMeta || {};
   window.VGMPLAY_NATIVE_TRACK_META = initialState.trackMeta || {};
+  window.VGMPLAY_NATIVE_LAST_TRACK = initialState.lastTrack || {};
   window.VGMPLAY_NATIVE_HOME_ROMS = initialState.homeRoms || [];
   window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = initialState.librarySettings || null;
   window.VGMPLAY_ANDROID_LIBRARY_SETTINGS = window.VGMPLAY_NATIVE_LIBRARY_SETTINGS;
@@ -42,8 +43,10 @@
     "nativeSaveArchiveMeta",
     "nativeSaveArchiveImage",
     "nativeSaveTrackMeta",
+    "nativeSaveLastTrack",
     "nativeLibraryCommand",
     "nativeMediaState",
+    "nativeForceAudioFocus",
     "nativeOpenFolder",
     "nativeOpenFile"
   ].forEach(installHandler);

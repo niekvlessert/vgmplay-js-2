@@ -41,7 +41,12 @@ function(prune_web_assets target root_dir keep_manifest_name)
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>"
     )
     foreach(asset ${remove_assets})
+        get_filename_component(asset_dir "${asset}" DIRECTORY)
         list(APPEND prune_commands
+            COMMAND ${CMAKE_COMMAND}
+                -DDESTINATION="$<TARGET_FILE_DIR:${target}>/${asset}"
+                -DDESTINATION_PARENT="$<TARGET_FILE_DIR:${target}>/${asset_dir}"
+                -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PrepareWebAssetPrune.cmake"
             COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:${target}>/${asset}"
         )
     endforeach()
@@ -67,11 +72,15 @@ function(stage_web_assets target root_dir)
     foreach(asset ${web_assets})
         set(source "${root_dir}/${asset}")
         set(destination "$<TARGET_FILE_DIR:${target}>/${asset}")
+        get_filename_component(asset_dir "${asset}" DIRECTORY)
         string(MAKE_C_IDENTIFIER "${manifest_name}_${asset}" asset_target_suffix)
         set(asset_target "${target}_stage_${asset_target_suffix}")
         if(IS_DIRECTORY "${source}")
             add_custom_target(${asset_target} ALL
-                COMMAND ${CMAKE_COMMAND} -E rm -rf "${destination}"
+                COMMAND ${CMAKE_COMMAND}
+                    -DDESTINATION="${destination}"
+                    -DDESTINATION_PARENT="$<TARGET_FILE_DIR:${target}>/${asset_dir}"
+                    -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PrepareWebAssetDestination.cmake"
                 COMMAND ${CMAKE_COMMAND} -E copy_directory "${source}" "${destination}"
                 COMMENT "Copying ${asset}"
             )
@@ -81,7 +90,10 @@ function(stage_web_assets target root_dir)
             endif()
         elseif(EXISTS "${source}")
             add_custom_target(${asset_target} ALL
-                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>"
+                COMMAND ${CMAKE_COMMAND}
+                    -DDESTINATION="${destination}"
+                    -DDESTINATION_PARENT="$<TARGET_FILE_DIR:${target}>/${asset_dir}"
+                    -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PrepareWebAssetDestination.cmake"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "${source}" "${destination}"
                 COMMENT "Copying ${asset}"
             )

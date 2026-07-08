@@ -5,6 +5,7 @@ plugins {
 def repoRoot = rootProject.projectDir.parentFile
 def nativeManifest = new File(repoRoot, "native-assets.txt")
 def generatedAssets = layout.projectDirectory.dir("src/main/assets")
+def androidBuildStamp = new Date().format("yyyy-MM-dd HH:mm:ss 'UTC'", TimeZone.getTimeZone("UTC"))
 
 android {
     namespace "com.vgmplay.nativeplayer"
@@ -16,10 +17,15 @@ android {
         targetSdk 35
         versionCode 1
         versionName "0.1.0"
+        buildConfigField "String", "BUILD_STAMP", "\"${androidBuildStamp}\""
 
         ndk {
             abiFilters "arm64-v8a"
         }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {

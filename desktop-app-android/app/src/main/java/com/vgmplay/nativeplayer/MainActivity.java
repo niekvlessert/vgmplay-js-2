@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
     private static final String COMBINED_ROOT_PATH = "android://libraries";
     private static final String INCLUDED_LABEL = "Included Music";
     private static final String LAST_TRACK_FILE = "last-track.json";
+    private static final long AUTO_PLAY_EXPIRY_MS = 8000;
     private static final String FOLDER_PICKER_HELP =
         "Android blocks selecting storage root, Download, Android/data, and Android/obb. "
             + "Choose or create a music subfolder instead.";
@@ -102,6 +103,7 @@ public class MainActivity extends Activity {
     private AudioFocusRequest audioFocusRequest;
     private AudioDeviceCallback audioDeviceCallback;
     private long lastAudioPrimerAt;
+    private long lastPlaybackRouteRefreshAt;
     private boolean pendingAudioRouteRefresh;
     private boolean initialLibraryLoaded;
     private boolean pageReady;
@@ -110,6 +112,8 @@ public class MainActivity extends Activity {
     private String pendingPlayArchivePath = "";
     private String pendingPlayArchiveTrackPathSuffix = "";
     private long pendingPlayPositionMs;
+    private long pendingPlayCreatedAt;
+    private String pendingMediaAction = "";
     private boolean pendingSeekAbsolute;
     private long pendingSeekPositionMs = -1;
     private long pendingSeekDeltaMs;
@@ -195,6 +199,7 @@ public class MainActivity extends Activity {
                 pageReady = true;
                 loadInitialLibrary();
                 flushPendingAutoPlay();
+                flushPendingMediaAction();
                 flushPendingAudioRouteRefresh();
                 flushPendingSeek();
             }
@@ -437,6 +442,7 @@ public class MainActivity extends Activity {
                 pendingPlayArchivePath = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_PATH);
                 pendingPlayArchiveTrackPathSuffix = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_TRACK_PATH_SUFFIX);
                 pendingPlayPositionMs = Math.max(0, intent.getLongExtra(AndroidMediaContract.EXTRA_POSITION_MS, 0));
+                pendingPlayCreatedAt = System.currentTimeMillis();
                 if (pendingPlayNativePath == null) pendingPlayNativePath = "";
                 if (pendingPlayTitle == null) pendingPlayTitle = "";
                 if (pendingPlayArchivePath == null) pendingPlayArchivePath = "";
@@ -449,7 +455,10 @@ public class MainActivity extends Activity {
     }
 
     private void sendWebMediaAction(String action) {
-        if (webView == null) return;
+        if (webView == null || !pageReady) {
+            pendingMediaAction = action == null ? "" : action;
+            return;
+        }
         if ("play".equals(action) || "playPause".equals(action)) {
             requestPlaybackAudioFocus();
             primeAndroidAudioOutput(true);
@@ -458,8 +467,10 @@ public class MainActivity extends Activity {
         String jsAction = JSONObject.quote(action);
         webView.post(() -> webView.evaluateJavascript(
             "(function(action){"
+                + "var attempts=0;"
+                + "function run(){"
                 + "var app=window.__vgmNativeLibraryApp;"
-                + "if(!app)return;"
+                + "if(!app){if(++attempts<100)setTimeout(run,100);return;}"
                 + "if(action==='playPause')app.togglePlay();"
                 + "else if(action==='play')app.playCurrentOrSelected();"
                 + "else if(action==='pause')app.pauseCurrent();"
@@ -469,9 +480,18 @@ public class MainActivity extends Activity {
                 + "else if(action==='loop')app.toggleLoop();"
                 + "else if(action==='random')app.toggleRandom();"
                 + "else if(action==='stop')app.stop();"
+                + "}"
+                + "run();"
             + "})(" + jsAction + ");",
             null
         ));
+    }
+
+    private void flushPendingMediaAction() {
+        if (pendingMediaAction == null || pendingMediaAction.isEmpty()) return;
+        String action = pendingMediaAction;
+        pendingMediaAction = "";
+        sendWebMediaAction(action);
     }
 
     private void sendWebSeekTo(long positionMs) {
@@ -549,29 +569,47 @@ public class MainActivity extends Activity {
 
     private void flushPendingAutoPlay() {
         if (webView == null || !pageReady || pendingPlayNativePath == null || pendingPlayNativePath.isEmpty()) return;
+        long expiresAt = pendingPlayCreatedAt + AUTO_PLAY_EXPIRY_MS;
+        if (pendingPlayCreatedAt <= 0 || System.currentTimeMillis() > expiresAt) {
+            clearPendingAutoPlay();
+            return;
+        }
         requestPlaybackAudioFocus();
         String nativePath = JSONObject.quote(pendingPlayNativePath);
         String title = JSONObject.quote(pendingPlayTitle == null ? "" : pendingPlayTitle);
         String archivePath = JSONObject.quote(pendingPlayArchivePath == null ? "" : pendingPlayArchivePath);
         String archiveTrackPathSuffix = JSONObject.quote(pendingPlayArchiveTrackPathSuffix == null ? "" : pendingPlayArchiveTrackPathSuffix);
         long positionMs = Math.max(0, pendingPlayPositionMs);
+        clearPendingAutoPlay();
+        webView.post(() -> webView.evaluateJavascript(
+            "(function(nativePath,title,positionMs,archivePath,archiveTrackPathSuffix,expiresAt){"
+                + "var attempts=0;"
+                + "function play(){"
+                + "if(Date.now()>expiresAt)return;"
+                + "var app=window.__vgmNativeLibraryApp;"
+                + "if(app&&app.playNativeCatalogItem){"
+                + "Promise.resolve(app.playNativeCatalogItem(nativePath,title,{positionMs:positionMs,archivePath:archivePath,archiveTrackPathSuffix:archiveTrackPathSuffix})).then(function(ok){"
+                + "if(ok){if(app.ensureAndroidAudioOutput)setTimeout(function(){app.ensureAndroidAudioOutput();},150);return;}"
+                + "if(++attempts<100&&Date.now()<=expiresAt)setTimeout(play,100);"
+                + "}).catch(function(){if(++attempts<100&&Date.now()<=expiresAt)setTimeout(play,100);});"
+                + "return;"
+                + "}"
+                + "if(++attempts<100&&Date.now()<=expiresAt)setTimeout(play,100);"
+                + "}"
+                + "play();"
+            + "})(" + nativePath + "," + title + "," + positionMs + "," + archivePath + "," + archiveTrackPathSuffix + "," + expiresAt + ");",
+            null
+        ));
+        schedulePlaybackRouteRefresh();
+    }
+
+    private void clearPendingAutoPlay() {
         pendingPlayNativePath = "";
         pendingPlayTitle = "";
         pendingPlayArchivePath = "";
         pendingPlayArchiveTrackPathSuffix = "";
         pendingPlayPositionMs = 0;
-        webView.post(() -> webView.evaluateJavascript(
-            "(function(nativePath,title,positionMs,archivePath,archiveTrackPathSuffix){"
-                + "var attempts=0;"
-                + "function play(){"
-                + "var app=window.__vgmNativeLibraryApp;"
-                + "if(app&&app.playNativeCatalogItem){app.playNativeCatalogItem(nativePath,title,{positionMs:positionMs,archivePath:archivePath,archiveTrackPathSuffix:archiveTrackPathSuffix});return;}"
-                + "if(++attempts<100)setTimeout(play,100);"
-                + "}"
-                + "play();"
-            + "})(" + nativePath + "," + title + "," + positionMs + "," + archivePath + "," + archiveTrackPathSuffix + ");",
-            null
-        ));
+        pendingPlayCreatedAt = 0;
     }
 
     private void flushPendingAudioRouteRefresh() {
@@ -589,6 +627,18 @@ public class MainActivity extends Activity {
         requestPlaybackAudioFocus();
         primeAndroidAudioOutput(true);
         sendWebMediaAction("ensureAudio");
+    }
+
+    private void schedulePlaybackRouteRefresh() {
+        long now = System.currentTimeMillis();
+        if (now - lastPlaybackRouteRefreshAt < 2500) return;
+        lastPlaybackRouteRefreshAt = now;
+        if (webView == null || !pageReady) {
+            pendingAudioRouteRefresh = true;
+            return;
+        }
+        webView.postDelayed(this::refreshAudioRoute, 250);
+        webView.postDelayed(this::refreshAudioRoute, 1500);
     }
 
     private void registerAudioDeviceRefreshCallback() {
@@ -610,6 +660,7 @@ public class MainActivity extends Activity {
     }
 
     private void updateNativeMediaState(JSONObject payload) {
+        boolean wasPlaying = mediaPlaying;
         boolean nextPlaying = payload.optBoolean("playing", false);
         boolean nextPaused = payload.optBoolean("paused", false);
         boolean explicitStop = payload.optBoolean("stopped", false);
@@ -653,6 +704,7 @@ public class MainActivity extends Activity {
         updateMediaMetadata(mediaDurationMs);
         updateMediaNotification();
         broadcastMediaState(mediaDurationMs);
+        if (mediaPlaying && !wasPlaying) schedulePlaybackRouteRefresh();
         if (explicitStop || (!mediaPlaying && !mediaPaused)) abandonPlaybackAudioFocus();
     }
 
@@ -1110,6 +1162,19 @@ public class MainActivity extends Activity {
         return settings;
     }
 
+    private JSONObject buildInfo() {
+        JSONObject info = new JSONObject();
+        try {
+            info.put("platform", "Android");
+            info.put("versionName", BuildConfig.VERSION_NAME);
+            info.put("versionCode", BuildConfig.VERSION_CODE);
+            info.put("buildTime", BuildConfig.BUILD_STAMP);
+        } catch (JSONException err) {
+            Log.w(TAG, "Could not build app info", err);
+        }
+        return info;
+    }
+
     private boolean bundledDistAvailable() {
         try {
             String[] names = getAssets().list("dist");
@@ -1446,6 +1511,7 @@ public class MainActivity extends Activity {
                 state.put("trackMeta", parseObjectPref("trackMeta"));
                 state.put("lastTrack", readLastTrackState());
                 state.put("librarySettings", buildLibrarySettings(loadLibraryDirs()));
+                state.put("buildInfo", buildInfo());
                 state.put("homeRoms", new JSONArray());
             } catch (JSONException err) {
                 Log.w(TAG, "Failed to build initial bridge state", err);

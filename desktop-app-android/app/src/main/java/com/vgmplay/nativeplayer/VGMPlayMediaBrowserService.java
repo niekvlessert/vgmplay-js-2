@@ -1,5 +1,8 @@
 package com.vgmplay.nativeplayer;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -8,6 +11,9 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.media.MediaDescription;
 import android.media.MediaMetadata;
 import android.media.browse.MediaBrowser;
@@ -16,7 +22,12 @@ import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.service.media.MediaBrowserService;
+import android.util.Log;
+
+import org.json.JSONObject;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -25,8 +36,18 @@ import java.util.List;
 import java.util.Map;
 
 public class VGMPlayMediaBrowserService extends MediaBrowserService {
+    private static final String TAG = "VGMPlayAutoService";
+    private static final String MEDIA_CHANNEL_ID = "vgmplay_auto_playback";
+    private static final int MEDIA_NOTIFICATION_ID = 5002;
+
     private MediaSession mediaSession;
     private SharedPreferences prefs;
+    private NotificationManager notificationManager;
+    private AudioManager audioManager;
+    private AudioFocusRequest audioFocusRequest;
+    private AndroidPlaybackEngineHost playbackEngine;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable startupTimeoutRunnable;
     private String catalogSignature = "";
     private final Map<String, List<AndroidLibraryCatalog.Entry>> childrenCache = new HashMap<>();
     private final Map<String, AndroidLibraryCatalog.Entry> byId = new HashMap<>();
@@ -39,6 +60,7 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
     private String currentArchiveTrackPathSuffix = "";
     private boolean currentPlaying;
     private boolean currentPaused;
+    private boolean currentBuffering;
     private long currentDurationMs;
     private long currentPositionMs;
     private int currentLoopMode;
@@ -55,33 +77,7 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent == null || !AndroidMediaContract.ACTION_MEDIA_STATE.equals(intent.getAction())) return;
-            currentTitle = intent.getStringExtra(AndroidMediaContract.EXTRA_TITLE);
-            if (currentTitle == null || currentTitle.isEmpty()) currentTitle = "VGMPlay-JS";
-            currentSource = intent.getStringExtra(AndroidMediaContract.EXTRA_SOURCE);
-            if (currentSource == null) currentSource = "";
-            currentNativePath = intent.getStringExtra(AndroidMediaContract.EXTRA_NATIVE_PATH);
-            if (currentNativePath == null) currentNativePath = "";
-            currentArtUri = intent.getStringExtra(AndroidMediaContract.EXTRA_ART_URI);
-            if (currentArtUri == null) currentArtUri = "";
-            currentArchivePath = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_PATH);
-            if (currentArchivePath == null) currentArchivePath = "";
-            currentArchiveTrackPathSuffix = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_TRACK_PATH_SUFFIX);
-            if (currentArchiveTrackPathSuffix == null) currentArchiveTrackPathSuffix = "";
-            currentPlaying = intent.getBooleanExtra(AndroidMediaContract.EXTRA_PLAYING, false);
-            currentPaused = intent.getBooleanExtra(AndroidMediaContract.EXTRA_PAUSED, false);
-            currentDurationMs = intent.getLongExtra(AndroidMediaContract.EXTRA_DURATION_MS, 0);
-            currentPositionMs = intent.getLongExtra(AndroidMediaContract.EXTRA_POSITION_MS, 0);
-            currentLoopMode = intent.getIntExtra(AndroidMediaContract.EXTRA_LOOP_MODE, 0);
-            currentRandomMode = intent.getIntExtra(AndroidMediaContract.EXTRA_RANDOM_MODE, 0);
-            currentLoopLabel = intent.getStringExtra(AndroidMediaContract.EXTRA_LOOP_LABEL);
-            if (currentLoopLabel == null || currentLoopLabel.isEmpty()) currentLoopLabel = currentLoopMode == 1 ? "Loop ON: Track" : (currentLoopMode == 2 ? "Loop ON: All" : "Loop: Off");
-            currentRandomLabel = intent.getStringExtra(AndroidMediaContract.EXTRA_RANDOM_LABEL);
-            if (currentRandomLabel == null || currentRandomLabel.isEmpty()) currentRandomLabel = currentRandomMode == 2 ? "Random ON: All" : (currentRandomMode == 1 ? "Random ON: Game" : "Random: Off");
-            currentErrorMessage = intent.getStringExtra(AndroidMediaContract.EXTRA_ERROR_MESSAGE);
-            if (currentErrorMessage == null) currentErrorMessage = "";
-            syncCurrentQueue();
-            saveCurrentState();
-            updateSessionState();
+            applyMediaState(intent, false);
         }
     };
 
@@ -89,19 +85,35 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
     public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences(AndroidLibraryCatalog.PREFS_NAME, Context.MODE_PRIVATE);
+        notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        createNotificationChannel();
         fallbackArt = BitmapFactory.decodeResource(getResources(), R.drawable.vgmp_logo);
         loadCurrentState();
+        playbackEngine = new AndroidPlaybackEngineHost(this, prefs, new AndroidPlaybackEngineHost.Callback() {
+            @Override
+            public void onMediaState(JSONObject payload) {
+                applyMediaState(payload, true);
+            }
+
+            @Override
+            public void onLog(String level, String message) {
+                if ("error".equals(level)) Log.e(TAG, message == null ? "" : message);
+                else if ("warn".equals(level)) Log.w(TAG, message == null ? "" : message);
+                else Log.i(TAG, message == null ? "" : message);
+            }
+
+            @Override
+            public void onRequestAudioRouteRefresh() {
+                requestPlaybackAudioFocus();
+                if (playbackEngine != null) playbackEngine.refreshAudioRoute();
+            }
+        });
         mediaSession = new MediaSession(this, "VGMPlay-JS Auto");
         mediaSession.setCallback(new MediaSession.Callback() {
             @Override
             public void onPlay() {
-                if (currentPlaying || currentPaused) {
-                    startPlayerAction(AndroidMediaContract.ACTION_MEDIA_PLAY);
-                } else if (currentNativePath != null && !currentNativePath.isEmpty()) {
-                    playNativePath(currentNativePath, currentTitle, currentArchivePath, currentArchiveTrackPathSuffix, currentPositionMs);
-                } else {
-                    startPlayerAction(AndroidMediaContract.ACTION_MEDIA_PLAY);
-                }
+                playCurrentResolved();
             }
 
             @Override
@@ -175,18 +187,34 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
     @Override
     public void onDestroy() {
         unregisterReceiver(mediaStateReceiver);
+        if (playbackEngine != null) {
+            playbackEngine.destroy();
+            playbackEngine = null;
+        }
         if (mediaSession != null) {
             mediaSession.setActive(false);
             mediaSession.release();
             mediaSession = null;
         }
+        abandonPlaybackAudioFocus();
         super.onDestroy();
     }
 
     @Override
     public BrowserRoot onGetRoot(String clientPackageName, int clientUid, Bundle rootHints) {
-        if (currentPlaying) startPlayerAction(AndroidMediaContract.ACTION_REFRESH_AUDIO_ROUTE);
+        if (!isValidBrowserClient(clientPackageName, clientUid)) return null;
         return new BrowserRoot(AndroidLibraryCatalog.ROOT_ID, null);
+    }
+
+    private boolean isValidBrowserClient(String clientPackageName, int clientUid) {
+        if (clientPackageName == null || clientPackageName.isEmpty()) return false;
+        String[] packages = getPackageManager().getPackagesForUid(clientUid);
+        if (packages == null || packages.length == 0) return false;
+        for (String packageName : packages) {
+            if (clientPackageName.equals(packageName)) return true;
+        }
+        Log.w(TAG, "Rejecting MediaBrowser client with mismatched uid/package: " + clientPackageName);
+        return false;
     }
 
     @Override
@@ -238,6 +266,11 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
             return;
         }
         if (!entry.playable) return;
+        playCatalogEntry(entry, 0);
+    }
+
+    private void playCatalogEntry(AndroidLibraryCatalog.Entry entry, long positionMs) {
+        if (entry == null || !entry.playable) return;
         currentTitle = entry.title;
         currentSource = entry.subtitle;
         currentNativePath = entry.nativePath;
@@ -245,14 +278,14 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
         currentArchivePath = entry.archivePath;
         currentArchiveTrackPathSuffix = entry.archiveTrackPathSuffix;
         currentParentId = entry.parentId == null ? "" : entry.parentId;
-        currentPositionMs = 0;
+        currentPositionMs = Math.max(0, positionMs);
         currentDurationMs = 0;
         currentErrorMessage = "";
         currentPlaying = false;
         currentPaused = false;
         saveCurrentState();
         updateSessionState();
-        playNativePath(entry.nativePath, entry.title, entry.archivePath, entry.archiveTrackPathSuffix, 0);
+        playNativePath(entry.nativePath, entry.title, entry.archivePath, entry.archiveTrackPathSuffix, currentPositionMs);
     }
 
     private AndroidLibraryCatalog.Entry entryFor(String mediaId) {
@@ -299,30 +332,126 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
     }
 
     private void playNativePath(String nativePath, String title, String archivePath, String archiveTrackPathSuffix, long positionMs) {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setAction(AndroidMediaContract.ACTION_PLAY_MEDIA_ID);
-        intent.putExtra(AndroidMediaContract.EXTRA_NATIVE_PATH, nativePath);
-        intent.putExtra(AndroidMediaContract.EXTRA_TITLE, title == null ? "" : title);
-        intent.putExtra(AndroidMediaContract.EXTRA_ARCHIVE_PATH, archivePath == null ? "" : archivePath);
-        intent.putExtra(AndroidMediaContract.EXTRA_ARCHIVE_TRACK_PATH_SUFFIX, archiveTrackPathSuffix == null ? "" : archiveTrackPathSuffix);
-        intent.putExtra(AndroidMediaContract.EXTRA_POSITION_MS, Math.max(0, positionMs));
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        startActivity(intent);
+        requestPlaybackAudioFocus();
+        beginPlaybackStartup(nativePath, title, archivePath, archiveTrackPathSuffix, positionMs);
+        ensureForeground();
+        if (playbackEngine != null) {
+            playbackEngine.playNativePath(nativePath, title, archivePath, archiveTrackPathSuffix, positionMs);
+        }
     }
 
     private void startPlayerAction(String action) {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setAction(action);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        startActivity(intent);
+        if (AndroidMediaContract.ACTION_MEDIA_PLAY.equals(action)) {
+            playCurrentResolved();
+        } else if (AndroidMediaContract.ACTION_MEDIA_PLAY_PAUSE.equals(action)) {
+            if (currentPaused || currentBuffering || !currentPlaying) {
+                playCurrentResolved();
+            } else if (playbackEngine != null) {
+                playbackEngine.sendAction("pause");
+            }
+        } else if (AndroidMediaContract.ACTION_MEDIA_PAUSE.equals(action)) {
+            if (playbackEngine != null) playbackEngine.sendAction("pause");
+        } else if (AndroidMediaContract.ACTION_MEDIA_PREVIOUS.equals(action)) {
+            if (playbackEngine != null) playbackEngine.sendAction("previous");
+        } else if (AndroidMediaContract.ACTION_MEDIA_NEXT.equals(action)) {
+            if (playbackEngine != null) playbackEngine.sendAction("next");
+        } else if (AndroidMediaContract.ACTION_MEDIA_STOP.equals(action)) {
+            clearPlaybackStartup();
+            if (playbackEngine != null) playbackEngine.sendAction("stop");
+            abandonPlaybackAudioFocus();
+            stopForeground(false);
+        } else if (AndroidMediaContract.ACTION_REFRESH_AUDIO_ROUTE.equals(action)) {
+            requestPlaybackAudioFocus();
+            if (playbackEngine != null) playbackEngine.refreshAudioRoute();
+        } else if (AndroidMediaContract.ACTION_MEDIA_REWIND_10.equals(action)) {
+            if (playbackEngine != null) playbackEngine.seekRelative(-10000);
+        } else if (AndroidMediaContract.ACTION_MEDIA_FORWARD_10.equals(action)) {
+            if (playbackEngine != null) playbackEngine.seekRelative(10000);
+        } else if (AndroidMediaContract.ACTION_MEDIA_TOGGLE_LOOP.equals(action)) {
+            if (playbackEngine != null) playbackEngine.sendAction("loop");
+        } else if (AndroidMediaContract.ACTION_MEDIA_TOGGLE_RANDOM.equals(action)) {
+            if (playbackEngine != null) playbackEngine.sendAction("random");
+        }
+    }
+
+    private void playCurrentResolved() {
+        if (currentNativePath == null || currentNativePath.isEmpty()) {
+            currentErrorMessage = "No track selected";
+            currentPaused = false;
+            currentPlaying = false;
+            updateSessionState();
+            return;
+        }
+        AndroidLibraryCatalog.Entry entry = resolveCurrentEntryForPlayback();
+        if (entry != null) {
+            Log.i(TAG, "Resolved remembered Auto track via catalog: " + entry.title + " [" + entry.id + "]");
+            playCatalogEntry(entry, currentPositionMs);
+            return;
+        }
+        Log.w(TAG, "Could not resolve remembered Auto track in catalog; using raw native path: " + currentNativePath);
+        playNativePath(currentNativePath, currentTitle, currentArchivePath, currentArchiveTrackPathSuffix, currentPositionMs);
+    }
+
+    private AndroidLibraryCatalog.Entry resolveCurrentEntryForPlayback() {
+        ensureCatalogFresh();
+        AndroidLibraryCatalog.Entry entry = findCurrentEntry();
+        if (entry != null) return entry;
+
+        if (currentParentId != null && !currentParentId.isEmpty()) {
+            for (AndroidLibraryCatalog.Entry candidate : childrenFor(currentParentId)) {
+                if (entryMatchesCurrent(candidate)) return candidate;
+            }
+        }
+
+        java.util.ArrayDeque<String> pending = new java.util.ArrayDeque<>();
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
+        pending.add(AndroidLibraryCatalog.ROOT_ID);
+        int visited = 0;
+        while (!pending.isEmpty() && visited < 160) {
+            String parentId = pending.removeFirst();
+            if (!seen.add(parentId)) continue;
+            visited++;
+            for (AndroidLibraryCatalog.Entry candidate : childrenFor(parentId)) {
+                if (entryMatchesCurrent(candidate)) return candidate;
+                if (candidate.browsable) pending.add(candidate.id);
+            }
+        }
+        return null;
     }
 
     private void startSeekTo(long positionMs) {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setAction(AndroidMediaContract.ACTION_MEDIA_SEEK_TO);
-        intent.putExtra(AndroidMediaContract.EXTRA_SEEK_POSITION_MS, Math.max(0, positionMs));
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        startActivity(intent);
+        if (playbackEngine != null) playbackEngine.seekTo(Math.max(0, positionMs));
+    }
+
+    private void beginPlaybackStartup(String nativePath, String title, String archivePath, String archiveTrackPathSuffix, long positionMs) {
+        clearPlaybackStartup();
+        currentBuffering = true;
+        currentPlaying = false;
+        currentPaused = false;
+        currentErrorMessage = "";
+        if (title != null && !title.isEmpty()) currentTitle = title;
+        if (nativePath != null) currentNativePath = nativePath;
+        currentArchivePath = archivePath == null ? "" : archivePath;
+        currentArchiveTrackPathSuffix = archiveTrackPathSuffix == null ? "" : archiveTrackPathSuffix;
+        currentPositionMs = Math.max(0, positionMs);
+        updateSessionState();
+        startupTimeoutRunnable = () -> {
+            if (!currentBuffering) return;
+            currentBuffering = false;
+            currentPaused = currentNativePath != null && !currentNativePath.isEmpty();
+            currentErrorMessage = "Playback startup timed out";
+            saveCurrentState();
+            updateSessionState();
+        };
+        mainHandler.postDelayed(startupTimeoutRunnable, 30000);
+    }
+
+    private void clearPlaybackStartup() {
+        currentBuffering = false;
+        if (startupTimeoutRunnable != null) {
+            mainHandler.removeCallbacks(startupTimeoutRunnable);
+            startupTimeoutRunnable = null;
+        }
     }
 
     private void updateSessionState() {
@@ -332,6 +461,7 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
         int state;
         if (hasError) state = PlaybackState.STATE_ERROR;
         else if (currentPlaying) state = PlaybackState.STATE_PLAYING;
+        else if (currentBuffering) state = PlaybackState.STATE_BUFFERING;
         else if (currentPaused) state = PlaybackState.STATE_PAUSED;
         else state = PlaybackState.STATE_STOPPED;
         long actions = PlaybackState.ACTION_PLAY
@@ -379,6 +509,157 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
             metadata.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art);
         }
         mediaSession.setMetadata(metadata.build());
+        updateForegroundNotification();
+    }
+
+    private void applyMediaState(Intent intent, boolean rebroadcast) {
+        boolean nextPlaying = intent.getBooleanExtra(AndroidMediaContract.EXTRA_PLAYING, false);
+        boolean nextPaused = intent.getBooleanExtra(AndroidMediaContract.EXTRA_PAUSED, false);
+        String nextNativePath = intent.getStringExtra(AndroidMediaContract.EXTRA_NATIVE_PATH);
+        String nextError = intent.getStringExtra(AndroidMediaContract.EXTRA_ERROR_MESSAGE);
+        boolean emptyStoppedDuringStartup = currentBuffering
+            && !nextPlaying
+            && !nextPaused
+            && (nextNativePath == null || nextNativePath.isEmpty())
+            && (nextError == null || nextError.isEmpty());
+        if (emptyStoppedDuringStartup) return;
+        clearPlaybackStartup();
+        currentTitle = intent.getStringExtra(AndroidMediaContract.EXTRA_TITLE);
+        if (currentTitle == null || currentTitle.isEmpty()) currentTitle = "VGMPlay-JS";
+        currentSource = intent.getStringExtra(AndroidMediaContract.EXTRA_SOURCE);
+        if (currentSource == null) currentSource = "";
+        currentNativePath = intent.getStringExtra(AndroidMediaContract.EXTRA_NATIVE_PATH);
+        if (currentNativePath == null) currentNativePath = "";
+        currentArtUri = intent.getStringExtra(AndroidMediaContract.EXTRA_ART_URI);
+        if (currentArtUri == null) currentArtUri = "";
+        currentArchivePath = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_PATH);
+        if (currentArchivePath == null) currentArchivePath = "";
+        currentArchiveTrackPathSuffix = intent.getStringExtra(AndroidMediaContract.EXTRA_ARCHIVE_TRACK_PATH_SUFFIX);
+        if (currentArchiveTrackPathSuffix == null) currentArchiveTrackPathSuffix = "";
+        currentPlaying = intent.getBooleanExtra(AndroidMediaContract.EXTRA_PLAYING, false);
+        currentPaused = intent.getBooleanExtra(AndroidMediaContract.EXTRA_PAUSED, false);
+        currentDurationMs = intent.getLongExtra(AndroidMediaContract.EXTRA_DURATION_MS, 0);
+        currentPositionMs = intent.getLongExtra(AndroidMediaContract.EXTRA_POSITION_MS, 0);
+        currentLoopMode = intent.getIntExtra(AndroidMediaContract.EXTRA_LOOP_MODE, 0);
+        currentRandomMode = intent.getIntExtra(AndroidMediaContract.EXTRA_RANDOM_MODE, 0);
+        currentLoopLabel = intent.getStringExtra(AndroidMediaContract.EXTRA_LOOP_LABEL);
+        if (currentLoopLabel == null || currentLoopLabel.isEmpty()) currentLoopLabel = currentLoopMode == 1 ? "Loop ON: Track" : (currentLoopMode == 2 ? "Loop ON: All" : "Loop: Off");
+        currentRandomLabel = intent.getStringExtra(AndroidMediaContract.EXTRA_RANDOM_LABEL);
+        if (currentRandomLabel == null || currentRandomLabel.isEmpty()) currentRandomLabel = currentRandomMode == 2 ? "Random ON: All" : (currentRandomMode == 1 ? "Random ON: Game" : "Random: Off");
+        currentErrorMessage = intent.getStringExtra(AndroidMediaContract.EXTRA_ERROR_MESSAGE);
+        if (currentErrorMessage == null) currentErrorMessage = "";
+        syncCurrentQueue();
+        saveCurrentState();
+        updateSessionState();
+        if (rebroadcast) sendBroadcast(intent);
+    }
+
+    private void applyMediaState(JSONObject payload, boolean rebroadcast) {
+        Intent intent = new Intent(AndroidMediaContract.ACTION_MEDIA_STATE);
+        intent.setPackage(getPackageName());
+        intent.putExtra(AndroidMediaContract.EXTRA_TITLE, payload.optString("title", "VGMPlay-JS"));
+        intent.putExtra(AndroidMediaContract.EXTRA_SOURCE, payload.optString("source", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_NATIVE_PATH, payload.optString("nativePath", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_ART_URI, payload.optString("artUri", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_ARCHIVE_PATH, payload.optString("archivePath", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_ARCHIVE_TRACK_PATH_SUFFIX, payload.optString("archiveTrackPathSuffix", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_PLAYING, payload.optBoolean("playing", false));
+        intent.putExtra(AndroidMediaContract.EXTRA_PAUSED, payload.optBoolean("paused", false));
+        intent.putExtra(AndroidMediaContract.EXTRA_DURATION_MS, payload.optLong("durationMs", 0));
+        intent.putExtra(AndroidMediaContract.EXTRA_POSITION_MS, payload.optLong("positionMs", 0));
+        intent.putExtra(AndroidMediaContract.EXTRA_LOOP_MODE, payload.optInt("loopMode", 0));
+        intent.putExtra(AndroidMediaContract.EXTRA_RANDOM_MODE, payload.optInt("randomMode", 0));
+        intent.putExtra(AndroidMediaContract.EXTRA_LOOP_LABEL, payload.optString("loopLabel", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_RANDOM_LABEL, payload.optString("randomLabel", ""));
+        intent.putExtra(AndroidMediaContract.EXTRA_ERROR_MESSAGE, payload.optString("errorMessage", ""));
+        applyMediaState(intent, rebroadcast);
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || notificationManager == null) return;
+        NotificationChannel channel = new NotificationChannel(
+            MEDIA_CHANNEL_ID,
+            "VGMPlay Android Auto",
+            NotificationManager.IMPORTANCE_LOW
+        );
+        channel.setDescription("Playback service for Android Auto");
+        notificationManager.createNotificationChannel(channel);
+    }
+
+    private void ensureForeground() {
+        startForeground(MEDIA_NOTIFICATION_ID, buildForegroundNotification());
+    }
+
+    private void updateForegroundNotification() {
+        if (notificationManager == null) return;
+        Notification notification = buildForegroundNotification();
+        if (currentPlaying || currentPaused || currentBuffering) notificationManager.notify(MEDIA_NOTIFICATION_ID, notification);
+        else notificationManager.cancel(MEDIA_NOTIFICATION_ID);
+    }
+
+    private Notification buildForegroundNotification() {
+        Intent activityIntent = new Intent(this, MainActivity.class);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag();
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 31, activityIntent, flags);
+        PendingIntent previous = servicePendingIntent(AndroidMediaContract.ACTION_MEDIA_PREVIOUS, 41);
+        PendingIntent playPause = servicePendingIntent(currentPlaying ? AndroidMediaContract.ACTION_MEDIA_PAUSE : AndroidMediaContract.ACTION_MEDIA_PLAY, 42);
+        PendingIntent next = servicePendingIntent(AndroidMediaContract.ACTION_MEDIA_NEXT, 43);
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? new Notification.Builder(this, MEDIA_CHANNEL_ID)
+            : new Notification.Builder(this);
+        return builder
+            .setSmallIcon(R.drawable.ic_stat_vgmplay)
+            .setContentTitle(currentTitle == null || currentTitle.isEmpty() ? "VGMPlay-JS" : currentTitle)
+            .setContentText(currentBuffering ? "Starting playback..." : (currentSource == null ? "" : currentSource))
+            .setContentIntent(contentIntent)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setOngoing(currentPlaying || currentBuffering)
+            .setShowWhen(false)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", previous)
+            .addAction(currentPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play, currentPlaying ? "Pause" : "Play", playPause)
+            .addAction(android.R.drawable.ic_media_next, "Next", next)
+            .setStyle(new Notification.MediaStyle().setMediaSession(mediaSession == null ? null : mediaSession.getSessionToken()).setShowActionsInCompactView(0, 1, 2))
+            .build();
+    }
+
+    private PendingIntent servicePendingIntent(String action, int requestCode) {
+        Intent intent = new Intent(this, VGMPlayMediaBrowserService.class);
+        intent.setAction(action);
+        return PendingIntent.getService(this, requestCode, intent, PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && intent.getAction() != null) startPlayerAction(intent.getAction());
+        return START_STICKY;
+    }
+
+    private boolean requestPlaybackAudioFocus() {
+        if (audioManager == null) return false;
+        int result;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (audioFocusRequest == null) {
+                AudioAttributes attrs = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build();
+                audioFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setAcceptsDelayedFocusGain(false)
+                    .build();
+            }
+            result = audioManager.requestAudioFocus(audioFocusRequest);
+        } else {
+            result = audioManager.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        }
+        Log.i(TAG, "Audio focus request result: " + result);
+        return result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+    }
+
+    private void abandonPlaybackAudioFocus() {
+        if (audioManager == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && audioFocusRequest != null) audioManager.abandonAudioFocusRequest(audioFocusRequest);
+        else audioManager.abandonAudioFocus(null);
     }
 
     private PlaybackState.CustomAction customAction(String action, String label, boolean active, int icon) {
@@ -494,8 +775,8 @@ public class VGMPlayMediaBrowserService extends MediaBrowserService {
         currentRandomLabel = prefs.getString("mediaRandomLabel", "Random: Off");
         currentErrorMessage = prefs.getString("mediaErrorMessage", "");
         currentParentId = prefs.getString("mediaParentId", "");
-        currentPlaying = prefs.getBoolean("mediaPlaying", false);
-        currentPaused = prefs.getBoolean("mediaPaused", false);
+        currentPlaying = false;
+        currentPaused = currentNativePath != null && !currentNativePath.isEmpty();
     }
 
     private void saveCurrentState() {

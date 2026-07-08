@@ -267,6 +267,7 @@
             <label><input type="checkbox" data-role="no-badge-colors" /> Disable type colors</label>
             <label><input type="checkbox" data-role="light-theme" /> Light theme</label>
             <button class="native-settings-action" data-role="force-audio-focus" type="button" hidden>Force Android audio focus</button>
+            <div class="native-settings-section native-build-info" data-role="build-info" hidden></div>
             <div class="native-settings-section" data-role="native-library-settings" hidden>
               <div class="native-settings-section-title">Native Libraries</div>
               <label><input type="checkbox" data-role="show-included-music" /> Show included music</label>
@@ -356,6 +357,7 @@
       this.settingsPopover = this.root.querySelector('[data-role="settings-popover"]');
       this.settingsCloseBtn = this.root.querySelector('[data-role="settings-close"]');
       this.forceAudioFocusBtn = this.root.querySelector('[data-role="force-audio-focus"]');
+      this.buildInfoEl = this.root.querySelector('[data-role="build-info"]');
       this.mobileTabsEl = this.root.querySelector('[data-role="mobile-tabs"]');
       this.mobileTabButtons = Array.from(this.root.querySelectorAll('[data-mobile-tab]'));
       this.mobileNowTitleEl = this.root.querySelector('[data-role="mobile-now-title"]');
@@ -381,6 +383,7 @@
       this.lightThemeEl = this.root.querySelector('[data-role="light-theme"]');
       this.config = { ...DEFAULT_CONFIG, ...loadInitialConfig() };
       this.nativeLibrarySettings = window.VGMPLAY_NATIVE_LIBRARY_SETTINGS || null;
+      this.buildInfo = window.VGMPLAY_NATIVE_BUILD_INFO || null;
       this.showUnsupportedEl.checked = !!this.config.showUnsupported;
       this.showFilenamesEl.checked = !!this.config.showFilenames;
       this.imageOverviewEl.checked = this.config.imageOverview !== false;
@@ -390,6 +393,7 @@
       this.noBadgeColorsEl.checked = !!this.config.noBadgeColors;
       this.lightThemeEl.checked = !!this.config.lightTheme;
       this.setMobileTab(this.activeMobileTab);
+      this.renderBuildInfo();
       this.renderNativeLibrarySettings();
       if (this.config.noBadgeColors) {
         document.body.classList.add('no-badge-colors');
@@ -865,6 +869,7 @@
       if (!window.VGMPLAY_ANDROID_PLAYER || !window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.nativeMediaState) return;
       const p = this.player;
       const entry = this.playingEntry;
+      if (!entry && !force) return;
       const title = entry ? this.displayNameFor(entry) : 'VGMPlay-JS';
       const source = entry ? this.mediaSourceFor(entry) : '';
       const probablyAudible = this.isNativeAudioProbablyActive();
@@ -932,6 +937,24 @@
     updateNativeLibrarySettings(settings) {
       this.nativeLibrarySettings = settings || null;
       this.renderNativeLibrarySettings();
+    }
+
+    renderBuildInfo() {
+      if (!this.buildInfoEl) return;
+      const info = this.buildInfo;
+      this.buildInfoEl.hidden = !info;
+      if (!info) return;
+      const versionParts = [];
+      if (info.versionName) versionParts.push(info.versionName);
+      if (info.versionCode) versionParts.push('(' + info.versionCode + ')');
+      const platform = info.platform || 'Native';
+      const version = versionParts.join(' ') || 'unknown version';
+      const buildTime = info.buildTime || 'unknown time';
+      this.buildInfoEl.innerHTML = `
+        <div class="native-settings-section-title">Build</div>
+        <div class="native-settings-note">${escapeHtml(platform)} ${escapeHtml(version)}</div>
+        <div class="native-settings-note">Built ${escapeHtml(buildTime)}</div>
+      `;
     }
 
     renderNativeLibrarySettings() {
@@ -1432,22 +1455,27 @@
       this.expandAncestors(entry);
       if (isArchiveEntry(entry)) {
         this.resetPageOffsetsForSubtree(entry.id);
+        console.log('[VGM Native] open archive overview', entry.name, entry.item && entry.item.nativePath ? entry.item.nativePath : '');
         await this.inspectArchive(entry, { expand: true });
         const first = this.firstPlayableInSubtree(entry.id);
+        console.log('[VGM Native] archive overview first playable', first ? first.name : '(none)');
         if (first) {
           this.resetPageOffsetsForSubtree(entry.id);
           this.expandAncestors(first);
         }
         this.renderTree();
         this.scrollEntryIntoView(first || entry);
-        if (first) this.playEntry(first);
-        else this.showInfo(entry);
+        if (first) await this.playEntry(first);
+        else {
+          console.warn('[VGM Native] archive has no playable entry after inspection', entry.name);
+          this.showInfo(entry);
+        }
         return;
       }
       if (this.hasChildren(entry)) entry.expanded = true;
       this.renderTree();
       this.scrollEntryIntoView(entry);
-      if (entry.playable) this.playEntry(entry);
+      if (entry.playable) await this.playEntry(entry);
       else this.showInfo(entry);
     }
 
@@ -1456,6 +1484,9 @@
       const wantedTitle = String(title || '').toLowerCase();
       const wantedArchivePath = String((options && options.archivePath) || '');
       const wantedArchiveTrackSuffix = String((options && options.archiveTrackPathSuffix) || '');
+      const forceFullIndex = !!(options && options.forceFullIndex);
+      const autoPlayback = !!(options && options.autoPlayback);
+      console.log('[VGM Native] auto catalog request', wantedPath || '(no path)', title || '(no title)', wantedArchivePath || '(no archive path)', wantedArchiveTrackSuffix || '(no suffix)', forceFullIndex ? 'full-index' : 'default-index');
       if (!wantedPath && !wantedTitle) return false;
       let entry = null;
       for (const candidate of this.entries || []) {
@@ -1470,13 +1501,15 @@
         entry = (this.entries || []).find((candidate) => candidate && candidate.item && String(candidate.name || '').toLowerCase() === wantedTitle) || null;
       }
       if (!entry) {
+        console.warn('[VGM Native] auto catalog item unavailable', wantedPath || '(no path)', title || '(no title)');
         this.statusEl.textContent = 'Auto item unavailable';
         return false;
       }
+      console.log('[VGM Native] auto catalog matched', entry.name, entry.item && entry.item.nativePath ? entry.item.nativePath : '', isArchiveEntry(entry) ? 'archive' : entry.type);
       if (wantedArchivePath && isArchiveEntry(entry)) {
         this.selectedId = entry.id;
         this.expandAncestors(entry);
-        await this.inspectArchive(entry, { expand: true });
+        await this.inspectArchive(entry, { expand: true, force: forceFullIndex, fullIndex: forceFullIndex, keepArchiveFiles: true });
         const target = (this.entries || []).find((candidate) => (
           candidate
           && candidate.archiveParentId === entry.id
@@ -1484,15 +1517,17 @@
           && (!wantedArchiveTrackSuffix || candidate.archiveTrackPathSuffix === wantedArchiveTrackSuffix)
         )) || null;
         if (!target) {
+          console.warn('[VGM Native] auto archive target unavailable', entry.name, wantedArchivePath, wantedArchiveTrackSuffix || '(no suffix)');
           this.statusEl.textContent = 'Auto track unavailable';
           this.renderTree();
           return false;
         }
+        console.log('[VGM Native] auto archive target matched', target.name, target.archivePath || '', target.archiveTrackPathSuffix || '');
         this.expandAncestors(target);
         this.selectedId = target.id;
         this.renderTree();
         this.scrollEntryIntoView(target);
-        this.playEntry(target);
+        await this.playEntry(target);
         entry = target;
       } else if (wantedArchiveTrackSuffix && !wantedArchivePath && entry.inspectable) {
         this.selectedId = entry.id;
@@ -1505,18 +1540,39 @@
           && candidate.trackPath.endsWith(wantedArchiveTrackSuffix)
         )) || null;
         if (!target) {
+          console.warn('[VGM Native] auto inspectable target unavailable', entry.name, wantedArchiveTrackSuffix);
           this.statusEl.textContent = 'Auto track unavailable';
           this.renderTree();
           return false;
         }
+        console.log('[VGM Native] auto inspectable target matched', target.name, target.trackPath || '', target.archiveTrackPathSuffix || '');
         this.expandAncestors(target);
         this.selectedId = target.id;
         this.renderTree();
         this.scrollEntryIntoView(target);
-        this.playEntry(target);
+        await this.playEntry(target);
         entry = target;
       } else {
-        await this.openFromOverview(entry);
+        if (autoPlayback && isArchiveEntry(entry) && forceFullIndex) {
+          this.selectedId = entry.id;
+          this.expandAncestors(entry);
+          await this.inspectArchive(entry, { expand: true, force: true, fullIndex: true, keepArchiveFiles: true });
+          const first = this.firstPlayableInSubtree(entry.id);
+          console.log('[VGM Native] auto archive first playable', first ? first.name : '(none)');
+          if (!first) {
+            this.statusEl.textContent = 'Auto track unavailable';
+            this.renderTree();
+            return false;
+          }
+          this.expandAncestors(first);
+          this.selectedId = first.id;
+          this.renderTree();
+          this.scrollEntryIntoView(first);
+          await this.playEntry(first);
+          entry = first;
+        } else {
+          await this.openFromOverview(entry);
+        }
       }
       const positionMs = Math.max(0, Number(options && options.positionMs) || 0);
       if (positionMs > 0) {

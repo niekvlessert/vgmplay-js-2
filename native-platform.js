@@ -21,6 +21,7 @@
   window.VGMPLAY_NATIVE_HOME_ROMS = initialState.homeRoms || [];
   window.VGMPLAY_NATIVE_LIBRARY_SETTINGS = initialState.librarySettings || null;
   window.VGMPLAY_ANDROID_LIBRARY_SETTINGS = window.VGMPLAY_NATIVE_LIBRARY_SETTINGS;
+  window.VGMPLAY_NATIVE_BUILD_INFO = initialState.buildInfo || null;
   window.VGMPLAY_NATIVE_FIRST_RUN = !!initialState.firstRun;
 
   window.webkit = window.webkit || {};

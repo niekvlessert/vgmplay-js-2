@@ -4017,19 +4017,21 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 			try { vgmplay_js.loadWhenReady(); } catch (e) { }
 		}
 		if (vgmplay_js && vgmplay_js._autoScanDist) {
-			setTimeout(() => {
-				vgmplay_js._autoScanDist();
-			}, 0);
-		}
-		if (vgmplay_js && vgmplay_js._tryLoadMiscImageFromFS) {
-			const tryMisc = () => {
-				if (typeof window !== 'undefined' && window.__VGM_RUNTIME_READY__) {
-					vgmplay_js._tryLoadMiscImageFromFS();
-				} else {
-					setTimeout(tryMisc, 100);
+			setTimeout(async () => {
+				// The dist scan writes files and cache metadata. Wait for the runtime
+				// before discovering sources so a cold Pages load follows the same path
+				// as a normal ready player.
+				try {
+					const ready = await vgmplay_js.checkEverythingReady();
+					if (ready === false) return;
+					await vgmplay_js._autoScanDist();
+					if (vgmplay_js._tryLoadMiscImageFromFS) {
+						vgmplay_js._tryLoadMiscImageFromFS();
+					}
+				} catch (e) {
+					console.error('[VGM] Failed to start the bundled music scan:', e);
 				}
-			};
-			setTimeout(tryMisc, 0);
+			}, 0);
 		}
 	})();
 }

@@ -480,9 +480,11 @@ class VGMPlay_js {
 
 	_isMobileDevice() {
 		if (typeof window === 'undefined') return false;
-		const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-		const small = window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
-		return coarse || small;
+		// Touch input does not mean a phone-sized layout: wide tablets need the
+		// standalone two-pane library and analyzer layout just like desktop.
+		return window.matchMedia
+			? window.matchMedia('(max-width: 700px)').matches
+			: window.innerWidth <= 700;
 	}
 
 	_updateMemoryDisplay() {

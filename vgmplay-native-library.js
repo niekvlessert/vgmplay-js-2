@@ -2,7 +2,11 @@
   'use strict';
 
   const PAGE_SIZE = 10;
+  // KSS indexing changes do not alter the archive-cache schema. Keep the
+  // existing cache version so native artwork and large-library indexes remain
+  // usable after an update.
   const ARCHIVE_META_VERSION = 4;
+  const ARCHIVE_META_COMPATIBLE_VERSIONS = new Set([4, 6]);
   const TRACK_META_VERSION = 2;
   const ARCHIVE_EXTS = new Set(['zip', '7z', 'rar', 'rsn', 'vgmz', 'vgmdz', 'vgmpack', 'vigamup']);
   const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp']);
@@ -2670,7 +2674,9 @@
         const trackMeta = this.metadataForPath(fsPath, rel);
         const format = formatOf({ name: rel });
         if (this.isKssFormat(format)) {
-          const gameTitle = trackMeta.game || trackMeta.trackTitle || trackMeta.title || baseName(rel).replace(/\.[^.]+$/, '');
+          // KSS commonly stores only per-track titles. Do not promote the
+          // first one to a game title when no separate game metadata exists.
+          const gameTitle = trackMeta.game || baseName(rel).replace(/\.[^.]+$/, '');
           const kssTracks = this.kssArchiveTracks(rel, format, gameTitle, {
             ...trackMeta,
             container: rel
@@ -2733,7 +2739,14 @@
 
     kssArchiveTracks(rel, format, gameTitle, baseMetadata = {}, fsPath = '') {
       const tracks = [];
-      for (let i = 0; i < 255; i++) {
+      let count = 0;
+      if (fsPath && this.player.GetKSSTrackCountDirect) {
+        try { count = Number(this.player.GetKSSTrackCountDirect(fsPath)) || 0; } catch (e) {}
+      }
+      // An unreadable KSS remains selectable as one track. Never invent the
+      // historical 255-track range, since libkss clamps invalid indices.
+      const trackCount = Math.max(1, count);
+      for (let i = 0; i < trackCount; i++) {
         let title = `Track ${i + 1}`;
         if (fsPath && this.player.GetKSSTrackNameDirect) {
           try { title = this.player.GetKSSTrackNameDirect(fsPath, i) || title; } catch (e) {}
@@ -3246,9 +3259,7 @@
         if (this.isKssFormat(entry.format) && this.player.GetKSSTrackCountDirect) {
           count = Number(this.player.GetKSSTrackCountDirect(path)) || 0;
           getName = this.player.GetKSSTrackNameDirect ? (i) => this.player.GetKSSTrackNameDirect(path, i) : null;
-          if (entry.type === 'track' || entry.type === 'archiveTrackSource') {
-            count = 255;
-          } else if (count > 64) {
+          if (count > 64) {
             let hasNamedTrack = false;
             const probeCount = Math.min(count, 16);
             for (let i = 0; i < probeCount; i++) {
@@ -3271,7 +3282,17 @@
       } catch (e) {
         count = 0;
       }
-      if (count <= 1) return [];
+      if (count <= 1) {
+        // Keep single-track KSS files on the same explicit |track=0 path as
+        // multi-track KSS files. This avoids a dead/ambiguous container after
+        // inspection while still exposing only the one real track.
+        if (this.isKssFormat(entry.format) && count === 1) {
+          let name = '';
+          try { name = getName ? getName(0) : ''; } catch (e) { }
+          return [this.makeTrackPart(entry, 0, path, name || 'Track 1')];
+        }
+        return [];
+      }
       const tracks = [];
       for (let i = 0; i < count; i++) {
         let name = '';
@@ -3389,9 +3410,17 @@
     async ensureArchiveTrackInFs(entry) {
       const parent = this.byId.get(entry.archiveParentId);
       if (!parent) throw new Error('Archive parent missing');
-      if (!this.isArchiveResident(parent, entry.archivePath)) {
+      // Metadata indexing writes playable files to MEMFS one by one. Seeing
+      // the requested track therefore does not prove that support files such
+      // as .ssflib/.psflib are resident. archiveFsFiles is only populated by
+      // writeFullArchiveToFs after every extracted member has been written.
+      const hasCompleteArchive = this.isArchiveResident(parent, entry.archivePath)
+        && Array.isArray(parent.archiveFsFiles)
+        && parent.archiveFsFiles.length > 0;
+      if (!hasCompleteArchive) {
         await this.inspectArchive(parent, { expand: false, force: true, fullIndex: true, keepArchiveFiles: true });
-        await this.writeFullArchiveToFs(parent);
+        const wroteArchive = await this.writeFullArchiveToFs(parent);
+        if (!wroteArchive) throw new Error('Complete archive bytes unavailable');
       }
       const fsPath = this.archiveFsPath(parent, entry.archivePath);
       if (!fsPath || !this.isArchiveResident(parent, entry.archivePath)) throw new Error('Archive track bytes missing');
@@ -3568,10 +3597,10 @@
     loadArchiveMetaCache() {
       const fallback = { version: ARCHIVE_META_VERSION, packsBySha: {}, quick: {} };
       const raw = window.VGMPLAY_NATIVE_ARCHIVE_META;
-      if (raw && raw.version === ARCHIVE_META_VERSION && raw.packsBySha && raw.quick) return this.normalizeArchiveMetaCache(raw);
+      if (raw && ARCHIVE_META_COMPATIBLE_VERSIONS.has(Number(raw.version)) && raw.packsBySha && raw.quick) return this.normalizeArchiveMetaCache(raw);
       try {
         const local = JSON.parse(localStorage.getItem('vgmplayNativeArchiveMeta') || 'null');
-        if (local && local.version === ARCHIVE_META_VERSION && local.packsBySha && local.quick) return this.normalizeArchiveMetaCache(local);
+        if (local && ARCHIVE_META_COMPATIBLE_VERSIONS.has(Number(local.version)) && local.packsBySha && local.quick) return this.normalizeArchiveMetaCache(local);
       } catch (e) {}
       return fallback;
     }

@@ -4327,11 +4327,13 @@ const char *GetKSSTrackNameDirect(const char *path, int trackIndex) {
   }
   int trkMin = kss->trk_min;
   int trkMax = kss->trk_max;
+  int trkCount = trkMax - trkMin + 1;
+  if (trackIndex < 0 || trackIndex >= trkCount) {
+    KSS_delete(kss);
+    DataLoader_Deinit(kssLoader);
+    return "";
+  }
   int trackNum = trkMin + trackIndex;
-  if (trackNum < trkMin)
-    trackNum = trkMin;
-  if (trackNum > trkMax)
-    trackNum = trkMax;
   static char nameBuf[256];
   nameBuf[0] = '\0';
   const char *trackTitle = kssTrackTitle(kss, trackNum);

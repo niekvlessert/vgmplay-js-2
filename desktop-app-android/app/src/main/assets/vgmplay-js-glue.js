@@ -480,9 +480,11 @@ class VGMPlay_js {
 
 	_isMobileDevice() {
 		if (typeof window === 'undefined') return false;
-		const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-		const small = window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
-		return coarse || small;
+		// Touch input does not mean a phone-sized layout: wide tablets need the
+		// standalone two-pane library and analyzer layout just like desktop.
+		return window.matchMedia
+			? window.matchMedia('(max-width: 700px)').matches
+			: window.innerWidth <= 700;
 	}
 
 	_updateMemoryDisplay() {
@@ -1325,6 +1327,23 @@ class VGMPlay_js {
 		return `${fileName}:${bytes.byteLength}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 	}
 
+	_getSourceNameKey(value) {
+		if (!value) return '';
+		let name = String(value).split('?')[0].split('#')[0];
+		name = name.substring(name.lastIndexOf('/') + 1);
+		try { return decodeURIComponent(name).toLowerCase(); } catch (e) { return name.toLowerCase(); }
+	}
+
+	_hasCachedSourceMetadata(value) {
+		const key = this._getSourceNameKey(value);
+		if (!key) return false;
+		return (this.games || []).some((game) => {
+			if (!game) return false;
+			if (this._getSourceNameKey(game.archiveName) === key || this._getSourceNameKey(game.sourceUrl) === key) return true;
+			return (game.files || []).some((file) => this._getSourceNameKey(file && file.filepath) === key);
+		});
+	}
+
 	async processSingleBuffer(byteArray, sourceName = '') {
 		const fileName = sourceName || "track_" + Date.now();
 		const fingerprint = this._getSingleFileFingerprint(fileName, byteArray);
@@ -1332,7 +1351,14 @@ class VGMPlay_js {
 			const path = track && track.filepath ? String(track.filepath) : '';
 			return path.substring(path.lastIndexOf('/') + 1) === fileName;
 		}));
-		const alreadyCached = this._isCached && this._isCached(fingerprint);
+		let alreadyCached = this._isCached && this._isCached(fingerprint);
+		// A fingerprint without a restored track is incomplete/stale cache state. It
+		// must not block the source from being indexed again.
+		if (alreadyCached && !existingTrack) {
+			if (this._cacheFingerprints) this._cacheFingerprints.delete(fingerprint);
+			this.zipURLLoaded = this.zipURLLoaded.filter(value => value !== fingerprint);
+			alreadyCached = false;
+		}
 		if (existingTrack || alreadyCached) {
 			const overwrite = this._confirmSingleFileOverwrite
 				? await this._confirmSingleFileOverwrite(fileName)
@@ -2405,7 +2431,6 @@ class VGMPlay_js {
 		this._autoScanDistFileCount = files.length;
 		if (!files.length) return;
 
-		const seen = new Set();
 		const scanNames = new Set();
 		for (const url of files) {
 			const lower = url.toLowerCase().split('?')[0].split('#')[0];
@@ -2413,8 +2438,7 @@ class VGMPlay_js {
 
 			let decodedName = rawName;
 			try { decodedName = decodeURIComponent(rawName); } catch (e) { }
-			const decodedKey = decodedName.toLowerCase();
-			if (decodedKey) scanNames.add(decodedKey);
+			if (decodedName) scanNames.add(decodedName.toLowerCase());
 
 			// Check if this URL was already processed (from cache or previous run)
 			let normalizedUrl;
@@ -2429,12 +2453,8 @@ class VGMPlay_js {
 				continue;
 			}
 
-			if (this._cacheArchiveNames && this._cacheArchiveNames.has(decodedKey)) {
-				continue;
-			}
-
 			if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
-			if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
+			if (this._hasCachedSourceMetadata && this._hasCachedSourceMetadata(url)) continue;
 
 			// Skip if the harvester has already claimed this URL (it manages via the prompt)
 			if (this.lastHarvestedCandidates && this.lastHarvestedCandidates.some(c => c.url === url)) continue;
@@ -3999,19 +4019,21 @@ if (typeof window !== 'undefined' && !window.vgmPlayInstance && (typeof chrome =
 			try { vgmplay_js.loadWhenReady(); } catch (e) { }
 		}
 		if (vgmplay_js && vgmplay_js._autoScanDist) {
-			setTimeout(() => {
-				vgmplay_js._autoScanDist();
-			}, 0);
-		}
-		if (vgmplay_js && vgmplay_js._tryLoadMiscImageFromFS) {
-			const tryMisc = () => {
-				if (typeof window !== 'undefined' && window.__VGM_RUNTIME_READY__) {
-					vgmplay_js._tryLoadMiscImageFromFS();
-				} else {
-					setTimeout(tryMisc, 100);
+			setTimeout(async () => {
+				// The dist scan writes files and cache metadata. Wait for the runtime
+				// before discovering sources so a cold Pages load follows the same path
+				// as a normal ready player.
+				try {
+					const ready = await vgmplay_js.checkEverythingReady();
+					if (ready === false) return;
+					await vgmplay_js._autoScanDist();
+					if (vgmplay_js._tryLoadMiscImageFromFS) {
+						vgmplay_js._tryLoadMiscImageFromFS();
+					}
+				} catch (e) {
+					console.error('[VGM] Failed to start the bundled music scan:', e);
 				}
-			};
-			setTimeout(tryMisc, 0);
+			}, 0);
 		}
 	})();
 }

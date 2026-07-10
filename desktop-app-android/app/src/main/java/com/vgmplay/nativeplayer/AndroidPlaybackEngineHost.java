@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class AndroidPlaybackEngineHost {
     interface Callback {
         void onMediaState(JSONObject payload);
+        void onPrepareState(JSONObject payload);
         void onLog(String level, String message);
         void onRequestAudioRouteRefresh();
     }
@@ -71,16 +72,16 @@ final class AndroidPlaybackEngineHost {
         this.callback = callback;
     }
 
-    void playNativePath(String nativePath, String title, String archivePath, String archiveTrackPathSuffix, long positionMs) {
+    void playNativePath(String nativePath, String title, String archivePath, String archiveTrackPathSuffix, long positionMs, long requestToken) {
         ensureReady(() -> {
             JSONObject payload = buildLibraryPayload();
             loadNativeLibraryPayload(payload);
-            String script = "(function(nativePath,title,positionMs,archivePath,archiveTrackPathSuffix){"
+            String script = "(function(nativePath,title,positionMs,archivePath,archiveTrackPathSuffix,requestToken){"
                 + "var attempts=0;"
                 + "function play(){"
                 + "var app=window.__vgmNativeLibraryApp;"
                 + "if(app&&app.playNativeCatalogItem){"
-                + "Promise.resolve(app.playNativeCatalogItem(nativePath,title,{positionMs:positionMs,archivePath:archivePath,archiveTrackPathSuffix:archiveTrackPathSuffix,forceFullIndex:true,autoPlayback:true})).then(function(ok){"
+                + "Promise.resolve(app.playNativeCatalogItem(nativePath,title,{positionMs:positionMs,archivePath:archivePath,archiveTrackPathSuffix:archiveTrackPathSuffix,forceFullIndex:true,autoPlayback:true,requestToken:requestToken})).then(function(ok){"
                 + "if(ok){if(app.ensureAndroidAudioOutput)setTimeout(function(){app.ensureAndroidAudioOutput();},150);return;}"
                 + "if(++attempts<120)setTimeout(play,100);"
                 + "}).catch(function(err){console.error('[VGM Service] Auto play failed',err&&err.message?err.message:String(err));if(++attempts<120)setTimeout(play,100);});"
@@ -94,6 +95,7 @@ final class AndroidPlaybackEngineHost {
                 + "," + Math.max(0, positionMs)
                 + "," + JSONObject.quote(archivePath == null ? "" : archivePath)
                 + "," + JSONObject.quote(archiveTrackPathSuffix == null ? "" : archiveTrackPathSuffix)
+                + "," + Math.max(0, requestToken)
                 + ");";
             evaluate(script);
         });
@@ -591,6 +593,8 @@ final class AndroidPlaybackEngineHost {
                     saveArchiveImage(payload);
                 } else if ("nativeMediaState".equals(name)) {
                     if (callback != null) callback.onMediaState(payload);
+                } else if ("nativeMediaPrepareState".equals(name)) {
+                    if (callback != null) callback.onPrepareState(payload);
                 } else if ("nativeForceAudioFocus".equals(name)) {
                     if (callback != null) callback.onRequestAudioRouteRefresh();
                 } else if ("nativeOpenFolder".equals(name)) {

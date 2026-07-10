@@ -805,13 +805,13 @@ public class MainActivity extends Activity {
                 AndroidMediaContract.ACTION_MEDIA_TOGGLE_LOOP,
                 mediaLoopLabel == null || mediaLoopLabel.isEmpty() ? "Loop" : mediaLoopLabel,
                 mediaLoopMode != 0,
-                android.R.drawable.ic_menu_revert
+                loopActionIcon(mediaLoopMode)
             ))
             .addCustomAction(customAction(
                 AndroidMediaContract.ACTION_MEDIA_TOGGLE_RANDOM,
                 mediaRandomLabel == null || mediaRandomLabel.isEmpty() ? "Random" : mediaRandomLabel,
                 mediaRandomMode != 0,
-                android.R.drawable.ic_menu_rotate
+                randomActionIcon(mediaRandomMode)
             ));
         if (hasError) builder.setErrorMessage(mediaErrorMessage);
         mediaSession.setPlaybackState(builder.build());
@@ -826,6 +826,16 @@ public class MainActivity extends Activity {
             label,
             icon
         ).setExtras(extras).build();
+    }
+
+    private int loopActionIcon(int mode) {
+        if (mode == 1) return R.drawable.ic_auto_loop_one;
+        if (mode == 2) return R.drawable.ic_auto_loop_all;
+        return R.drawable.ic_auto_loop_off;
+    }
+
+    private int randomActionIcon(int mode) {
+        return mode == 0 ? R.drawable.ic_auto_random_off : R.drawable.ic_auto_random_on;
     }
 
     private void updateMediaMetadata(long durationMs) {

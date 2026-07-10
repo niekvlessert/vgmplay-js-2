@@ -1325,6 +1325,23 @@ class VGMPlay_js {
 		return `${fileName}:${bytes.byteLength}:${(hash >>> 0).toString(16).padStart(8, '0')}`;
 	}
 
+	_getSourceNameKey(value) {
+		if (!value) return '';
+		let name = String(value).split('?')[0].split('#')[0];
+		name = name.substring(name.lastIndexOf('/') + 1);
+		try { return decodeURIComponent(name).toLowerCase(); } catch (e) { return name.toLowerCase(); }
+	}
+
+	_hasCachedSourceMetadata(value) {
+		const key = this._getSourceNameKey(value);
+		if (!key) return false;
+		return (this.games || []).some((game) => {
+			if (!game) return false;
+			if (this._getSourceNameKey(game.archiveName) === key || this._getSourceNameKey(game.sourceUrl) === key) return true;
+			return (game.files || []).some((file) => this._getSourceNameKey(file && file.filepath) === key);
+		});
+	}
+
 	async processSingleBuffer(byteArray, sourceName = '') {
 		const fileName = sourceName || "track_" + Date.now();
 		const fingerprint = this._getSingleFileFingerprint(fileName, byteArray);
@@ -1332,7 +1349,14 @@ class VGMPlay_js {
 			const path = track && track.filepath ? String(track.filepath) : '';
 			return path.substring(path.lastIndexOf('/') + 1) === fileName;
 		}));
-		const alreadyCached = this._isCached && this._isCached(fingerprint);
+		let alreadyCached = this._isCached && this._isCached(fingerprint);
+		// A fingerprint without a restored track is incomplete/stale cache state. It
+		// must not block the source from being indexed again.
+		if (alreadyCached && !existingTrack) {
+			if (this._cacheFingerprints) this._cacheFingerprints.delete(fingerprint);
+			this.zipURLLoaded = this.zipURLLoaded.filter(value => value !== fingerprint);
+			alreadyCached = false;
+		}
 		if (existingTrack || alreadyCached) {
 			const overwrite = this._confirmSingleFileOverwrite
 				? await this._confirmSingleFileOverwrite(fileName)
@@ -2405,7 +2429,6 @@ class VGMPlay_js {
 		this._autoScanDistFileCount = files.length;
 		if (!files.length) return;
 
-		const seen = new Set();
 		const scanNames = new Set();
 		for (const url of files) {
 			const lower = url.toLowerCase().split('?')[0].split('#')[0];
@@ -2413,8 +2436,7 @@ class VGMPlay_js {
 
 			let decodedName = rawName;
 			try { decodedName = decodeURIComponent(rawName); } catch (e) { }
-			const decodedKey = decodedName.toLowerCase();
-			if (decodedKey) scanNames.add(decodedKey);
+			if (decodedName) scanNames.add(decodedName.toLowerCase());
 
 			// Check if this URL was already processed (from cache or previous run)
 			let normalizedUrl;
@@ -2429,12 +2451,8 @@ class VGMPlay_js {
 				continue;
 			}
 
-			if (this._cacheArchiveNames && this._cacheArchiveNames.has(decodedKey)) {
-				continue;
-			}
-
 			if (this.zipURLLoaded && this.zipURLLoaded.includes(url)) continue;
-			if (this._cacheFingerprints && Array.from(this._cacheFingerprints).some(fp => fp.startsWith(decodedName + ':'))) continue;
+			if (this._hasCachedSourceMetadata && this._hasCachedSourceMetadata(url)) continue;
 
 			// Skip if the harvester has already claimed this URL (it manages via the prompt)
 			if (this.lastHarvestedCandidates && this.lastHarvestedCandidates.some(c => c.url === url)) continue;

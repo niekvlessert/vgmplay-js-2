@@ -458,14 +458,6 @@ export function installCache(VGMPlay_js) {
 			meta.fingerprints.forEach(f => this.zipURLLoaded.push(f));
 			this._cacheRestoredFingerprints = new Set(meta.fingerprints);
 			this._cacheArchiveNames = new Set();
-			meta.fingerprints.forEach((f) => {
-				const base = String(f).split(':')[0];
-				if (base) {
-					this._cacheArchiveNames.add(base.toLowerCase());
-					const norm = normalizeArchiveName(base);
-					if (norm) this._cacheArchiveNames.add(norm);
-				}
-			});
 		}
 
 		const coverPaths = [];
@@ -796,14 +788,6 @@ export function installCache(VGMPlay_js) {
 				meta.fingerprints.forEach(f => this.zipURLLoaded.push(f)); // Also add to zipURLLoaded so it's not downloaded
 				this._cacheRestoredFingerprints = new Set(meta.fingerprints);
 				this._cacheArchiveNames = new Set();
-				meta.fingerprints.forEach((f) => {
-					const base = String(f).split(':')[0];
-					if (base) {
-						this._cacheArchiveNames.add(base.toLowerCase());
-						const norm = normalizeArchiveName(base);
-						if (norm) this._cacheArchiveNames.add(norm);
-					}
-				});
 			}
 
 			// Restore games

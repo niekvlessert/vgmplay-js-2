@@ -47,6 +47,7 @@
     "nativeSaveLastTrack",
     "nativeLibraryCommand",
     "nativeMediaState",
+    "nativeMediaPrepareState",
     "nativeForceAudioFocus",
     "nativeOpenFolder",
     "nativeOpenFile"

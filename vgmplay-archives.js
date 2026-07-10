@@ -309,8 +309,13 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 	const fingerprint = cleanName + ':' + byteArray.byteLength;
 
 	if (this._isCached && this._isCached(fingerprint)) {
-		this._log && this._log('ARCHIVES', `Archive ${cleanName} already cached (fingerprint), skipping extraction.`);
-		return;
+		if (this._hasCachedSourceMetadata && this._hasCachedSourceMetadata(sourceName)) {
+			this._log && this._log('ARCHIVES', `Archive ${cleanName} already cached (metadata), skipping extraction.`);
+			return;
+		}
+		this._log && this._log('ARCHIVES', `Discarding incomplete cache fingerprint for ${cleanName}; indexing again.`);
+		if (this._cacheFingerprints) this._cacheFingerprints.delete(fingerprint);
+		this.zipURLLoaded = this.zipURLLoaded.filter(value => value !== fingerprint);
 	}
 
 	try {
@@ -347,8 +352,13 @@ VGMPlay_js.prototype.process7zBuffer = async function (byteArray, sourceName = '
 	const fingerprint = cleanName + ':' + byteArray.byteLength;
 
 	if (this._isCached && this._isCached(fingerprint)) {
-		this._log && this._log('ARCHIVES', `Archive ${cleanName} already cached (fingerprint), skipping extraction.`);
-		return;
+		if (this._hasCachedSourceMetadata && this._hasCachedSourceMetadata(sourceName)) {
+			this._log && this._log('ARCHIVES', `Archive ${cleanName} already cached (metadata), skipping extraction.`);
+			return;
+		}
+		this._log && this._log('ARCHIVES', `Discarding incomplete cache fingerprint for ${cleanName}; indexing again.`);
+		if (this._cacheFingerprints) this._cacheFingerprints.delete(fingerprint);
+		this.zipURLLoaded = this.zipURLLoaded.filter(value => value !== fingerprint);
 	}
 
 try {
@@ -376,8 +386,12 @@ if (this.debugMode) console.warn("[VGM] 7z worker failed, falling back to main t
 		const cleanName = sourceName ? sourceName.split('?')[0].split('#')[0] : 'archive.rar';
 		const fingerprint = cleanName + ':' + byteArray.byteLength;
 		if (this._isCached && this._isCached(fingerprint)) {
-			if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
-			return;
+			if (this._hasCachedSourceMetadata && this._hasCachedSourceMetadata(sourceName)) {
+				if (this.debugMode) console.log(`[VGM] Archive ${cleanName} already cached, skipping extraction.`);
+				return;
+			}
+			if (this._cacheFingerprints) this._cacheFingerprints.delete(fingerprint);
+			this.zipURLLoaded = this.zipURLLoaded.filter(value => value !== fingerprint);
 		}
 
 		try {

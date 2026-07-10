@@ -865,7 +865,7 @@
       if (this.mobileNowStatusEl && this.statusEl) this.mobileNowStatusEl.textContent = this.statusEl.textContent || 'Idle';
     }
 
-    sendNativeMediaState({ force = false, stopped = false } = {}) {
+    sendNativeMediaState({ force = false, stopped = false, requestToken = 0 } = {}) {
       if (!window.VGMPLAY_ANDROID_PLAYER || !window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.nativeMediaState) return;
       const p = this.player;
       const entry = this.playingEntry;
@@ -894,12 +894,59 @@
         randomMode: p ? (Number(p.randomMode) || 0) : 0,
         loopLabel: p && Number(p.loopMode) === 1 ? 'Loop ON: Track' : (p && Number(p.loopMode) === 2 ? 'Loop ON: All' : 'Loop: Off'),
         randomLabel: p && Number(p.randomMode) === 2 ? 'Random ON: All' : (p && Number(p.randomMode) === 1 ? 'Random ON: Game' : 'Random: Off'),
-        errorMessage: this._nativeMediaErrorMessage || ''
+        errorMessage: this._nativeMediaErrorMessage || '',
+        requestToken: Number(requestToken || this._nativePlayingRequestToken || this._nativeAutoRequestToken || 0)
       };
       const key = JSON.stringify(payload);
       if (!force && key === this._lastNativeMediaStateKey) return;
       this._lastNativeMediaStateKey = key;
       window.webkit.messageHandlers.nativeMediaState.postMessage(payload);
+    }
+
+    sendNativePrepareState(stage, message = '', requestToken = 0, entry = null) {
+      if (!window.VGMPLAY_ANDROID_PLAYER || !window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.nativeMediaPrepareState) return;
+      const token = Number(requestToken || 0);
+      if (!token) return;
+      const target = entry || this.playingEntry || (this.selectedId && this.byId.get(this.selectedId)) || null;
+      window.webkit.messageHandlers.nativeMediaPrepareState.postMessage({
+        stage: stage || 'preparing',
+        message: message || '',
+        title: target ? this.displayNameFor(target) : 'VGMPlay-JS',
+        source: target ? this.mediaSourceFor(target) : '',
+        nativePath: target && target.item ? (target.item.nativePath || '') : '',
+        archivePath: target ? (target.archivePath || '') : '',
+        archiveTrackPathSuffix: target ? (target.archiveTrackPathSuffix || this.trackPathSuffixFor(target) || '') : '',
+        artUri: target && target.metadata ? (target.metadata.coverUrl || '') : '',
+        requestToken: token
+      });
+    }
+
+    scheduleNativePrepareState(stage, message = '', requestToken = 0, entry = null, sequence = 0, delayMs = 1200) {
+      if (!requestToken) return;
+      if (this._nativePrepareTimer) clearTimeout(this._nativePrepareTimer);
+      this._nativePrepareTimer = setTimeout(() => {
+        this._nativePrepareTimer = null;
+        if (sequence && this._playSequence !== sequence) return;
+        this.sendNativePrepareState(stage, message, requestToken, entry);
+      }, Math.max(0, delayMs || 0));
+    }
+
+    clearScheduledNativePrepareState() {
+      if (!this._nativePrepareTimer) return;
+      clearTimeout(this._nativePrepareTimer);
+      this._nativePrepareTimer = null;
+    }
+
+    async withNativePrepareHeartbeat(stage, message, requestToken, entry, work) {
+      if (!requestToken) return await work();
+      this.sendNativePrepareState(stage, message, requestToken, entry);
+      return await work();
+    }
+
+    nativePlaybackStepTimeout(entry, requestToken) {
+      if (requestToken && entry && entry.archiveParentId) return 45000;
+      if (requestToken && isArchiveEntry(entry)) return 45000;
+      return this.nativeStepTimeoutMs;
     }
 
     isNativeAudioProbablyActive() {
@@ -1486,6 +1533,9 @@
       const wantedArchiveTrackSuffix = String((options && options.archiveTrackPathSuffix) || '');
       const forceFullIndex = !!(options && options.forceFullIndex);
       const autoPlayback = !!(options && options.autoPlayback);
+      const requestToken = Number((options && options.requestToken) || 0);
+      this._nativeAutoRequestToken = requestToken;
+      this.sendNativePrepareState('resolvingTrack', 'Resolving track...', requestToken);
       console.log('[VGM Native] auto catalog request', wantedPath || '(no path)', title || '(no title)', wantedArchivePath || '(no archive path)', wantedArchiveTrackSuffix || '(no suffix)', forceFullIndex ? 'full-index' : 'default-index');
       if (!wantedPath && !wantedTitle) return false;
       let entry = null;
@@ -1507,9 +1557,12 @@
       }
       console.log('[VGM Native] auto catalog matched', entry.name, entry.item && entry.item.nativePath ? entry.item.nativePath : '', isArchiveEntry(entry) ? 'archive' : entry.type);
       if (wantedArchivePath && isArchiveEntry(entry)) {
+        this.suspendPlaybackForNativePrepare();
         this.selectedId = entry.id;
         this.expandAncestors(entry);
-        await this.inspectArchive(entry, { expand: true, force: forceFullIndex, fullIndex: forceFullIndex, keepArchiveFiles: true });
+        await this.withNativePrepareHeartbeat('preparingArchive', 'Preparing archive...', requestToken, entry, async () => {
+          await this.inspectArchive(entry, { expand: true, force: forceFullIndex, fullIndex: forceFullIndex, keepArchiveFiles: true });
+        });
         const target = (this.entries || []).find((candidate) => (
           candidate
           && candidate.archiveParentId === entry.id
@@ -1527,11 +1580,12 @@
         this.selectedId = target.id;
         this.renderTree();
         this.scrollEntryIntoView(target);
-        await this.playEntry(target);
+        if (!await this.playEntry(target, { requestToken })) return true;
         entry = target;
       } else if (wantedArchiveTrackSuffix && !wantedArchivePath && entry.inspectable) {
         this.selectedId = entry.id;
         this.expandAncestors(entry);
+        this.sendNativePrepareState('resolvingTrack', 'Resolving track...', requestToken, entry);
         await this.inspectEntry(entry, { expand: true, force: true });
         const target = (this.entries || []).find((candidate) => (
           candidate
@@ -1550,13 +1604,16 @@
         this.selectedId = target.id;
         this.renderTree();
         this.scrollEntryIntoView(target);
-        await this.playEntry(target);
+        if (!await this.playEntry(target, { requestToken })) return true;
         entry = target;
       } else {
         if (autoPlayback && isArchiveEntry(entry) && forceFullIndex) {
+          this.suspendPlaybackForNativePrepare();
           this.selectedId = entry.id;
           this.expandAncestors(entry);
-          await this.inspectArchive(entry, { expand: true, force: true, fullIndex: true, keepArchiveFiles: true });
+          await this.withNativePrepareHeartbeat('preparingArchive', 'Preparing archive...', requestToken, entry, async () => {
+            await this.inspectArchive(entry, { expand: true, force: true, fullIndex: true, keepArchiveFiles: true });
+          });
           const first = this.firstPlayableInSubtree(entry.id);
           console.log('[VGM Native] auto archive first playable', first ? first.name : '(none)');
           if (!first) {
@@ -1568,10 +1625,13 @@
           this.selectedId = first.id;
           this.renderTree();
           this.scrollEntryIntoView(first);
-          await this.playEntry(first);
+          if (!await this.playEntry(first, { requestToken })) return true;
           entry = first;
         } else {
-          await this.openFromOverview(entry);
+          if (entry.playable) {
+            if (!await this.playEntry(entry, { requestToken })) return true;
+          }
+          else await this.openFromOverview(entry);
         }
       }
       const positionMs = Math.max(0, Number(options && options.positionMs) || 0);
@@ -1586,6 +1646,18 @@
         this.player.context.resume().catch(() => {});
       }
       return true;
+    }
+
+    suspendPlaybackForNativePrepare() {
+      if (!window.VGMPLAY_ANDROID_PLAYER || !this.player) return;
+      try {
+        if (this.player.isVGMPlaying && this.player.stop) this.player.stop();
+      } catch (e) {
+        console.warn('[VGM Native] Could not suspend playback before Auto prepare', e);
+      }
+      clearInterval(this.progressTimer);
+      this.playBtn.textContent = '▶';
+      this.playBtn.classList.remove('active');
     }
 
     async playLastTrackState() {
@@ -1786,17 +1858,22 @@
       return null;
     }
 
-    async playEntry(entry) {
+    async playEntry(entry, options = {}) {
       if (!entry || !entry.item || !entry.item.url) return;
+      const nativeRequestToken = Number((options && options.requestToken) || 0);
+      if (nativeRequestToken) this._nativePlayingRequestToken = nativeRequestToken;
       
       if (this._scanningArchives) {
         this.statusEl.textContent = 'Cannot play during scan';
         return;
       }
       
-      if (!this.player || !this.player.StopVGM || !this.player.playFileFromFS) {
-        this.statusEl.textContent = 'Player not ready - try again';
-        return;
+      if (!await this.waitForNativePlayerApi(12000)) {
+        const message = 'Player not ready - try again';
+        this.statusEl.textContent = message;
+        this._nativeMediaErrorMessage = message;
+        this.sendNativePrepareState('failed', message, nativeRequestToken, entry);
+        return false;
       }
       
       if (entry.archiveParentId) {
@@ -1834,10 +1911,12 @@
       this._playSequence = (this._playSequence || 0) + 1;
       const seq = this._playSequence;
       this._loadingTrack = true;
+      const stepTimeoutMs = this.nativePlaybackStepTimeout(entry, nativeRequestToken);
 
       try {
+        this.scheduleNativePrepareState('preparingAudio', 'Preparing audio...', nativeRequestToken, entry, seq, nativeRequestToken ? 1200 : 1500);
         console.log('[VGM Native] play entry', entry.name, entry.item.url);
-        const initialReady = await this.withTimeout(this.primeAudioEngine(), this.nativeStepTimeoutMs, 'Timed out starting audio engine');
+        const initialReady = await this.withTimeout(this.primeAudioEngine(), stepTimeoutMs, 'Timed out starting audio engine');
         console.log('[VGM Native] audio engine ready', !!initialReady);
         if (!initialReady) throw new Error('Audio engine failed to initialize');
         if (entry.type === 'archiveTrack') {
@@ -1848,21 +1927,21 @@
           }
         }
         console.log('[VGM Native] ensure entry in FS start', entry.name);
-        const path = await this.withTimeout(this.ensureEntryInFs(entry), this.nativeStepTimeoutMs, 'Timed out loading file');
+        const path = await this.withTimeout(this.ensureEntryInFs(entry), stepTimeoutMs, 'Timed out loading file');
         console.log('[VGM Native] ensure entry in FS done', path);
         if (this._playSequence !== seq) return;
         console.log('[VGM Native] support files start', entry.name);
-        const gameFiles = entry.archiveGameFiles || await this.withTimeout(this.ensureLocalPlaybackSupportFiles(entry, path), this.nativeStepTimeoutMs, 'Timed out loading support files');
+        const gameFiles = entry.archiveGameFiles || await this.withTimeout(this.ensureLocalPlaybackSupportFiles(entry, path), stepTimeoutMs, 'Timed out loading support files');
         console.log('[VGM Native] support files done', gameFiles ? gameFiles.length : 0);
         if (this._playSequence !== seq) return;
         const playPath = entry.trackPath || path;
         console.log('[VGM Native] player ready check start');
-        const ready = await this.withTimeout(this.player.checkEverythingReady(), this.nativeStepTimeoutMs, 'Timed out starting audio engine');
+        const ready = await this.withTimeout(this.player.checkEverythingReady(), stepTimeoutMs, 'Timed out starting audio engine');
         console.log('[VGM Native] player ready check done', !!ready);
         if (!ready) throw new Error('Audio engine failed to initialize');
         if (this._playSequence !== seq) return;
         console.log('[VGM Native] preload ROMs start');
-        await this.withTimeout(this.preloadNativeHomeRoms(), this.nativeStepTimeoutMs, 'Timed out loading ROM files');
+        await this.withTimeout(this.preloadNativeHomeRoms(), stepTimeoutMs, 'Timed out loading ROM files');
         console.log('[VGM Native] preload ROMs done');
         if (this._playSequence !== seq) return;
         this.player._nativeLibraryApp = this;
@@ -1877,8 +1956,10 @@
         this.player.games = [game];
         this.player.activeGame = game;
         this.applyVolume();
+        this.clearScheduledNativePrepareState();
+        if (nativeRequestToken) this.sendNativePrepareState('startingAudio', 'Starting playback...', nativeRequestToken, entry);
         console.log('[VGM Native] playFileFromFS start', playPath);
-        await this.withTimeout(this.player.playFileFromFS(false, playPath, 1, 0), this.nativeStepTimeoutMs, 'Timed out starting playback');
+        await this.withTimeout(this.player.playFileFromFS(false, playPath, 1, 0), stepTimeoutMs, 'Timed out starting playback');
         console.log('[VGM Native] playFileFromFS done', 'isVGMPlaying=' + !!this.player.isVGMPlaying, 'paused=' + !!this.player.isPlaybackPaused, 'length=' + (this.player.trackLengthSeconds || 0));
         if (this._playSequence !== seq) return;
         await this.ensureAndroidAudioOutput();
@@ -1899,9 +1980,11 @@
         this.playBtn.classList.add('active');
         this.startFakeProgress();
         this.saveLastTrackState(entry);
-        this.sendNativeMediaState({ force: true });
+        this.sendNativeMediaState({ force: true, requestToken: nativeRequestToken });
+        return true;
       } catch (e) {
         if (this._playSequence !== seq) return;
+        this.clearScheduledNativePrepareState();
         console.error('[VGM Native] Failed to play local entry', e);
         this._manualStopRequested = true;
         if (this.player && this.player.stop) this.player.stop();
@@ -1913,13 +1996,24 @@
         entry.metadata = { ...(entry.metadata || {}), status: message };
         entry.warnings = Array.from(new Set([...(entry.warnings || []), message]));
         this.showInfo(entry);
-        this.sendNativeMediaState({ force: true });
+        this.sendNativePrepareState('failed', message, nativeRequestToken, entry);
+        this.sendNativeMediaState({ force: true, requestToken: nativeRequestToken });
+        return false;
       } finally {
         if (this._playSequence === seq) {
           this._loadingTrack = false;
           this.renderTree();
         }
       }
+    }
+
+    async waitForNativePlayerApi(timeoutMs = 12000) {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        if (this.player && this.player.StopVGM && this.player.playFileFromFS) return true;
+        await this.yieldToUI();
+      }
+      return !!(this.player && this.player.StopVGM && this.player.playFileFromFS);
     }
 
     withTimeout(promise, timeoutMs, message) {

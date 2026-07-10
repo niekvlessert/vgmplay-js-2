@@ -448,6 +448,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${LINK_FLAGS}")
 # Post-build copy
 if (PRELOAD_ENABLED)
   add_custom_command(TARGET vgmplay-js POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -DINPUT=$<TARGET_FILE:vgmplay-js> -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchEmscriptenGlue.cmake
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.data ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.data
@@ -455,6 +456,7 @@ if (PRELOAD_ENABLED)
   )
 else()
   add_custom_command(TARGET vgmplay-js POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -DINPUT=$<TARGET_FILE:vgmplay-js> -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PatchEmscriptenGlue.cmake
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:vgmplay-js> ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.js
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/vgmplay-js.wasm ${CMAKE_CURRENT_SOURCE_DIR}/vgmplay-js.wasm
     COMMENT "Copying build artifacts to project root"

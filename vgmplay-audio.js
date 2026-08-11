@@ -122,6 +122,10 @@ export function installAudio(VGMPlay_js) {
 			this.GetGMETrackNameDirect = Module.cwrap('GetGMETrackNameDirect', 'string', ['string', 'number']);
 			this.GetSIDTrackNameDirect = Module.cwrap('GetSIDTrackNameDirect', 'string', ['string', 'number']);
 			this.GetKSSTrackNameDirect = Module.cwrap('GetKSSTrackNameDirect', 'string', ['string', 'number']);
+			this.IsHootArchiveName = Module.cwrap('IsHootArchiveName', 'number', ['string']);
+			this.GetHootTrackCountDirect = Module.cwrap('GetHootTrackCountDirect', 'number', ['string']);
+			this.GetHootTrackNameDirect = Module.cwrap('GetHootTrackNameDirect', 'string', ['string', 'number']);
+			this.GetHootGameTitleDirect = Module.cwrap('GetHootGameTitleDirect', 'string', ['string']);
 			this.GetVGMTagDirect = Module.cwrap('GetVGMTagDirect', 'string', ['string', 'number']);
 			this.GetLoopPoint = Module.cwrap('GetLoopPoint');
 			this.SeekVGM = Module.cwrap('Seek', 'number', ['number', 'number']);

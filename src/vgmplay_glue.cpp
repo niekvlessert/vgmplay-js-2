@@ -14,6 +14,7 @@
 #include <string.h>
 #include <string>
 #include <vector>
+#include <filesystem>
 #include <zlib.h>
 
 #include "../modules/libkss/src/kss/kss.h"
@@ -30,6 +31,7 @@
 #include "../modules/libvgm/utils/DataLoader.h"
 #include "../modules/libvgm/utils/FileLoader.h"
 #include "../modules/libmoonsound/src/libmoonsound.h"
+#include "../modules/hoot_remake/src/core/hoot_api.h"
 #include "../modules/ssfplay_tools/include/ssfplay/ssfplay.h"
 #include "../modules/highly_theoretical/Core/sega.h"
 #undef uint8
@@ -153,6 +155,17 @@ static std::string currentMoonsoundPath;
 static std::string pendingMwkPath;
 static int lastLoadErrorCode = 0;
 static bool missingOpl4RomRequested = false;
+
+/* ---- Hoot archive globals ---- */
+static HootContext *hootContext = nullptr;
+static bool hootCatalogLoadAttempted = false;
+static bool hootCatalogLoaded = false;
+static bool isHoot = false;
+static unsigned int hootContextSampleRate = 0;
+static HootEntryInfo currentHootEntry{};
+static std::vector<float> hootRenderBuffer;
+static std::string hootStringResult;
+static std::map<std::string, HootEntryInfo> hootEntriesByArchive;
 
 enum {
   LOADERR_NONE = 0,
@@ -952,6 +965,12 @@ static DATA_LOADER *RequestFileCallback(void *userParam, PlayerBase *player,
 }
 
 static void cleanup(bool keepVGMPlayer) {
+  if (isHoot) {
+    if (hootContext) hoot_reset(hootContext);
+    isHoot = false;
+    currentHootEntry = HootEntryInfo{};
+    hootRenderBuffer.clear();
+  }
   if (isMoonsound) {
     if (msCtx) {
       ms_destroy(msCtx);
@@ -1182,6 +1201,109 @@ static int parseTrackSuffix(const char *path, std::string &basePath) {
   return track;
 }
 
+static std::string lowercaseAscii(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
+static std::string normalizedHootArchiveStem(const std::string &path) {
+  std::string name = std::filesystem::path(path).filename().string();
+  std::string lower = lowercaseAscii(name);
+  if (lower.size() > 4 && lower.substr(lower.size() - 4) == ".zip") {
+    name.resize(name.size() - 4);
+  }
+
+  // Browser downloads commonly add " (1)" and preserved Hoot packs are
+  // occasionally distributed with a trailing underscore.
+  if (!name.empty() && name.back() == '_') name.pop_back();
+  const size_t suffix = name.rfind(" (");
+  if (suffix != std::string::npos && name.back() == ')') {
+    bool digits = suffix + 2 < name.size() - 1;
+    for (size_t i = suffix + 2; digits && i + 1 < name.size(); ++i) {
+      digits = std::isdigit(static_cast<unsigned char>(name[i])) != 0;
+    }
+    if (digits) name.resize(suffix);
+  }
+  return lowercaseAscii(name);
+}
+
+static bool ensureHootCatalog() {
+  if (hootContext && hootContextSampleRate != gSampleRate && !isHoot) {
+    hoot_destroy(hootContext);
+    hootContext = nullptr;
+    hootCatalogLoadAttempted = false;
+    hootCatalogLoaded = false;
+    hootEntriesByArchive.clear();
+  }
+  if (!hootContext) {
+    HootConfig config{};
+    config.sample_rate = static_cast<int>(gSampleRate);
+    config.packs_path = "/hoot-packs";
+    hootContext = hoot_create(&config);
+    hootContextSampleRate = gSampleRate;
+  }
+  if (!hootContext || hootCatalogLoadAttempted) return hootCatalogLoaded;
+  hootCatalogLoadAttempted = true;
+  hootCatalogLoaded = hoot_load_catalog(hootContext, "/hoot/hoot.sqlite") == HOOT_OK;
+  if (!hootCatalogLoaded) {
+    printf("Hoot: unable to load catalogue: %s\n", hoot_last_error(hootContext));
+  } else {
+    const int count = hoot_get_entry_count(hootContext);
+    for (int i = 0; i < count; ++i) {
+      HootEntryInfo entry{};
+      if (hoot_get_entry_info(hootContext, i, &entry) != HOOT_OK || !entry.archive[0]) continue;
+      HootDriverProbe probe{};
+      if (hoot_probe_entry(hootContext, entry.id, &probe) != HOOT_OK ||
+          probe.status < HOOT_SUPPORT_EXPERIMENTAL) continue;
+      const std::string key = normalizedHootArchiveStem(std::string(entry.archive) + ".zip");
+      if (!hootEntriesByArchive.count(key)) hootEntriesByArchive.emplace(key, entry);
+    }
+  }
+  return hootCatalogLoaded;
+}
+
+static bool findHootEntryForPath(const std::string &path, HootEntryInfo &out) {
+  std::string lower = lowercaseAscii(path);
+  if (lower.size() <= 4 || lower.substr(lower.size() - 4) != ".zip") return false;
+  if (!ensureHootCatalog()) return false;
+
+  const auto found = hootEntriesByArchive.find(normalizedHootArchiveStem(path));
+  if (found == hootEntriesByArchive.end()) return false;
+  out = found->second;
+  return true;
+}
+
+static bool stageHootArchive(const std::string &sourcePath,
+                             const HootEntryInfo &entry) {
+  std::error_code error;
+  std::filesystem::create_directories("/hoot-packs", error);
+  if (error) return false;
+  const std::filesystem::path destination =
+      std::filesystem::path("/hoot-packs") / (std::string(entry.archive) + ".zip");
+  if (std::filesystem::path(sourcePath) == destination) return true;
+  std::filesystem::copy_file(sourcePath, destination,
+                             std::filesystem::copy_options::overwrite_existing,
+                             error);
+  if (error) {
+    printf("Hoot: unable to stage %s: %s\n", sourcePath.c_str(), error.message().c_str());
+    return false;
+  }
+  return true;
+}
+
+static const char *hootTrackName(const HootEntryInfo &entry, int trackIndex) {
+  if (!ensureHootCatalog() || trackIndex < 0 || trackIndex >= entry.track_count)
+    return "";
+  HootEntryTrackInfo track{};
+  if (hoot_get_entry_catalog_track_info(hootContext, entry.index, trackIndex, &track) != HOOT_OK)
+    return "";
+  hootStringResult = track.title;
+  if (hootStringResult.empty()) hootStringResult = "Track " + std::to_string(trackIndex + 1);
+  return hootStringResult.c_str();
+}
+
 static std::string getMuntGroupIdFromPath(const std::string &path) {
   // Use parent directory as a best-effort "game" grouping for MIDI files.
   size_t slash = path.find_last_of('/');
@@ -1353,6 +1475,19 @@ void SetLoopCount(unsigned int loops) {
 void Seek(unsigned int sec, unsigned int ms) {
   UINT64 totalMs = (UINT64)sec * 1000 + (UINT64)ms;
   UINT32 sample = (UINT32)((totalMs * gSampleRate) / 1000);
+
+  if (isHoot && hootContext) {
+    if (hoot_reset(hootContext) != HOOT_OK) return;
+    const UINT32 chunk = 2048;
+    std::vector<float> scratch(chunk * 2);
+    UINT32 remaining = sample;
+    while (remaining > 0) {
+      const int request = static_cast<int>(remaining > chunk ? chunk : remaining);
+      if (hoot_render_float(hootContext, scratch.data(), request) <= 0) break;
+      remaining -= static_cast<UINT32>(request);
+    }
+    return;
+  }
 
   if (isOpenMPT && gOpenMpt) {
     openmpt_module_set_position_seconds(gOpenMpt, (double)totalMs / 1000.0);
@@ -1533,7 +1668,21 @@ int OpenVGMFile(const char *path) {
       (lowerPath.size() > 4 &&
        (lowerPath.substr(lowerPath.size() - 4) == ".vgm" ||
         lowerPath.substr(lowerPath.size() - 4) == ".vgz"));
+  HootEntryInfo hootEntry{};
+  const bool isHootPath = findHootEntryForPath(basePath, hootEntry);
   cleanup(isVgmPath);
+  if (isHootPath) {
+    if (!stageHootArchive(basePath, hootEntry)) return 0;
+    if (hoot_set_packs_path(hootContext, "/hoot-packs") != HOOT_OK ||
+        hoot_load_entry(hootContext, hootEntry.id) != HOOT_OK ||
+        hoot_select_track(hootContext, trackIndex) != HOOT_OK) {
+      printf("Hoot: unable to load %s: %s\n", basePath.c_str(), hoot_last_error(hootContext));
+      return 0;
+    }
+    currentHootEntry = hootEntry;
+    isHoot = true;
+    return 1;
+  }
   if (sPath.size() > 4 && (sPath.substr(sPath.size() - 4) == ".psf" ||
                            sPath.substr(sPath.size() - 4) == ".PSF" ||
                            sPath.substr(sPath.size() - 8) == ".minipsf" ||
@@ -2229,6 +2378,10 @@ void StopVGM(void) {
 }
 
 int VGMEnded(void) {
+  // Hoot replay drivers are stream-oriented and do not currently publish a
+  // reliable end position. The JS transport remains responsible for stopping
+  // or advancing these tracks.
+  if (isHoot) return 0;
   if (isMunt && mt32Smf) {
     return mt32Smf->positionAtEnd() ? 1 : 0;
   }
@@ -2316,6 +2469,7 @@ int VGMEnded(void) {
 }
 
 int GetTrackLength(void) {
+  if (isHoot) return 0;
   if (isMunt && mt32Smf) {
     // Duration from sequencer in seconds
     double dur = mt32Smf->timeLength();
@@ -2418,6 +2572,9 @@ int GetTrackLengthDirect(const char *path) {
   std::string lowerPath = basePath;
   for (auto &c : lowerPath)
     c = tolower(c);
+
+  HootEntryInfo hootEntry{};
+  if (findHootEntryForPath(basePath, hootEntry)) return 0;
 
   if (lowerPath.find(".psf") != std::string::npos ||
       lowerPath.find(".minipsf") != std::string::npos ||
@@ -2721,6 +2878,23 @@ const char *GetVGMTagDirect(const char *path, int tagIndex) {
   std::string lowerPath = basePath;
   for (auto &c : lowerPath)
     c = tolower(c);
+
+  HootEntryInfo hootEntry{};
+  if (findHootEntryForPath(basePath, hootEntry)) {
+    switch (tagIndex) {
+      case 0: return hootTrackName(hootEntry, trackIndex);
+      case 2:
+        hootStringResult = hootEntry.title;
+        return hootStringResult.c_str();
+      case 4:
+        hootStringResult = hootEntry.driver;
+        return hootStringResult.c_str();
+      case 10:
+        hootStringResult = "Hoot replay archive";
+        return hootStringResult.c_str();
+      default: return "";
+    }
+  }
 
   if (lowerPath.find(".psflib") != std::string::npos)
     return "";
@@ -3085,6 +3259,16 @@ void FillBufferKSSPerCh(float *left, float *right, KSSPLAY_PER_CH_OUT *per_ch, i
 void FillBuffer2(float *left, float *right, int n) {
   if (n <= 0)
     return;
+
+  if (isHoot && hootContext) {
+    hootRenderBuffer.resize(static_cast<size_t>(n) * 2);
+    const int rendered = hoot_render_float(hootContext, hootRenderBuffer.data(), n);
+    for (int i = 0; i < n; ++i) {
+      left[i] = i < rendered ? hootRenderBuffer[static_cast<size_t>(i) * 2] : 0.0f;
+      right[i] = i < rendered ? hootRenderBuffer[static_cast<size_t>(i) * 2 + 1] : 0.0f;
+    }
+    return;
+  }
 
   if (isMunt && mt32Enabled && mt32Smf && mt32Ctx) {
     // Advance MIDI sequencer by n samples, rendering events to mt32 context
@@ -3684,6 +3868,24 @@ void FillBuffer2(float *left, float *right, int n) {
 /* format: "TrkE|||TrkJ|||GmE|||GmJ|||SysE|||SysJ|||AutE|||AutJ|||Cre|||Notes"
  */
 char *ShowTitle(void) {
+  if (isHoot && hootContext) {
+    HootTrackInfo track{};
+    hoot_get_track_info(hootContext, &track);
+    std::string values[11];
+    values[0] = track.title;
+    values[2] = currentHootEntry.title;
+    values[4] = currentHootEntry.driver;
+    values[10] = track.warning;
+    std::string result;
+    for (const auto &value : values) {
+      result += "Key|||";
+      result += value;
+      result += "|||";
+    }
+    free(titleBuf);
+    titleBuf = strdup(result.c_str());
+    return titleBuf;
+  }
   if (isSSF) {
     if (!ssfDecoder)
       return nullptr;
@@ -4063,6 +4265,11 @@ char *ShowTitle(void) {
 }
 
 const char *GetChipInfoString(void) {
+  if (isHoot) {
+    free(chipBuf);
+    chipBuf = strdup(currentHootEntry.driver);
+    return chipBuf;
+  }
   if (isMoonsound) {
     free(chipBuf);
     chipBuf = strdup("MoonSound (YMF278B)");
@@ -4148,6 +4355,41 @@ int GetDeviceCount() {
     return (int)ids.size();
   }
   return 0;
+}
+
+int IsHootArchiveName(const char *path) {
+  if (!path) return 0;
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  HootEntryInfo entry{};
+  return findHootEntryForPath(basePath, entry) ? 1 : 0;
+}
+
+int GetHootTrackCountDirect(const char *path) {
+  if (!path) return 0;
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  HootEntryInfo entry{};
+  return findHootEntryForPath(basePath, entry) ? entry.track_count : 0;
+}
+
+const char *GetHootTrackNameDirect(const char *path, int trackIndex) {
+  if (!path) return "";
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  HootEntryInfo entry{};
+  if (!findHootEntryForPath(basePath, entry)) return "";
+  return hootTrackName(entry, trackIndex);
+}
+
+const char *GetHootGameTitleDirect(const char *path) {
+  if (!path) return "";
+  std::string basePath;
+  parseTrackSuffix(path, basePath);
+  HootEntryInfo entry{};
+  if (!findHootEntryForPath(basePath, entry)) return "";
+  hootStringResult = entry.title;
+  return hootStringResult.c_str();
 }
 
 int GetGMETrackCountDirect(const char *path) {

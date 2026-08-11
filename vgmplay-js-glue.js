@@ -1822,6 +1822,9 @@ class VGMPlay_js {
 
 	isPlayable(path) {
 		const p = path.toLowerCase().split('|track=')[0];
+		if (p.endsWith('.zip') && this.IsHootArchiveName) {
+			try { if (this.IsHootArchiveName(p)) return true; } catch (e) { }
+		}
 		return p.endsWith('.vgm') || p.endsWith('.vgz') ||
 			p.endsWith('.psf') || p.endsWith('.minipsf') ||
 			p.endsWith('.ssf') || p.endsWith('.minissf') ||

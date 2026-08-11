@@ -382,6 +382,33 @@ export function installLibrary(VGMPlay_js) {
 				if (this.isPlayable(lower)) {
 					try {
 						const currentSampleRate = this.sampleRate || 44100;
+						let isHootArchive = false;
+						try { isHootArchive = !!(this.IsHootArchiveName && this.IsHootArchiveName(fullPath)); } catch (e) { }
+						if (isHootArchive && this.GetHootTrackCountDirect) {
+							const count = this.GetHootTrackCountDirect(fullPath);
+							for (let t = 0; t < count; t++) {
+								const trackPath = `${fullPath}|track=${t}`;
+								const a = document.createElement('a');
+								a.className = 'vgmplayTrack';
+								const playableIndex = playableList.length;
+								a.dataset.playableIndex = playableIndex;
+								a.onclick = () => this.playFileFromFS(a, trackPath, gameIndex, playableIndex);
+
+								const nameSpan = document.createElement('span');
+								nameSpan.className = 'track-name';
+								let title = '';
+								try { title = this.GetHootTrackNameDirect ? this.GetHootTrackNameDirect(fullPath, t) : ''; } catch (e) { }
+								nameSpan.textContent = title || `Track ${t + 1}`;
+								a.appendChild(nameSpan);
+
+								const lengthSpan = document.createElement('span');
+								lengthSpan.className = 'track-length';
+								a.appendChild(lengthSpan);
+								trackContainer.appendChild(a);
+								playableList.push({ filepath: trackPath, linkElement: a, lengthSec: 0, title: nameSpan.textContent });
+							}
+							continue;
+						}
 						if (this._isGmeFile(lower) && this.GetGMETrackCountDirect) {
 							const count = this.GetGMETrackCountDirect(fullPath);
 							if (count > 1) {

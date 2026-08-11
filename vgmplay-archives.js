@@ -270,6 +270,39 @@ fileDataByPath: new Map()
   });
 };
 
+VGMPlay_js.prototype._processHootArchive = async function (byteArray, sourceName) {
+	this.amountOfGamesLoaded++;
+	const gamePath = this._getGamePath(this.amountOfGamesLoaded);
+	this._makedirs(gamePath);
+	const safeName = String(sourceName || 'hoot.zip').replace(/[\\/]/g, '_');
+	const fullPath = `${gamePath}/${safeName}`;
+	try {
+		FS.writeFile(fullPath, byteArray);
+		if (this._markCacheFileDirty && fullPath.startsWith('/cache/')) this._markCacheFileDirty(fullPath);
+	} catch (e) {
+		if (this.debugMode) console.error('[VGM] Failed to stage Hoot archive:', e);
+		return { anyPlayable: false, hasMidi: false };
+	}
+
+	let title = safeName.replace(/\.zip$/i, '');
+	try {
+		if (this.GetHootGameTitleDirect) title = this.GetHootGameTitleDirect(fullPath) || title;
+	} catch (e) { }
+	const game = {
+		files: [{ filepath: fullPath }],
+		path: gamePath,
+		name: title,
+		archiveName: sourceName,
+		sourceUrl: sourceName,
+		hootArchive: true
+	};
+	this.games.push(game);
+	this.games.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+	await this.checkEverythingReady();
+	this._scheduleZipRender();
+	return { anyPlayable: true, hasMidi: false };
+};
+
 VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = '') {
 	let normalizedUrl = sourceName;
 	if (sourceName) {
@@ -316,6 +349,20 @@ VGMPlay_js.prototype.processZipBuffer = async function (byteArray, sourceName = 
 		this._log && this._log('ARCHIVES', `Discarding incomplete cache fingerprint for ${cleanName}; indexing again.`);
 		if (this._cacheFingerprints) this._cacheFingerprints.delete(fingerprint);
 		this.zipURLLoaded = this.zipURLLoaded.filter(value => value !== fingerprint);
+	}
+
+	await this.checkEverythingReady();
+	let isHootArchive = false;
+	try {
+		isHootArchive = !!(this.IsHootArchiveName && this.IsHootArchiveName(cleanName));
+	} catch (e) { }
+	if (isHootArchive) {
+		const result = await this._processHootArchive(byteArray, cleanName);
+		if (result.anyPlayable) {
+			if (this._markCached) this._markCached(fingerprint);
+			if (this._saveCache) await this._saveCache();
+		}
+		return result;
 	}
 
 	try {

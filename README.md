@@ -38,6 +38,7 @@ Make sure you have cmake and Emscripten installed.
 cd /var/www/html/
 git clone --recursive https://github.com/niekvlessert/vgmplay-js-2.git
 cd vgmplay-js-2
+bash modules/hoot_remake/tools/ci/fetch_dependencies.sh
 mkdir build
 cd build
 emcmake cmake ..
@@ -84,6 +85,7 @@ The full build of `vgmplay-js` includes the following libraries and supports the
 | **miniaudio** | `.mp3`, `.flac`, `.ogg`, `.wav` (Modern Audio Formats) |
 | **libmusdoom** | `.mus`, `.lmp` (Doom) |
 | **libmoonsound** | `.mwm` (MSX Moonsound) with optional `.mwk` sample libraries (some tracks require MWK) |
+| **libhoot** | Hoot replay packs stored as `.zip`; recognized by archive basename from the bundled Hoot catalogue |
 | **Archives** | `.zip`, `.7z`, `.rar`, `.vigamup` (via 7zz, unrar, minizip) |
 | **Adlmidi** | OPL3 midi files |
 | **Munt** | MT32 midi (support is not that good) |

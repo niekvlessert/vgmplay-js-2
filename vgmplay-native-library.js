@@ -34,6 +34,7 @@
     SID: 'badge-kss',
     PSID: 'badge-kss',
     RSID: 'badge-kss',
+    HOOT: 'badge-kss',
     MIDI: 'badge-midi',
     MID: 'badge-midi',
     MOD: 'badge-mod',
@@ -90,6 +91,7 @@
     SID: { content: 'Commodore 64 SID music', backend: 'libsidplayfp', multiTrack: true },
     PSID: { content: 'Commodore 64 SID music', backend: 'libsidplayfp', multiTrack: true },
     RSID: { content: 'Commodore 64 SID music', backend: 'libsidplayfp', multiTrack: true },
+    HOOT: { content: 'Hoot replay pack', backend: 'libhoot', multiTrack: true },
     VGM: { content: 'VGM command stream', backend: 'libvgm' },
     VGZ: { content: 'Compressed VGM command stream', backend: 'libvgm' },
     PSF: { content: 'PlayStation sequenced music', backend: 'Highly Experimental' },
@@ -2270,6 +2272,11 @@
           return;
         }
 
+        let isHootArchive = false;
+        try {
+          isHootArchive = !!(this.player.IsHootArchiveName && this.player.IsHootArchiveName(entry.path || entry.name));
+        } catch (e) { }
+
         entry.metadata = { ...(entry.metadata || {}), status: 'Indexing archive in background...', sha256: archiveSha };
         this.statusEl.textContent = 'Indexing archive';
         this.showInfo(entry);
@@ -2277,14 +2284,20 @@
         const isVeryLarge = entrySize > 100 * 1024 * 1024;
         let lightIndex = (this.shouldUseLightArchiveIndex() || isVeryLarge) && !options.force && !options.fullIndex && formatOf(entry) !== 'VIGAMUP';
         if (this._scanCancelled) return;
-        let result = await this.extractArchive(entry, originalBytes, { metadataOnly: lightIndex });
-        if (this._scanCancelled) return;
-        if (result.metadataOnly && this.isVigamupArchiveShape(entry, result.entries || [])) {
+        let metadata;
+        if (isHootArchive) {
           lightIndex = false;
-          result = await this.extractArchive(entry, originalBytes, { metadataOnly: false });
+          metadata = await this.buildHootArchiveMetadata(entry, archiveSha);
+        } else {
+          let result = await this.extractArchive(entry, originalBytes, { metadataOnly: lightIndex });
+          if (this._scanCancelled) return;
+          if (result.metadataOnly && this.isVigamupArchiveShape(entry, result.entries || [])) {
+            lightIndex = false;
+            result = await this.extractArchive(entry, originalBytes, { metadataOnly: false });
+          }
+          entry.archiveFiles = result.metadataOnly ? null : result.fileDataByPath;
+          metadata = await this.buildArchiveMetadata(entry, result, archiveSha, { lightIndex });
         }
-        entry.archiveFiles = result.metadataOnly ? null : result.fileDataByPath;
-        const metadata = await this.buildArchiveMetadata(entry, result, archiveSha, { lightIndex });
         this.archiveMetaCache.packsBySha[archiveSha] = metadata;
         this.rememberArchiveQuickKey(entry, archiveSha);
         this.saveArchiveMetaCache();
@@ -2565,6 +2578,53 @@
       const ext = extOf(entry.path || entry.name);
       const kind = ext === 'rar' ? 'rar' : (ext === '7z' ? '7z' : 'zip');
       return this.player._extractArchiveWithWorker(new Uint8Array(bytes), kind, entry.name || entry.path || 'archive', options);
+    }
+
+    async buildHootArchiveMetadata(entry, sha) {
+      await this.player.checkEverythingReady();
+      const archivePath = entry.path || entry.name || 'hoot.zip';
+      let count = 0;
+      let title = baseName(archivePath).replace(/\.zip$/i, '');
+      try { count = Number(this.player.GetHootTrackCountDirect(archivePath)) || 0; } catch (e) { }
+      try { title = this.player.GetHootGameTitleDirect(archivePath) || title; } catch (e) { }
+      const tracks = [];
+      for (let i = 0; i < count; i++) {
+        let trackTitle = '';
+        try { trackTitle = this.player.GetHootTrackNameDirect(archivePath, i) || ''; } catch (e) { }
+        trackTitle = trackTitle || `Track ${i + 1}`;
+        tracks.push({
+          path: baseName(archivePath),
+          trackPathSuffix: `|track=${i}`,
+          name: trackTitle,
+          format: 'HOOT',
+          metadata: {
+            title: trackTitle,
+            trackTitle,
+            game: title,
+            status: 'Playable',
+            content: 'Hoot replay track',
+            backend: 'libhoot',
+            chip: 'Hoot',
+            trackNumber: i + 1
+          }
+        });
+      }
+      return {
+        version: ARCHIVE_META_VERSION,
+        sha256: sha,
+        title,
+        archiveName: entry.name,
+        innerFormat: 'HOOT',
+        innerFormats: ['HOOT'],
+        sizeBytes: entry.item?.sizeBytes || 0,
+        mtime: entry.item?.mtime || 0,
+        trackCount: tracks.length,
+        lightIndex: false,
+        support: [],
+        tracks,
+        games: [],
+        unsupported: []
+      };
     }
 
     async buildArchiveMetadata(entry, result, sha, options = {}) {
@@ -3050,8 +3110,8 @@
         unsupportedCount,
         coverDataUrl: archiveMeta.coverDataUrl || (entry.metadata && entry.metadata.coverDataUrl) || '',
         coverUrl: archiveMeta.coverUrl || (entry.metadata && entry.metadata.coverUrl) || '',
-        content: (entry.metadata && entry.metadata.content) || 'Archive container',
-        backend: 'Archive reader'
+        content: archiveMeta.innerFormat === 'HOOT' ? 'Hoot replay pack' : ((entry.metadata && entry.metadata.content) || 'Archive container'),
+        backend: archiveMeta.innerFormat === 'HOOT' ? 'libhoot' : 'Archive reader'
       };
       if (entry.hidden) {
         entry.expanded = false;
@@ -3420,6 +3480,19 @@
     async ensureArchiveTrackInFs(entry) {
       const parent = this.byId.get(entry.archiveParentId);
       if (!parent) throw new Error('Archive parent missing');
+      if (entry.format === 'HOOT') {
+        const bytes = await this.fetchBytes(parent.item.url);
+        if (!bytes || !bytes.length) throw new Error('Empty Hoot archive');
+        const relPath = entry.archivePath || baseName(parent.path || parent.name || 'hoot.zip');
+        const fsPath = this.archiveFsPath(parent, relPath);
+        this.writeBytesToFs(fsPath, bytes);
+        parent.archiveFsFiles = [{ filepath: fsPath }];
+        entry.fsPath = fsPath;
+        entry.trackPath = fsPath + (entry.archiveTrackPathSuffix || '');
+        entry.archiveGameFiles = parent.archiveFsFiles;
+        this.rememberResidentArchive(parent);
+        return fsPath;
+      }
       // Metadata indexing writes playable files to MEMFS one by one. Seeing
       // the requested track therefore does not prove that support files such
       // as .ssflib/.psflib are resident. archiveFsFiles is only populated by

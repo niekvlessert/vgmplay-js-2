@@ -44,3 +44,6 @@
 [submodule "modules/libsidplayfp"]
 	path = modules/libsidplayfp
 	url = https://github.com/libsidplayfp/libsidplayfp
+[submodule "modules/hoot_remake"]
+	path = modules/hoot_remake
+	url = https://github.com/niekvlessert/hoot_remake.git

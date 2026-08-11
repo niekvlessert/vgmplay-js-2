@@ -53,6 +53,10 @@ set(BUILD_TOOLS OFF CACHE BOOL "Build tools" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries for wasm" FORCE)
 add_subdirectory(modules/libMusDoom)
 
+# Hoot archive replay core. Its own GUI/CLI frontends are intentionally not
+# part of this Wasm build.
+include(cmake/HootLibrary.cmake)
+
 # Monkey's Audio (APE)
 set(ENABLE_ASSEMBLY OFF CACHE BOOL "Disable assembly for Emscripten" FORCE)
 add_subdirectory(modules/monkeys-audio)
@@ -316,7 +320,9 @@ target_link_libraries(vgmplay-js mt32emu)
 target_link_libraries(vgmplay-js libmac)
 target_link_libraries(vgmplay-js sidplayfp)
 target_link_libraries(vgmplay-js highly_theoretical)
+target_link_libraries(vgmplay-js vgmplay_hoot)
 add_dependencies(vgmplay-js openmpt_build)
+add_dependencies(vgmplay-js vgmplay_hoot_catalog)
 
 target_link_options(vgmplay-js PRIVATE "SHELL:-Wl,--allow-multiple-definition")
 target_compile_options(vgmplay-js PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-fexceptions>)
@@ -416,6 +422,10 @@ list(APPEND VGMPLAY_EXPORTS
     "'_SetMoonsoundMwkPath'"
     "'_GetLastLoadErrorCode'"
     "'_MoonsoundSupportsLoop'"
+    "'_IsHootArchiveName'"
+    "'_GetHootTrackCountDirect'"
+    "'_GetHootTrackNameDirect'"
+    "'_GetHootGameTitleDirect'"
 )
 string(REPLACE ";" "," EXPORT_STR "${VGMPLAY_EXPORTS}")
 
@@ -432,6 +442,7 @@ set(LINK_FLAGS "\
     -s WASM=1 \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s EXPORTED_FUNCTIONS=\"[${EXPORT_STR}]\" \
+    --preload-file ${HOOT_CATALOG_SQLITE}@/hoot/hoot.sqlite \
 ")
 
 set(PRELOAD_DIR "${PROJECT_SOURCE_DIR}/files")

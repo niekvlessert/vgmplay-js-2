@@ -70,6 +70,7 @@ jobs:
       - name: Build WASM
         if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: |
+          bash modules/hoot_remake/tools/ci/fetch_dependencies.sh
           mkdir -p build
           cd build
           emcmake cmake .. \

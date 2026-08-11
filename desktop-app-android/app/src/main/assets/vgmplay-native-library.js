@@ -2746,10 +2746,24 @@
       // An unreadable KSS remains selectable as one track. Never invent the
       // historical 255-track range, since libkss clamps invalid indices.
       const trackCount = Math.max(1, count);
-      for (let i = 0; i < trackCount; i++) {
-        let title = `Track ${i + 1}`;
+      let firstTitle = '';
+      let secondTitle = '';
+      if (fsPath && trackCount > 1 && this.player.GetKSSTrackNameDirect) {
+        try { firstTitle = this.player.GetKSSTrackNameDirect(fsPath, 0) || ''; } catch (e) {}
+        try { secondTitle = this.player.GetKSSTrackNameDirect(fsPath, 1) || ''; } catch (e) {}
+      }
+      // Some single-song KSS files advertise a range of tracks while assigning
+      // the same real title to every index. Collapse only when both titles are
+      // explicit; two absent titles mean an unnamed multi-track file.
+      const duplicateNamedTrack = !!firstTitle && firstTitle === secondTitle;
+      const visibleTrackCount = duplicateNamedTrack ? 1 : trackCount;
+      for (let i = 0; i < visibleTrackCount; i++) {
+        let title = duplicateNamedTrack ? baseName(rel) : `Track ${i + 1}`;
         if (fsPath && this.player.GetKSSTrackNameDirect) {
-          try { title = this.player.GetKSSTrackNameDirect(fsPath, i) || title; } catch (e) {}
+          try {
+            const explicitTitle = this.player.GetKSSTrackNameDirect(fsPath, i) || '';
+            if (!duplicateNamedTrack && explicitTitle) title = explicitTitle;
+          } catch (e) {}
         }
         tracks.push({
           path: rel,
@@ -3259,18 +3273,14 @@
         if (this.isKssFormat(entry.format) && this.player.GetKSSTrackCountDirect) {
           count = Number(this.player.GetKSSTrackCountDirect(path)) || 0;
           getName = this.player.GetKSSTrackNameDirect ? (i) => this.player.GetKSSTrackNameDirect(path, i) : null;
-          if (count > 64) {
-            let hasNamedTrack = false;
-            const probeCount = Math.min(count, 16);
-            for (let i = 0; i < probeCount; i++) {
-              try {
-                if (getName && getName(i)) {
-                  hasNamedTrack = true;
-                  break;
-                }
-              } catch (e) {}
+          if (count > 1 && getName) {
+            let firstTitle = '';
+            let secondTitle = '';
+            try { firstTitle = getName(0) || ''; } catch (e) {}
+            try { secondTitle = getName(1) || ''; } catch (e) {}
+            if (firstTitle && firstTitle === secondTitle) {
+              return [this.makeTrackPart(entry, 0, path, baseName(entry.path || path))];
             }
-            if (!hasNamedTrack) return [];
           }
         } else if ((entry.format === 'SID' || entry.format === 'PSID' || entry.format === 'RSID') && this.player.GetSIDTrackCountDirect) {
           count = Number(this.player.GetSIDTrackCountDirect(path)) || 0;

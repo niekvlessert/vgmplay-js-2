@@ -77,12 +77,15 @@ set(HOOT_CORE_SOURCES
   src/core/entry_validation.cpp
   src/core/text_encoding.cpp
   src/cpu/kmz80_cpu.cpp
+  src/cpu/musashi_bus.cpp
   src/cpu/x86_cpu.cpp
   src/drivers/driver_registry.cpp
+  src/drivers/konami_hornet_driver.cpp
   src/drivers/microcabin_pc88_driver.cpp
   src/drivers/pc88_generic_driver.cpp
   src/drivers/microcabin_pc98dos_driver.cpp
   src/drivers/pc98_dos_driver.cpp
+  src/drivers/sharp_x1_generic_driver.cpp
   src/drivers/x68k_generic_driver.cpp
   src/drivers/x68k_mxdrv_driver.cpp
   src/io/d88_image.cpp
@@ -94,6 +97,8 @@ set(HOOT_CORE_SOURCES
   src/sound/libvgm_ym2203.cpp
   src/sound/libvgm_opl.cpp
   src/sound/libvgm_ym2608.cpp
+  src/sound/k056800.cpp
+  src/sound/rf5c400.cpp
   src/sound/pc98_pcm86.cpp
   src/sound/pc98_beep.cpp
   src/sound/pc98_mpu401.cpp
@@ -136,4 +141,3 @@ add_custom_command(
   VERBATIM
 )
 add_custom_target(vgmplay_hoot_catalog DEPENDS "${HOOT_CATALOG_SQLITE}")
-
